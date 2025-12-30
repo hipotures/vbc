@@ -648,6 +648,24 @@ class Orchestrator:
             self.event_bus.publish(JobStarted(job=job))
             job.status = JobStatus.PROCESSING
             self.ffmpeg_adapter.compress(job, job_config, rotate=rotation, shutdown_event=self._shutdown_event, input_path=input_path)
+            if (
+                job.status == JobStatus.HW_CAP_LIMIT
+                and self.config.general.cpu_fallback
+                and job_config.gpu
+            ):
+                if self.config.general.debug:
+                    self.logger.info(f"FFMPEG_FALLBACK: {filename} (hw_cap -> CPU)")
+                job_config = job_config.model_copy()
+                job_config.gpu = False
+                job.status = JobStatus.PROCESSING
+                job.error_message = None
+                self.ffmpeg_adapter.compress(
+                    job,
+                    job_config,
+                    rotate=rotation,
+                    shutdown_event=self._shutdown_event,
+                    input_path=input_path,
+                )
 
             # Check final status after compression
             if job.status == JobStatus.COMPLETED:

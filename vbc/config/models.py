@@ -42,6 +42,8 @@ class GeneralConfig(BaseModel):
     queue_sort: str = Field(default="name")
     queue_seed: Optional[int] = Field(default=None)
     log_path: Optional[str] = Field(default="/tmp/vbc/compression.log")
+    cpu_fallback: bool = Field(default=False)
+    ffmpeg_cpu_threads: Optional[int] = Field(default=None, ge=1)
     copy_metadata: bool = True
     use_exif: bool = True
     filter_cameras: List[str] = Field(default_factory=list)

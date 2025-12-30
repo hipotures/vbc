@@ -42,12 +42,17 @@ class FFmpegAdapter:
                 "-b:v", "0"
             ])
         else:
+            svt_params = "tune=0:enable-overlays=1"
+            if config.ffmpeg_cpu_threads:
+                svt_params = f"{svt_params}:lp={config.ffmpeg_cpu_threads}"
             cmd.extend([
                 "-c:v", "libsvtav1",
                 "-preset", "6",
                 "-crf", str(config.cq),
-                "-svtav1-params", f"tune=0:enable-overlays=1"
+                "-svtav1-params", svt_params
             ])
+            if config.ffmpeg_cpu_threads:
+                cmd.extend(["-threads", str(config.ffmpeg_cpu_threads)])
             
         # Audio/Metadata settings
         cmd.extend([

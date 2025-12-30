@@ -31,6 +31,20 @@ def test_ffmpeg_command_generation_cpu():
     
     assert "libsvtav1" in cmd
 
+
+def test_ffmpeg_command_generation_cpu_threads_limit():
+    config = GeneralConfig(threads=4, cq=45, gpu=False, ffmpeg_cpu_threads=4)
+    vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)
+    job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
+
+    adapter = FFmpegAdapter(event_bus=MagicMock())
+    cmd = adapter._build_command(job, config)
+
+    threads_index = cmd.index("-threads")
+    assert cmd[threads_index + 1] == "4"
+    svt_index = cmd.index("-svtav1-params")
+    assert "lp=4" in cmd[svt_index + 1]
+
 def test_ffmpeg_rotation():
     config = GeneralConfig(threads=4, cq=45, gpu=True)
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)

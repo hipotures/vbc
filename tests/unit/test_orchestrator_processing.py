@@ -170,6 +170,65 @@ def test_perform_discovery_sort_rand_seed(tmp_path):
     assert [vf.path.name for vf in first] == [vf.path.name for vf in second]
 
 
+def test_process_file_cpu_fallback_on_hw_cap(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+
+    source = input_dir / "video.mp4"
+    source.write_bytes(b"x" * 200)
+
+    config = _make_config(
+        gpu=True,
+        cpu_fallback=True,
+        ffmpeg_cpu_threads=2,
+        use_exif=False,
+        copy_metadata=False,
+    )
+    bus = EventBus()
+    events = []
+    bus.subscribe(JobCompleted, lambda e: events.append(e))
+
+    ffprobe = MagicMock()
+    ffprobe.get_stream_info.return_value = {
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "fps": 30.0,
+        "duration": 1.0,
+        "color_space": "bt709",
+    }
+
+    class DummyFFmpeg:
+        def __init__(self):
+            self.calls = []
+
+        def compress(self, job, config, rotate=None, shutdown_event=None, input_path=None):
+            self.calls.append(config.gpu)
+            if config.gpu:
+                job.status = JobStatus.HW_CAP_LIMIT
+                job.error_message = "Hardware is lacking required capabilities"
+            else:
+                job.status = JobStatus.COMPLETED
+
+    ffmpeg = DummyFFmpeg()
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=FileScanner([".mp4"], 0),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=ffprobe,
+        ffmpeg_adapter=ffmpeg,
+    )
+
+    video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
+    orchestrator._process_file(video_file, input_dir)
+
+    assert ffmpeg.calls == [True, False]
+    assert events
+    assert events[0].job.status == JobStatus.COMPLETED
+    assert not (input_dir.with_name(f"{input_dir.name}_out") / "video.err").exists()
+
+
 def test_process_file_skips_existing_error(tmp_path):
     input_dir = tmp_path / "input"
     input_dir.mkdir()

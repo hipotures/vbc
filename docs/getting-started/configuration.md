@@ -39,6 +39,8 @@ general:
   queue_sort: name              # Queue order: name, rand, dir, size, size-asc, size-desc, ext
   queue_seed: null              # Optional seed for deterministic rand order
   log_path: /tmp/vbc/compression.log  # Log file location
+  cpu_fallback: false           # Retry on CPU if NVENC hits HW cap error
+  ffmpeg_cpu_threads: null      # Max CPU threads per ffmpeg worker (null = auto)
 
   # === Input/Output ===
   extensions:                   # File extensions to process
@@ -129,6 +131,18 @@ autorotate:
 - **Type**: String or null
 - **Default**: `/tmp/vbc/compression.log`
 - **Description**: Path to log file (overrides the output directory default)
+
+#### `cpu_fallback`
+- **Type**: Boolean
+- **Default**: false
+- **Description**: Retry on CPU when GPU encoding fails with hardware capability errors
+- **Note**: Useful when NVENC runs out of sessions; pair with `ffmpeg_cpu_threads`
+
+#### `ffmpeg_cpu_threads`
+- **Type**: Integer or null
+- **Default**: `null`
+- **Description**: Max CPU threads per ffmpeg worker when using CPU encoding (including fallback)
+- **Note**: Limits per-worker CPU usage; does not change `threads` (worker count)
 
 #### `gpu`
 - **Type**: Boolean

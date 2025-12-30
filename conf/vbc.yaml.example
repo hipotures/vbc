@@ -23,6 +23,8 @@
 #   queue_sort: name
 #   queue_seed: null
 #   log_path: /tmp/vbc/compression.log
+#   cpu_fallback: false
+#   ffmpeg_cpu_threads: null
 #   copy_metadata: true
 #   use_exif: true
 #   filter_cameras: []

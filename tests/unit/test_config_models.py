@@ -39,6 +39,8 @@ def test_config_defaults():
     assert gen.min_compression_ratio == 0.1
     assert gen.queue_sort == "name"
     assert gen.log_path == "/tmp/vbc/compression.log"
+    assert gen.cpu_fallback is False
+    assert gen.ffmpeg_cpu_threads is None
 
 
 def test_output_dirs_conflict_with_suffix():
@@ -74,6 +76,11 @@ def test_queue_sort_invalid_mode():
 def test_queue_sort_ext_requires_extensions():
     with pytest.raises(ValidationError):
         GeneralConfig(threads=1, extensions=[], queue_sort="ext")
+
+
+def test_ffmpeg_cpu_threads_requires_positive_value():
+    with pytest.raises(ValidationError):
+        GeneralConfig(threads=1, extensions=[".mp4"], ffmpeg_cpu_threads=0)
 
 def test_load_config(tmp_path):
     d = tmp_path / "conf"
