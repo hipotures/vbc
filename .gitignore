@@ -4,6 +4,7 @@
 # But allow these:
 !.gitignore
 !README.md
+!CLAUDE.md
 !*.sh
 
 # Allow conf directory and config files
