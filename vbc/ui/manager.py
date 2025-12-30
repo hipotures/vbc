@@ -121,7 +121,9 @@ class UIManager:
 
     def on_job_completed(self, event: JobCompleted):
         output_size = 0
-        if event.job.output_path and event.job.output_path.exists():
+        if event.job.output_size_bytes is not None:
+            output_size = event.job.output_size_bytes
+        elif event.job.output_path and event.job.output_path.exists():
             output_size = event.job.output_path.stat().st_size
 
         # Calculate duration

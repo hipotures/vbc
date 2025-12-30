@@ -46,6 +46,17 @@ uv run vbc/main.py /path/to/videos --cpu --cq 35
 
 Output is written to `{INPUT_DIR}_out/` with a `compression.log` file and optional `.err` markers.
 
+## Demo Mode
+
+Simulate a full run without touching real files. The UI shows `VBC - demo` and uses synthetic filenames.
+
+```bash
+uv run vbc/main.py demo --demo
+uv run vbc/main.py demo --demo --demo-config conf/demo.yaml
+```
+
+Demo settings live in `conf/demo.yaml`.
+
 ## Configuration
 
 Default configuration is `conf/vbc.yaml`. CLI arguments override config values.

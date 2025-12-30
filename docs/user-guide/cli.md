@@ -191,6 +191,28 @@ uv run vbc/main.py /videos --debug
 - Compression stages (PROCESS_START, PROCESS_END)
 - Metadata cache misses
 
+### Demo
+
+#### `--demo`
+
+Run simulated processing (no file IO). The UI and event flow behave like a real run.
+
+**Note:** `INPUT_DIR` is still required by the CLI; use a placeholder like `demo`.
+
+```bash
+uv run vbc/main.py demo --demo
+```
+
+#### `--demo-config PATH`
+
+Path to demo simulation settings.
+
+**Default:** `conf/demo.yaml`
+
+```bash
+uv run vbc/main.py demo --demo --demo-config conf/demo.yaml
+```
+
 ## Examples
 
 ### Basic Compression

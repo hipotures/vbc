@@ -681,7 +681,7 @@ class Dashboard:
             else:
                 content = left_content
             
-        return Panel(content, border_style="cyan", title="VBC")
+        return Panel(content, border_style="cyan", title=self.state.ui_title)
 
     def _generate_progress(self, h_lines: int) -> Panel:
         """Progress bar + counters (size-based progress)."""

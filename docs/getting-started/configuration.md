@@ -6,6 +6,16 @@ VBC can be configured via YAML files and CLI arguments. CLI arguments always ove
 
 Default location: `conf/vbc.yaml`
 
+## Demo Configuration
+
+Demo mode uses a separate simulation file: `conf/demo.yaml`.
+
+```bash
+uv run vbc/main.py demo --demo --demo-config conf/demo.yaml
+```
+
+This file controls simulated file counts, size distribution, processing speed, and error mix.
+
 ### Full Example
 
 ```yaml

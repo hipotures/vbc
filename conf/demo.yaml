@@ -1,0 +1,84 @@
+seed: 1337
+input_folders:
+  - DEMO/Studio_A
+  - DEMO/Studio_B
+
+files:
+  count: 120
+  extensions:
+    - ext: .mp4
+      weight: 0.55
+    - ext: .mov
+      weight: 0.25
+    - ext: .mkv
+      weight: 0.20
+  min_words: 1
+  max_words: 3
+  separator: "-"
+
+sizes:
+  distribution: triangular
+  min_mb: 20
+  mode_mb: 180
+  max_mb: 1800
+
+bitrate_mbps:
+  min_mbps: 10
+  mode_mbps: 35
+  max_mbps: 120
+
+resolutions:
+  - width: 3840
+    height: 2160
+    weight: 0.30
+  - width: 1920
+    height: 1080
+    weight: 0.55
+  - width: 1280
+    height: 720
+    weight: 0.15
+
+fps:
+  - value: 23.976
+    weight: 0.20
+  - value: 25.0
+    weight: 0.20
+  - value: 29.97
+    weight: 0.40
+  - value: 59.94
+    weight: 0.20
+
+codecs:
+  - name: h264
+    weight: 0.45
+  - name: hevc
+    weight: 0.35
+  - name: av1
+    weight: 0.20
+
+processing:
+  throughput_mb_s: 35.0
+  progress_interval_s: 0.2
+  jitter_pct: 0.25
+
+output_ratio:
+  min: 0.22
+  max: 0.55
+
+errors:
+  total: 6
+  types:
+    - type: ffprobe_failed
+      weight: 0.20
+    - type: ffmpeg_error
+      weight: 0.50
+    - type: hw_cap
+      weight: 0.30
+
+kept_original:
+  count: 3
+
+discovery:
+  already_compressed: 8
+  ignored_small: 4
+  ignored_err: 2

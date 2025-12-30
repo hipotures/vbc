@@ -49,6 +49,7 @@ class UIState:
         self.interrupt_requested = False
         self.finished = False
         self.strip_unicode_display = True
+        self.ui_title = "VBC"
         self.show_config = False
         self.show_legend = False
         self.show_menu = False
