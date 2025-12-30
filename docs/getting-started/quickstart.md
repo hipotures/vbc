@@ -59,8 +59,9 @@ While running, press:
 ```bash
 ls -lh ~/Videos/raw_out/
 # Compressed .mp4 files
-# compression.log - detailed log
 # *.err - error markers (if any failures)
+ls -lh /tmp/vbc/compression.log
+# detailed log
 ```
 
 ## Common Use Cases
@@ -160,8 +161,9 @@ CLI arguments override config file settings.
 ├── video2.mp4             # Compressed (converted to .mp4)
 ├── subfolder/
 │   └── video3.mp4         # Compressed
-├── compression.log        # Detailed log
 └── video_error.err        # Error marker (if compression failed)
+
+/tmp/vbc/compression.log    # Detailed log
 ```
 
 ## Next Steps

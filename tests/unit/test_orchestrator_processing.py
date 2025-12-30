@@ -59,6 +59,116 @@ def test_perform_discovery_counts_and_skips(tmp_path):
     assert [vf.path.name for vf in files] == ["good.mp4"]
 
 
+def test_perform_discovery_sort_dir(tmp_path):
+    input_a = tmp_path / "input_a"
+    input_b = tmp_path / "input_b"
+    input_a.mkdir()
+    input_b.mkdir()
+
+    (input_b / "m.mp4").write_bytes(b"x" * 50)
+    (input_b / "a.mp4").write_bytes(b"x" * 50)
+    sub = input_a / "sub"
+    sub.mkdir()
+    (sub / "a.mp4").write_bytes(b"x" * 50)
+    (input_a / "z.mp4").write_bytes(b"x" * 50)
+
+    config = _make_config(queue_sort="dir", extensions=[".mp4"], use_exif=False)
+    scanner = FileScanner(config.general.extensions, config.general.min_size_bytes)
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=scanner,
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+
+    files, _stats = orchestrator._perform_discovery([input_b, input_a])
+
+    assert [vf.path for vf in files] == [
+        input_b / "a.mp4",
+        input_b / "m.mp4",
+        sub / "a.mp4",
+        input_a / "z.mp4",
+    ]
+
+
+def test_perform_discovery_sort_ext(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+
+    (input_dir / "b.mp4").write_bytes(b"x" * 10)
+    (input_dir / "a.mov").write_bytes(b"x" * 10)
+    (input_dir / "c.mov").write_bytes(b"x" * 10)
+
+    config = _make_config(queue_sort="ext", extensions=[".mov", ".mp4"], use_exif=False)
+    scanner = FileScanner(config.general.extensions, config.general.min_size_bytes)
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=scanner,
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+
+    files, _stats = orchestrator._perform_discovery(input_dir)
+
+    assert [vf.path.name for vf in files] == ["a.mov", "c.mov", "b.mp4"]
+
+
+def test_perform_discovery_sort_size_desc(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+
+    small = input_dir / "small.mp4"
+    medium = input_dir / "medium.mp4"
+    large = input_dir / "large.mp4"
+    small.write_bytes(b"x" * 10)
+    medium.write_bytes(b"x" * 20)
+    large.write_bytes(b"x" * 30)
+
+    config = _make_config(queue_sort="size-desc", extensions=[".mp4"], use_exif=False)
+    scanner = FileScanner(config.general.extensions, config.general.min_size_bytes)
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=scanner,
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+
+    files, _stats = orchestrator._perform_discovery(input_dir)
+
+    assert [vf.path.name for vf in files] == ["large.mp4", "medium.mp4", "small.mp4"]
+
+
+def test_perform_discovery_sort_rand_seed(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+
+    (input_dir / "a.mp4").write_bytes(b"x" * 10)
+    (input_dir / "b.mp4").write_bytes(b"x" * 10)
+    (input_dir / "c.mp4").write_bytes(b"x" * 10)
+
+    config = _make_config(queue_sort="rand", queue_seed=123, extensions=[".mp4"], use_exif=False)
+    scanner = FileScanner(config.general.extensions, config.general.min_size_bytes)
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=scanner,
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+
+    first, _stats = orchestrator._perform_discovery(input_dir)
+    second, _stats = orchestrator._perform_discovery(input_dir)
+
+    assert [vf.path.name for vf in first] == [vf.path.name for vf in second]
+
+
 def test_process_file_skips_existing_error(tmp_path):
     input_dir = tmp_path / "input"
     input_dir.mkdir()

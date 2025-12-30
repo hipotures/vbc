@@ -29,6 +29,9 @@ general:
   cq: 45                        # Default constant quality (0-63, lower=better)
   prefetch_factor: 1            # Submit-on-demand multiplier (1-5)
   gpu: true                     # Use GPU (NVENC) vs CPU (SVT-AV1)
+  queue_sort: name              # Queue order: name, rand, dir, size, size-asc, size-desc, ext
+  queue_seed: null              # Optional seed for deterministic rand order
+  log_path: /tmp/vbc/compression.log  # Log file location
 
   # === Input/Output ===
   extensions:                   # File extensions to process
@@ -99,6 +102,26 @@ autorotate:
 - **Default**: 1
 - **Description**: Submit-on-demand queue multiplier. Higher values = more files queued.
 - **Formula**: `max_queued = prefetch_factor × threads`
+
+#### `queue_sort`
+- **Type**: String
+- **Default**: `name`
+- **Description**: Processing order for files in the queue
+- **Values**: `name`, `rand`, `dir`, `size`, `size-asc`, `size-desc`, `ext`
+- **Notes**:
+  - `size` is an alias for `size-asc`
+  - `rand` can be made deterministic with `queue_seed`
+  - `ext` uses the order of `extensions` and requires a non-empty list
+
+#### `queue_seed`
+- **Type**: Integer or null
+- **Default**: `null`
+- **Description**: Seed for deterministic `rand` queue order
+
+#### `log_path`
+- **Type**: String or null
+- **Default**: `/tmp/vbc/compression.log`
+- **Description**: Path to log file (overrides the output directory default)
 
 #### `gpu`
 - **Type**: Boolean

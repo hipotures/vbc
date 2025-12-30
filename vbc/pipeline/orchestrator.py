@@ -17,6 +17,7 @@ from vbc.infrastructure.ffmpeg import FFmpegAdapter
 from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
 from vbc.domain.events import DiscoveryStarted, DiscoveryFinished, JobStarted, JobCompleted, JobFailed, QueueUpdated, ProcessingFinished
 from vbc.ui.keyboard import RequestShutdown, ThreadControlEvent, InterruptRequested
+from vbc.pipeline.queue_sorting import sort_files
 
 class Orchestrator:
     def __init__(
@@ -498,7 +499,7 @@ class Orchestrator:
                 )
 
         # Sort all files by filename for deterministic processing order
-        all_files.sort(key=lambda vf: vf.path.name)
+        all_files = sort_files(all_files, input_dirs, self.config.general, self.file_scanner.extensions)
 
         # Update final stats
         total_stats['files_to_process'] = len(all_files)

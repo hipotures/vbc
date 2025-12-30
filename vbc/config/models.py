@@ -1,6 +1,29 @@
 from typing import List, Dict, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+QUEUE_SORT_CHOICES = ("name", "rand", "dir", "size", "size-asc", "size-desc", "ext")
+QUEUE_SORT_ALIASES = {"size": "size-asc"}
+
+
+def normalize_queue_sort(value: Optional[str]) -> str:
+    if value is None:
+        return "name"
+    normalized = str(value).strip().lower()
+    if not normalized:
+        return "name"
+    normalized = QUEUE_SORT_ALIASES.get(normalized, normalized)
+    if normalized not in QUEUE_SORT_CHOICES:
+        allowed = ", ".join(QUEUE_SORT_CHOICES)
+        raise ValueError(f"Invalid queue_sort '{value}'. Use one of: {allowed}.")
+    return normalized
+
+
+def validate_queue_sort(value: Optional[str], extensions: List[str]) -> str:
+    normalized = normalize_queue_sort(value)
+    if normalized == "ext" and not extensions:
+        raise ValueError("queue_sort 'ext' requires a non-empty extensions list.")
+    return normalized
+
 class GpuConfig(BaseModel):
     """GPU monitoring and sparkline configuration."""
     enabled: bool = True
@@ -16,6 +39,9 @@ class GeneralConfig(BaseModel):
     prefetch_factor: int = Field(default=1, ge=1)
     gpu: bool = True
     gpu_refresh_rate: int = Field(default=5, ge=1)
+    queue_sort: str = Field(default="name")
+    queue_seed: Optional[int] = Field(default=None)
+    log_path: Optional[str] = Field(default="/tmp/vbc/compression.log")
     copy_metadata: bool = True
     use_exif: bool = True
     filter_cameras: List[str] = Field(default_factory=list)
@@ -28,6 +54,24 @@ class GeneralConfig(BaseModel):
     manual_rotation: Optional[int] = Field(default=None)
     min_compression_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
     debug: bool = False
+
+    @field_validator("queue_sort")
+    @classmethod
+    def validate_queue_sort_mode(cls, v: Optional[str]) -> str:
+        return normalize_queue_sort(v)
+
+    @field_validator("log_path")
+    @classmethod
+    def normalize_log_path(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = str(v).strip()
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def validate_queue_sort_dependencies(self):
+        self.queue_sort = validate_queue_sort(self.queue_sort, self.extensions)
+        return self
 
 class AutoRotateConfig(BaseModel):
     patterns: Dict[str, int] = Field(default_factory=dict)

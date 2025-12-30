@@ -11,6 +11,9 @@
 #   prefetch_factor: 1
 #   gpu: true
 #   gpu_refresh_rate: 5
+#   queue_sort: name
+#   queue_seed: null
+#   log_path: /tmp/vbc/compression.log
 #   copy_metadata: true
 #   use_exif: true
 #   filter_cameras: []

@@ -88,6 +88,33 @@ uv run vbc/main.py /videos --cpu
 - `--gpu`: Fast, good for 1080p/1440p, quality ceiling ~CQ35-38
 - `--cpu`: Slow, excellent quality at any resolution
 
+### Queue
+
+#### `--queue-sort TEXT`
+
+Queue ordering mode.
+
+**Default:** From config (`name`)
+
+**Values:** `name`, `rand`, `dir`, `size`, `size-asc`, `size-desc`, `ext`
+**Note:** `ext` uses the order defined in `extensions`.
+
+```bash
+# Sort by file size (small → large)
+uv run vbc/main.py /videos --queue-sort size
+
+# Process directories in CLI order, sort within each directory
+uv run vbc/main.py /dir1,/dir2 --queue-sort dir
+```
+
+#### `--queue-seed INT`
+
+Seed for deterministic random order when using `--queue-sort rand`.
+
+```bash
+uv run vbc/main.py /videos --queue-sort rand --queue-seed 42
+```
+
 ### Filtering
 
 #### `--skip-av1`
@@ -193,6 +220,14 @@ uv run vbc/main.py /videos --debug
 - ExifTool calls (EXIF_COPY_START, EXIF_COPY_DONE)
 - Compression stages (PROCESS_START, PROCESS_END)
 - Metadata cache misses
+
+#### `--log-path PATH`
+
+Path to log file (overrides config).
+
+```bash
+uv run vbc/main.py /videos --log-path /tmp/vbc/compression.log
+```
 
 ### Demo
 
@@ -333,10 +368,10 @@ Output: /videos_out/subfolder/video.mp4
 ### Log File
 
 ```
-{INPUT_DIR}_out/compression.log
+/tmp/vbc/compression.log
 ```
 
-Detailed log of all operations (INFO and ERROR levels).
+Detailed log of all operations (INFO and ERROR levels). Override with `--log-path` or `general.log_path`.
 
 ### Error Markers
 

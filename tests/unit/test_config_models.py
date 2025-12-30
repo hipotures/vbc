@@ -37,6 +37,23 @@ def test_config_defaults():
     assert gen.dynamic_cq == {}
     assert gen.cq == 45
     assert gen.min_compression_ratio == 0.1
+    assert gen.queue_sort == "name"
+    assert gen.log_path == "/tmp/vbc/compression.log"
+
+
+def test_queue_sort_alias_size():
+    gen = GeneralConfig(threads=1, extensions=[".mp4"], queue_sort="size")
+    assert gen.queue_sort == "size-asc"
+
+
+def test_queue_sort_invalid_mode():
+    with pytest.raises(ValidationError):
+        GeneralConfig(threads=1, extensions=[".mp4"], queue_sort="bad")
+
+
+def test_queue_sort_ext_requires_extensions():
+    with pytest.raises(ValidationError):
+        GeneralConfig(threads=1, extensions=[], queue_sort="ext")
 
 def test_load_config(tmp_path):
     d = tmp_path / "conf"

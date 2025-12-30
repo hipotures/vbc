@@ -1,7 +1,8 @@
 import logging
 from pathlib import Path
+from typing import Optional
 
-def setup_logging(output_dir: Path, debug: bool = False) -> logging.Logger:
+def setup_logging(output_dir: Path, debug: bool = False, log_path: Optional[Path] = None) -> logging.Logger:
     """
     Setup logging configuration for VBC.
 
@@ -9,14 +10,16 @@ def setup_logging(output_dir: Path, debug: bool = False) -> logging.Logger:
     Returns configured logger instance.
 
     Args:
-        output_dir: Directory where log file will be created
+        output_dir: Directory where output files are written
         debug: If True, enable DEBUG level logging with detailed timings
+        log_path: Optional path to log file (overrides output_dir)
     """
     # Create output directory
     output_dir.mkdir(exist_ok=True)
 
     # Setup log file
-    log_file = output_dir / "compression.log"
+    log_file = Path(log_path) if log_path else (output_dir / "compression.log")
+    log_file.parent.mkdir(parents=True, exist_ok=True)
 
     # Configure logging level
     level = logging.DEBUG if debug else logging.INFO

@@ -279,7 +279,7 @@ uv sync --reinstall
 
 **Solution:**
 - Check FFmpeg version: `ffmpeg -version`
-- Compare logs: `cat /videos_out/compression.log`
+- Compare logs: `cat /tmp/vbc/compression.log`
 - Ensure identical CLI flags
 
 ### UI Glitches

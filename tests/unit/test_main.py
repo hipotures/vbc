@@ -30,9 +30,10 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
             autorotate=AutoRotateConfig(patterns={}),
         )
 
-    def fake_setup_logging(path, debug=False):
+    def fake_setup_logging(path, debug=False, log_path=None):
         created["log_path"] = path
         created["log_debug"] = debug
+        created["log_file"] = log_path
         return MagicMock()
 
     class DummyExif:
@@ -97,6 +98,10 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
             "--cq",
             "30",
             "--cpu",
+            "--queue-sort",
+            "size-desc",
+            "--queue-seed",
+            "99",
             "--clean-errors",
             "--skip-av1",
             "--min-size",
@@ -111,6 +116,8 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
     assert config.general.threads == 2
     assert config.general.cq == 30
     assert config.general.gpu is False
+    assert config.general.queue_sort == "size-desc"
+    assert config.general.queue_seed == 99
     assert config.general.clean_errors is True
     assert config.general.skip_av1 is True
     assert config.general.min_size_bytes == 123
@@ -143,8 +150,9 @@ def test_main_uses_config_input_dirs_when_cli_missing(tmp_path, monkeypatch):
             autorotate=AutoRotateConfig(patterns={}),
         )
 
-    def fake_setup_logging(path, debug=False):
+    def fake_setup_logging(path, debug=False, log_path=None):
         created["log_path"] = path
+        created["log_file"] = log_path
         return MagicMock()
 
     class DummyExif:

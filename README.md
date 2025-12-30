@@ -44,7 +44,7 @@ uv run vbc/main.py /path/to/videos --gpu --threads 8
 uv run vbc/main.py /path/to/videos --cpu --cq 35
 ```
 
-Output is written to `{INPUT_DIR}_out/` with a `compression.log` file and optional `.err` markers.
+Output is written to `{INPUT_DIR}_out/` with optional `.err` markers. Logs default to `/tmp/vbc/compression.log` (override via `general.log_path`).
 
 ## Demo Mode
 

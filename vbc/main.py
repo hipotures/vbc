@@ -29,6 +29,7 @@ from vbc.config.input_dirs import (
     evaluate_input_dirs,
     build_input_dir_lines,
 )
+from vbc.config.models import validate_queue_sort
 from vbc.domain.events import (
     HardwareCapabilityExceeded, JobStarted, JobCompleted, JobFailed, DiscoveryFinished
 )
@@ -47,6 +48,21 @@ def compress(
     threads: Optional[int] = typer.Option(None, "--threads", "-t", help="Override number of threads"),
     cq: Optional[int] = typer.Option(None, "--cq", help="Override constant quality (0-63)"),
     gpu: Optional[bool] = typer.Option(None, "--gpu/--cpu", help="Enable/disable GPU acceleration"),
+    queue_sort: Optional[str] = typer.Option(
+        None,
+        "--queue-sort",
+        help="Queue sorting mode (name, rand, dir, size, size-asc, size-desc, ext)"
+    ),
+    queue_seed: Optional[int] = typer.Option(
+        None,
+        "--queue-seed",
+        help="Seed for deterministic random queue sorting (rand mode)"
+    ),
+    log_path: Optional[Path] = typer.Option(
+        None,
+        "--log-path",
+        help="Path to log file (overrides config)"
+    ),
     clean_errors: bool = typer.Option(False, "--clean-errors", help="Remove existing .err markers and retry"),
     skip_av1: bool = typer.Option(False, "--skip-av1", help="Skip files already encoded in AV1"),
     min_size: Optional[int] = typer.Option(None, "--min-size", help="Minimum input size in bytes to process"),
@@ -62,6 +78,14 @@ def compress(
         if threads: config.general.threads = threads
         if cq: config.general.cq = cq
         if gpu is not None: config.general.gpu = gpu
+        if queue_sort is not None:
+            try:
+                config.general.queue_sort = validate_queue_sort(queue_sort, config.general.extensions)
+            except ValueError as exc:
+                typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+                raise typer.Exit(code=1)
+        if queue_seed is not None: config.general.queue_seed = queue_seed
+        if log_path is not None: config.general.log_path = str(log_path)
         if clean_errors: config.general.clean_errors = True
         if skip_av1: config.general.skip_av1 = True
         if min_size is not None: config.general.min_size_bytes = min_size
@@ -110,7 +134,8 @@ def compress(
 
         # Setup output directory and logging FIRST
         output_dir = Path("demo_out") if demo else input_dirs[0].with_name(f"{input_dirs[0].name}_out")
-        logger = setup_logging(output_dir, debug=config.general.debug)
+        log_path_value = Path(config.general.log_path) if config.general.log_path else None
+        logger = setup_logging(output_dir, debug=config.general.debug, log_path=log_path_value)
         if demo and demo_config:
             logger.info(
                 f"VBC demo started: files={demo_config.files.count}, errors={demo_config.errors.total}"
@@ -150,6 +175,10 @@ def compress(
         )
         camera_filter_info = ", ".join(config.general.filter_cameras) if config.general.filter_cameras else "None"
         manual_rotation = f"{config.general.manual_rotation}°" if config.general.manual_rotation is not None else "None"
+        if config.general.queue_sort == "rand" and config.general.queue_seed is not None:
+            queue_sort_info = f"rand (seed {config.general.queue_seed})"
+        else:
+            queue_sort_info = config.general.queue_sort
         if demo and demo_config:
             demo_extensions = [entry.ext for entry in demo_config.files.extensions]
             input_dirs_display = [Path(p) for p in demo_config.input_folders] if demo_config.input_folders else [Path("DEMO")]
@@ -178,6 +207,7 @@ def compress(
                 f"Autorotate: {len(config.autorotate.patterns)} rules loaded",
                 f"Manual Rotation: {manual_rotation}",
                 f"Extensions: {ext_list} → .mp4",
+                f"Queue sort: {queue_sort_info}",
                 f"Min size: {format_size(config.general.min_size_bytes)} | Skip AV1: {config.general.skip_av1}",
                 f"Demo files: {demo_config.files.count} | Errors: {demo_config.errors.total} | Kept original: {demo_config.kept_original.count}",
                 f"Demo sizes: {demo_config.sizes.min_mb:.0f}-{demo_config.sizes.max_mb:.0f} MB ({demo_config.sizes.distribution})",
@@ -201,6 +231,7 @@ def compress(
                 f"Autorotate: {len(config.autorotate.patterns)} rules loaded",
                 f"Manual Rotation: {manual_rotation}",
                 f"Extensions: {ext_list} → .mp4",
+                f"Queue sort: {queue_sort_info}",
                 f"Min size: {format_size(config.general.min_size_bytes)} | Skip AV1: {config.general.skip_av1}",
                 f"Clean errors: {config.general.clean_errors} | Strip Unicode: {config.general.strip_unicode_display}",
                 f"Debug logging: {config.general.debug}",
