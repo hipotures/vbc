@@ -1,0 +1,50 @@
+# Example VBC configuration (all options commented).
+# Un-comment and edit only the settings you want to override.
+#
+# input_dirs:
+#   - /path/to/videos
+#   - /path/to/folder with spaces
+#
+# general:
+#   threads: 1
+#   cq: 44
+#   prefetch_factor: 1
+#   gpu: true
+#   gpu_refresh_rate: 5
+#   copy_metadata: true
+#   use_exif: true
+#   filter_cameras: []
+#   dynamic_cq:
+#     "DJI OsmoPocket3": 40
+#     "DC-GH7": 35
+#     "ILCE-7RM5": 35
+#   extensions:
+#     - mp4
+#     - flv
+#     - webm
+#     - mov
+#     - mkv
+#   min_size_bytes: 1048576
+#   clean_errors: false
+#   skip_av1: false
+#   strip_unicode_display: true
+#   manual_rotation: null
+#   min_compression_ratio: 0.1
+#   debug: false
+#
+# autorotate:
+#   patterns:
+#     "QVR_\\d{8}_\\d{6}\\.mp4": 180
+#
+# gpu_config:
+#   enabled: true
+#   refresh_rate: 5
+#   sample_interval_s: 10.0
+#   history_window_s: 300.0
+#   nvtop_device_index: 0
+#   nvtop_device_name: null
+#
+# ui:
+#   activity_feed_max_items: 5
+#   active_jobs_max_display: 8
+#   panel_height_scale: 0.7
