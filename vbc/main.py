@@ -17,7 +17,7 @@ from vbc.infrastructure.ffmpeg import FFmpegAdapter
 from vbc.infrastructure.housekeeping import HousekeepingService
 from vbc.pipeline.orchestrator import Orchestrator
 from vbc.pipeline.demo_orchestrator import DemoOrchestrator
-from vbc.pipeline.error_file_mover import move_failed_files
+from vbc.pipeline.error_file_mover import move_failed_files, collect_error_entries
 from vbc.ui.state import UIState
 from vbc.ui.manager import UIManager
 from vbc.ui.dashboard import Dashboard
@@ -447,13 +447,29 @@ def compress(
                 exif.et.terminate()
                 logger.info("ExifTool terminated")
             if processing_finished and not demo and errors_dir_map:
-                move_failed_files(
+                error_entries = collect_error_entries(
                     input_dirs,
                     output_dir_map,
                     errors_dir_map,
-                    config.general.extensions,
-                    logger=logger,
                 )
+                if error_entries:
+                    if len(error_entries) > 100:
+                        confirm = typer.confirm(
+                            f"Found {len(error_entries)} .err files. Move failed files to errors dirs?",
+                            default=False,
+                        )
+                        if not confirm:
+                            logger.info("Skipping failed file relocation (user declined).")
+                            error_entries = []
+                    if error_entries:
+                        move_failed_files(
+                            input_dirs,
+                            output_dir_map,
+                            errors_dir_map,
+                            config.general.extensions,
+                            logger=logger,
+                            error_entries=error_entries,
+                        )
 
     except KeyboardInterrupt:
         # Ctrl+C was already handled by orchestrator - just exit gracefully

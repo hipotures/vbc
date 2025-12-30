@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from vbc.pipeline.error_file_mover import move_failed_files
+from vbc.pipeline.error_file_mover import collect_error_entries, move_failed_files
 
 
 def test_move_failed_files_moves_source_and_err(tmp_path):
@@ -30,3 +30,22 @@ def test_move_failed_files_moves_source_and_err(tmp_path):
     assert not err_file.exists()
     assert (errors_dir / "sub" / "clip.mov").exists()
     assert (errors_dir / "sub" / "clip.mp4.err").exists()
+
+
+def test_collect_error_entries_counts(tmp_path):
+    input_dir = tmp_path / "input"
+    output_dir = tmp_path / "input_out"
+    errors_dir = tmp_path / "input_err"
+    output_dir.mkdir(parents=True)
+
+    (output_dir / "a.err").write_text("err")
+    (output_dir / "sub").mkdir()
+    (output_dir / "sub" / "b.err").write_text("err")
+
+    entries = collect_error_entries(
+        [input_dir],
+        {input_dir: output_dir},
+        {input_dir: errors_dir},
+    )
+
+    assert len(entries) == 2

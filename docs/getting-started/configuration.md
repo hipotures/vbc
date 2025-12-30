@@ -207,6 +207,7 @@ autorotate:
 - **Default**: `_err`
 - **Description**: Suffix appended to each input directory name for failed files
 - **Behavior**: After processing, failed source files and their `.err` markers are moved here
+- **Safety**: If more than 100 `.err` files are found, VBC asks before moving them
 - **Notes**:
   - Set to `null` when using `errors_dirs`
   - Example: `/videos` → `/videos_err`

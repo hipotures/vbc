@@ -42,16 +42,12 @@ def _find_source_for_error(
     return candidates[0]
 
 
-def move_failed_files(
+def collect_error_entries(
     input_dirs: Iterable[Path],
     output_dir_map: Dict[Path, Path],
     errors_dir_map: Dict[Path, Path],
-    extensions: List[str],
-    logger: Optional[logging.Logger] = None,
-) -> int:
-    allowed_exts = _normalize_extensions(extensions)
+) -> List[Tuple[Path, Path, Path, Path]]:
     error_entries: List[Tuple[Path, Path, Path, Path]] = []
-
     for input_dir in input_dirs:
         output_dir = output_dir_map.get(input_dir)
         errors_dir = errors_dir_map.get(input_dir)
@@ -61,6 +57,21 @@ def move_failed_files(
             continue
         for err_file in sorted(output_dir.rglob("*.err")):
             error_entries.append((input_dir, output_dir, errors_dir, err_file))
+    return error_entries
+
+
+def move_failed_files(
+    input_dirs: Iterable[Path],
+    output_dir_map: Dict[Path, Path],
+    errors_dir_map: Dict[Path, Path],
+    extensions: List[str],
+    logger: Optional[logging.Logger] = None,
+    error_entries: Optional[List[Tuple[Path, Path, Path, Path]]] = None,
+) -> int:
+    allowed_exts = _normalize_extensions(extensions)
+    error_entries = error_entries or collect_error_entries(
+        input_dirs, output_dir_map, errors_dir_map
+    )
 
     total = len(error_entries)
     if total == 0:
