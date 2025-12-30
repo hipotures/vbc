@@ -1,0 +1,3 @@
+# MkDocs build artifacts
+site/
+.cache/

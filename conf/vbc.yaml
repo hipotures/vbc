@@ -1,0 +1,38 @@
+general:
+  threads: 1
+  prefetch_factor: 1
+  gpu: true
+  copy_metadata: true
+  extensions:
+    - mp4
+    - flv
+    - webm
+    - mov
+    - mkv
+  min_size_bytes: 1048576
+  clean_errors: false
+  skip_av1: false
+  strip_unicode_display: true
+  use_exif: true
+
+  # Camera filtering (list of names from dynamic_cq or fragments of model/vendor).
+  # If empty, all files are processed.
+  # Example: ["DJI OsmoPocket3", "ILCE-7RM5"]
+  filter_cameras: []
+
+  # Minimum compression ratio (0.0-1.0, e.g., 0.1 = 10% savings required, 0.0 = disabled)
+  # If compression is below this threshold, the original file will be copied to output instead
+  min_compression_ratio: 0.1
+
+  # Model to quality mapping.
+  cq: 44
+  dynamic_cq:
+    "DJI OsmoPocket3": 40
+    "DC-GH7": 35
+    "ILCE-7RM5": 35
+
+autorotate:
+  'QVR_\d{8}_\d{6}\.mp4': 180
+
+gpu_config:
+  sample_interval_s: 10.0

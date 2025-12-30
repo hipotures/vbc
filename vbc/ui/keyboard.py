@@ -1,0 +1,103 @@
+import sys
+import threading
+import termios
+import tty
+import select
+from typing import Optional
+from vbc.infrastructure.event_bus import EventBus
+from vbc.domain.events import Event
+
+class RequestShutdown(Event):
+    """Event emitted when user requests graceful shutdown (Key 'S')."""
+    pass
+
+class InterruptRequested(Event):
+    """Event emitted when user requests immediate interrupt (Ctrl+C)."""
+    pass
+
+class ToggleConfig(Event):
+    """Event emitted when user toggles config display (Key 'C')."""
+    pass
+
+class ToggleLegend(Event):
+    """Event emitted when user toggles legend display (Key 'L')."""
+    pass
+
+class ToggleMenu(Event):
+    """Event emitted when user toggles menu display (Key 'M')."""
+    pass
+
+class HideConfig(Event):
+    """Event emitted when user closes config display (Esc)."""
+    pass
+
+class RotateGpuMetric(Event):
+    """Event emitted when user rotates GPU sparkline metric (Key 'G')."""
+    pass
+
+class ThreadControlEvent(Event):
+    """Event emitted to adjust thread count (Keys '<' or '>')."""
+    change: int # +1 or -1
+
+class KeyboardListener:
+    """Listens for keyboard input in a background thread."""
+    
+    def __init__(self, event_bus: EventBus):
+        self.event_bus = event_bus
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def _run(self):
+        """Main loop for the listener thread."""
+        if not sys.stdin.isatty():
+            return
+
+        old_settings = termios.tcgetattr(sys.stdin)
+        try:
+            tty.setcbreak(sys.stdin.fileno())
+
+            while not self._stop_event.is_set():
+                if sys.stdin in select.select([sys.stdin], [], [], 0.1)[0]:
+                    key = sys.stdin.read(1)
+
+                    if key in ('.', '>'):
+                        self.event_bus.publish(ThreadControlEvent(change=1))
+                    elif key in (',', '<'):
+                        self.event_bus.publish(ThreadControlEvent(change=-1))
+                    elif key in ('S', 's'):
+                        self.event_bus.publish(RequestShutdown())
+                    elif key in ('R', 'r'):
+                        from vbc.domain.events import RefreshRequested, ActionMessage
+                        self.event_bus.publish(RefreshRequested())
+                        # Immediate feedback (like old vbc.py line 787)
+                        self.event_bus.publish(ActionMessage(message="REFRESH requested"))
+                    elif key in ('C', 'c'):
+                        self.event_bus.publish(ToggleConfig())
+                    elif key in ('L', 'l'):
+                        from vbc.ui.keyboard import ToggleLegend
+                        self.event_bus.publish(ToggleLegend())
+                    elif key in ('G', 'g'):
+                        self.event_bus.publish(RotateGpuMetric())
+                    elif key in ('M', 'm'):
+                        self.event_bus.publish(ToggleMenu())
+                    elif key == '\x1b':
+                        self.event_bus.publish(HideConfig())
+                    elif key == '\x03':
+                        # Ctrl+C detected - signal orchestrator to stop
+                        self.event_bus.publish(InterruptRequested())
+                        # Restore terminal and exit listener thread
+                        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                        break
+        finally:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+    def start(self):
+        """Starts the listener thread."""
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        """Stops the listener thread."""
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=1.0)

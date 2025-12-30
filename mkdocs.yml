@@ -1,0 +1,99 @@
+site_name: VBC - Video Batch Compression
+site_description: Modular video batch compression tool with AV1/NVENC support
+site_author: VBC Development Team
+repo_url: https://github.com/your-org/scriptoza
+repo_name: scriptoza
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_signature_annotations: true
+            separate_signature: true
+            merge_init_into_class: true
+            docstring_section_style: table
+            members_order: source
+            show_if_no_docstring: false
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+      - Configuration: getting-started/configuration.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Event System: architecture/events.md
+      - Pipeline Flow: architecture/pipeline.md
+  - User Guide:
+      - CLI Reference: user-guide/cli.md
+      - Runtime Controls: user-guide/runtime-controls.md
+      - Advanced Features: user-guide/advanced.md
+  - API Reference:
+      - Config: api/config.md
+      - Domain Models: api/domain.md
+      - Infrastructure: api/infrastructure.md
+      - Pipeline: api/pipeline.md
+      - UI: api/ui.md
+  - Development:
+      - Contributing: development/contributing.md
+      - Testing: development/testing.md
+      - Migration from Legacy: development/migration.md

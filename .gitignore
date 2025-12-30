@@ -1,0 +1,74 @@
+# Ignore everything by default
+*
+
+# But allow these:
+!.gitignore
+!README.md
+!*.sh
+
+# Allow conf directory and config files
+!conf/
+!conf/*.conf
+!conf/*.yaml
+
+# Allow video directory and its contents
+!video/
+!video/README.md
+!video/*.py
+!video/*.sh
+
+# Allow tests but ignore binary data
+!tests/
+!tests/*.py
+tests/data/
+
+# Allow photo directory and its contents
+!photo/
+!photo/README.md
+!photo/*.py
+!photo/*.sh
+
+# Allow utils directory and its contents
+!utils/
+!utils/README.md
+!utils/*.py
+!utils/*.sh
+
+# Allow the new modular package
+!vbc/
+!vbc/**/
+!vbc/**/*.py
+
+# Allow documentation
+!docs/
+!docs/**/
+!docs/**/*.md
+!mkdocs.yml
+!pyproject.toml
+
+# Allow new tests
+!tests/
+!tests/**/
+!tests/**/*.py
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+*.err
+*_out/
+
+# Ignore MkDocs build output
+site/
+.cache/
