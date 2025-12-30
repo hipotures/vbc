@@ -502,12 +502,17 @@ class Orchestrator:
                         try:
                             err_content = err_path.read_text()
                             if "Hardware is lacking required capabilities" in err_content:
-                                pass  # hw_cap is not counted as ignored_err
+                                if self.config.general.cpu_fallback:
+                                    err_path.unlink()
+                                else:
+                                    # hw_cap is not counted as ignored_err
+                                    continue
                             else:
                                 folder_ignored_err += 1
                         except:
                             folder_ignored_err += 1
-                        continue
+                        if err_path.exists():
+                            continue
 
                 # Check if already compressed
                 if output_path.exists() and output_path.stat().st_mtime >= vf.path.stat().st_mtime:

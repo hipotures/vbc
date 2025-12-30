@@ -137,6 +137,7 @@ autorotate:
 - **Default**: false
 - **Description**: Retry on CPU when GPU encoding fails with hardware capability errors
 - **Note**: Useful when NVENC runs out of sessions; pair with `ffmpeg_cpu_threads`
+- **Behavior**: HW cap `.err` markers are cleared on startup so files re-enter the queue
 
 #### `ffmpeg_cpu_threads`
 - **Type**: Integer or null

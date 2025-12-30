@@ -60,6 +60,36 @@ def test_perform_discovery_counts_and_skips(tmp_path):
     assert [vf.path.name for vf in files] == ["good.mp4"]
 
 
+def test_perform_discovery_hw_cap_err_cleared_with_cpu_fallback(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "input_out"
+    output_dir.mkdir()
+
+    source = input_dir / "video.mp4"
+    source.write_bytes(b"x" * 200)
+
+    err_path = output_dir / "video.err"
+    err_path.write_text("Hardware is lacking required capabilities")
+
+    config = _make_config(cpu_fallback=True, extensions=[".mp4"], use_exif=False)
+    scanner = FileScanner(config.general.extensions, config.general.min_size_bytes)
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=scanner,
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+
+    files, stats = orchestrator._perform_discovery(input_dir)
+
+    assert not err_path.exists()
+    assert stats["ignored_err"] == 0
+    assert [vf.path.name for vf in files] == ["video.mp4"]
+
+
 def test_perform_discovery_sort_dir(tmp_path):
     input_a = tmp_path / "input_a"
     input_b = tmp_path / "input_b"
