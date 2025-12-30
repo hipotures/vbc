@@ -46,6 +46,10 @@ tests/data/
 !mkdocs.yml
 !pyproject.toml
 
+# Allow assets directory and its contents
+!assets/
+!assets/**
+
 # Allow new tests
 !tests/
 !tests/**/
