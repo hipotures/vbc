@@ -11,7 +11,7 @@ Default location: `conf/vbc.yaml`
 Demo mode uses a separate simulation file: `conf/demo.yaml`.
 
 ```bash
-uv run vbc/main.py demo --demo --demo-config conf/demo.yaml
+uv run vbc/main.py --demo --demo-config conf/demo.yaml
 ```
 
 This file controls simulated file counts, size distribution, processing speed, and error mix.
@@ -19,6 +19,10 @@ This file controls simulated file counts, size distribution, processing speed, a
 ### Full Example
 
 ```yaml
+input_dirs:
+  - /path/to/videos
+  - /path/to/folder with spaces
+
 general:
   # === Core Settings ===
   threads: 8                    # Max concurrent compression threads (1-16)
@@ -108,6 +112,17 @@ autorotate:
   - Cons: Much slower
 
 ### Input/Output
+
+#### `input_dirs`
+- **Type**: List of strings
+- **Default**: `[]` (empty)
+- **Description**: Default input directories when no CLI input is provided
+- **Behavior**:
+  - CLI input overrides config input (no merge)
+  - Duplicates ignored (first occurrence wins)
+  - Missing or inaccessible directories are skipped
+  - Startup fails if no valid directories remain
+  - Limits: max 50 directories, max 150 characters per entry
 
 #### `extensions`
 - **Type**: List of strings

@@ -1,3 +1,8 @@
+## Optional input directories (CLI overrides, no merge)
+# input_dirs:
+#   - /path/to/videos
+#   - /path/to/folder with spaces
+
 general:
   threads: 1
   prefetch_factor: 1

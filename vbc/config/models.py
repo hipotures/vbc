@@ -48,6 +48,7 @@ class UiConfig(BaseModel):
 
 class AppConfig(BaseModel):
     general: GeneralConfig
+    input_dirs: List[str] = Field(default_factory=list)
     autorotate: AutoRotateConfig = Field(default_factory=AutoRotateConfig)
     gpu_config: GpuConfig = Field(default_factory=GpuConfig)
     ui: UiConfig = Field(default_factory=UiConfig)

@@ -3,7 +3,7 @@ import threading
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 # Silence all warnings (especially from pyexiftool) to prevent UI glitches
 warnings.filterwarnings("ignore")
@@ -21,6 +21,14 @@ from vbc.ui.state import UIState
 from vbc.ui.manager import UIManager
 from vbc.ui.dashboard import Dashboard
 from vbc.ui.keyboard import KeyboardListener, ThreadControlEvent, RequestShutdown
+from vbc.config.input_dirs import (
+    parse_cli_input_dirs,
+    normalize_input_dir_entries,
+    dedupe_preserve_order,
+    validate_input_dir_entries,
+    evaluate_input_dirs,
+    build_input_dir_lines,
+)
 from vbc.domain.events import (
     HardwareCapabilityExceeded, JobStarted, JobCompleted, JobFailed, DiscoveryFinished
 )
@@ -29,7 +37,10 @@ app = typer.Typer(help="VBC (Video Batch Compression) - Modular Version")
 
 @app.command()
 def compress(
-    input_dirs_arg: str = typer.Argument(..., help="Directory or comma-separated directories to compress"),
+    input_dirs_arg: Optional[str] = typer.Argument(
+        None,
+        help="Directory or comma-separated directories to compress (optional if set in config)"
+    ),
     config_path: Optional[Path] = typer.Option(Path("conf/vbc.yaml"), "--config", "-c", help="Path to YAML config"),
     demo: bool = typer.Option(False, "--demo", help="Run in demo mode (simulate processing, no file IO)"),
     demo_config_path: Optional[Path] = typer.Option(Path("conf/demo.yaml"), "--demo-config", help="Path to demo YAML config"),
@@ -43,24 +54,7 @@ def compress(
     debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable verbose debug logging")
 ):
     """Batch compress videos in a directory with full feature parity."""
-    # Parse comma-separated folders
-    input_dirs_raw = [d.strip() for d in input_dirs_arg.split(',')]
-
-    # Convert to Path objects and deduplicate (preserve order)
-    input_dirs = []
-    seen = set()
-    for dir_str in input_dirs_raw:
-        dir_path = Path(dir_str)
-        if dir_path not in seen:
-            input_dirs.append(dir_path)
-            seen.add(dir_path)
-
-    # Validate all folders exist
-    if not demo:
-        for input_dir in input_dirs:
-            if not input_dir.exists():
-                typer.secho(f"Error: Directory {input_dir} does not exist.", fg=typer.colors.RED, err=True)
-                raise typer.Exit(code=1)
+    cli_input_dirs = parse_cli_input_dirs(input_dirs_arg)
 
     try:
         config = load_config(config_path)
@@ -75,6 +69,44 @@ def compress(
         if rotate_180: config.general.manual_rotation = 180
 
         demo_config = load_demo_config(demo_config_path) if demo else None
+
+        input_dir_status_entries: List[Tuple[str, str]] = []
+        requested_input_dirs: List[str] = []
+        if not demo:
+            if input_dirs_arg is not None:
+                requested_input_dirs = cli_input_dirs
+            else:
+                requested_input_dirs = normalize_input_dir_entries(config.input_dirs or [])
+            requested_input_dirs = dedupe_preserve_order(requested_input_dirs)
+            if input_dirs_arg is not None and not requested_input_dirs:
+                typer.secho(
+                    "Error: No input directories provided on the command line.",
+                    fg=typer.colors.RED,
+                    err=True
+                )
+                raise typer.Exit(code=1)
+            if input_dirs_arg is None and not requested_input_dirs:
+                typer.secho(
+                    "Error: No input directories provided in CLI or config.",
+                    fg=typer.colors.RED,
+                    err=True
+                )
+                raise typer.Exit(code=1)
+            try:
+                validate_input_dir_entries(requested_input_dirs)
+            except ValueError as exc:
+                typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+                raise typer.Exit(code=1)
+            input_dirs, input_dir_status_entries = evaluate_input_dirs(requested_input_dirs)
+            if not input_dirs:
+                typer.secho(
+                    "Error: No valid input directories found (missing or inaccessible).",
+                    fg=typer.colors.RED,
+                    err=True
+                )
+                raise typer.Exit(code=1)
+        else:
+            input_dirs = []
 
         # Setup output directory and logging FIRST
         output_dir = Path("demo_out") if demo else input_dirs[0].with_name(f"{input_dirs[0].name}_out")
@@ -121,9 +153,12 @@ def compress(
         if demo and demo_config:
             demo_extensions = [entry.ext for entry in demo_config.files.extensions]
             input_dirs_display = [Path(p) for p in demo_config.input_folders] if demo_config.input_folders else [Path("DEMO")]
+            input_dir_count = len(input_dirs_display)
+            input_dir_lines = [f"  {i+1}. {d}" for i, d in enumerate(input_dirs_display)]
         else:
             demo_extensions = config.general.extensions
-            input_dirs_display = input_dirs
+            input_dir_count = len(input_dir_status_entries)
+            input_dir_lines = build_input_dir_lines(input_dir_status_entries)
         extensions = [ext if ext.startswith(".") else f".{ext}" for ext in demo_extensions]
         ext_list = ", ".join(extensions)
 
@@ -131,8 +166,8 @@ def compress(
             ui_state.config_lines = [
                 "Video Batch Compression - demo",
                 f"Start: {start_time.strftime('%Y-%m-%d %H:%M:%S')}",
-                f"Input folders: {len(input_dirs_display)}",
-                *[f"  {i+1}. {d}" for i, d in enumerate(input_dirs_display)],
+                f"Input folders: {input_dir_count}",
+                *input_dir_lines,
                 f"Threads: {config.general.threads} (Prefetch: {config.general.prefetch_factor}x)",
                 f"Encoder: {encoder_name} | Preset: {preset}",
                 "Audio: Copy (stream copy)",
@@ -154,8 +189,8 @@ def compress(
             ui_state.config_lines = [
                 f"Video Batch Compression - {encoder_name}",
                 f"Start: {start_time.strftime('%Y-%m-%d %H:%M:%S')}",
-                f"Input folders: {len(input_dirs_display)}",
-                *[f"  {i+1}. {d}" for i, d in enumerate(input_dirs_display)],
+                f"Input folders: {input_dir_count}",
+                *input_dir_lines,
                 f"Threads: {config.general.threads} (Prefetch: {config.general.prefetch_factor}x)",
                 f"Encoder: {encoder_name} | Preset: {preset}",
                 "Audio: Copy (stream copy)",
@@ -289,6 +324,9 @@ def compress(
         # Ctrl+C was already handled by orchestrator - just exit gracefully
         typer.secho("\n✓ Compression stopped by user (Ctrl+C)", fg=typer.colors.YELLOW)
         raise typer.Exit(code=130)
+
+    except typer.Exit:
+        raise
 
     except Exception as e:
         with open("error.log", "a") as f:

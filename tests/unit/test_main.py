@@ -7,11 +7,12 @@ from vbc import main as vbc_main
 
 def test_main_missing_input_dir_exits(tmp_path):
     runner = CliRunner()
-    missing_dir = tmp_path / "missing"
-    result = runner.invoke(vbc_main.app, [str(missing_dir)])
+    config_path = tmp_path / "vbc.yaml"
+    config_path.write_text("general: {}\n")
+    result = runner.invoke(vbc_main.app, ["--config", str(config_path)])
 
     assert result.exit_code != 0
-    assert "does not exist" in result.output
+    assert "No input directories provided" in result.output
 
 
 def test_main_compress_applies_overrides(tmp_path, monkeypatch):
@@ -124,3 +125,82 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
     assert created["cleanup_err"] == output_dir
     assert created["exif"].et.run.called
     assert created["exif"].et.terminate.called
+
+
+def test_main_uses_config_input_dirs_when_cli_missing(tmp_path, monkeypatch):
+    runner = CliRunner()
+    input_dir_a = tmp_path / "input_a"
+    input_dir_b = tmp_path / "input_b"
+    input_dir_a.mkdir()
+    input_dir_b.mkdir()
+
+    created = {}
+
+    def fake_load_config(_path):
+        return AppConfig(
+            general=GeneralConfig(threads=2, cq=45, gpu=True, use_exif=False, copy_metadata=False),
+            input_dirs=[str(input_dir_a), str(input_dir_b), str(input_dir_a)],
+            autorotate=AutoRotateConfig(patterns={}),
+        )
+
+    def fake_setup_logging(path, debug=False):
+        created["log_path"] = path
+        return MagicMock()
+
+    class DummyExif:
+        def __init__(self):
+            self.et = MagicMock()
+            self.et.running = True
+            created["exif"] = self
+
+    class DummyOrchestrator:
+        def __init__(self, config, event_bus, file_scanner, exif_adapter, ffprobe_adapter, ffmpeg_adapter):
+            created["config"] = config
+
+        def run(self, directory):
+            created["run_dir"] = directory
+
+    class DummyKeyboard:
+        def __init__(self, _bus):
+            pass
+
+        def start(self):
+            created["keyboard_started"] = True
+
+        def stop(self):
+            created["keyboard_stopped"] = True
+
+    class DummyDashboard:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, _exc_type, _exc_val, _exc_tb):
+            return False
+
+    class DummyHousekeeper:
+        def cleanup_temp_files(self, _directory):
+            pass
+
+        def cleanup_error_markers(self, _directory):
+            pass
+
+    monkeypatch.setattr(vbc_main, "load_config", fake_load_config)
+    monkeypatch.setattr(vbc_main, "setup_logging", fake_setup_logging)
+    monkeypatch.setattr(vbc_main, "ExifToolAdapter", DummyExif)
+    monkeypatch.setattr(vbc_main, "Orchestrator", DummyOrchestrator)
+    monkeypatch.setattr(vbc_main, "KeyboardListener", DummyKeyboard)
+    monkeypatch.setattr(vbc_main, "Dashboard", DummyDashboard)
+    monkeypatch.setattr(vbc_main, "HousekeepingService", DummyHousekeeper)
+    monkeypatch.setattr(vbc_main, "FFprobeAdapter", MagicMock)
+    monkeypatch.setattr(vbc_main, "FFmpegAdapter", MagicMock)
+    monkeypatch.setattr(vbc_main, "FileScanner", MagicMock)
+    monkeypatch.setattr(vbc_main, "UIManager", MagicMock)
+
+    result = runner.invoke(vbc_main.app, [])
+
+    assert result.exit_code == 0
+    assert created["run_dir"] == [input_dir_a, input_dir_b]
+    assert created["log_path"] == input_dir_a.with_name(f"{input_dir_a.name}_out")

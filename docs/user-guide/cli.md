@@ -12,16 +12,19 @@ uv run vbc/main.py [INPUT_DIR] [OPTIONS]
 
 ### `INPUT_DIR`
 
-**Required**. Directory containing videos to compress.
+Optional. Directory containing videos to compress.
+If omitted, VBC uses `input_dirs` from the config file (CLI overrides config, no merge).
 
 ```bash
 uv run vbc/main.py /path/to/videos
 ```
 
 **Behavior:**
-- Recursively scans for video files (max 3 levels deep)
-- Output directory: `{INPUT_DIR}_out`
+- Accepts a single directory or a comma-separated list
+- Output directory: `{INPUT_DIR}_out` (per input dir)
 - Skips subdirectories ending in `_out`
+- Limits: max 50 directories, max 150 characters per entry
+- Duplicates ignored (first occurrence wins), missing/inaccessible directories skipped
 
 ## Options
 
@@ -197,10 +200,10 @@ uv run vbc/main.py /videos --debug
 
 Run simulated processing (no file IO). The UI and event flow behave like a real run.
 
-**Note:** `INPUT_DIR` is still required by the CLI; use a placeholder like `demo`.
+**Note:** `INPUT_DIR` is optional; in demo mode it is ignored.
 
 ```bash
-uv run vbc/main.py demo --demo
+uv run vbc/main.py --demo
 ```
 
 #### `--demo-config PATH`
@@ -210,7 +213,7 @@ Path to demo simulation settings.
 **Default:** `conf/demo.yaml`
 
 ```bash
-uv run vbc/main.py demo --demo --demo-config conf/demo.yaml
+uv run vbc/main.py --demo --demo-config conf/demo.yaml
 ```
 
 ## Examples
