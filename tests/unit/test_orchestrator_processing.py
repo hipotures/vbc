@@ -11,6 +11,7 @@ from vbc.pipeline.orchestrator import Orchestrator
 
 
 def _make_config(**kwargs):
+    kwargs.setdefault("min_size_bytes", 0)
     general = GeneralConfig(threads=1, cq=45, gpu=False, **kwargs)
     return AppConfig(general=general, autorotate=AutoRotateConfig(patterns={}))
 
