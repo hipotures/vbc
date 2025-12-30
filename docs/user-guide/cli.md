@@ -358,6 +358,7 @@ VBC does not use environment variables. All configuration via YAML or CLI.
 ```
 
 All output files are `.mp4` regardless of input extension.
+Default output directory uses `suffix_output_dirs` (default `_out`); you can override per-input with `output_dirs`.
 
 **Example:**
 ```

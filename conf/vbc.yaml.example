@@ -5,6 +5,14 @@
 #   - /path/to/videos
 #   - /path/to/folder with spaces
 #
+# # When using output_dirs, set suffix_output_dirs to null.
+# output_dirs:
+#   - /path/to/videos_out
+#   - /path/to/folder with spaces_out
+#
+# suffix_output_dirs: _out
+# suffix_output_dirs: null
+#
 # general:
 #   threads: 1
 #   cq: 44

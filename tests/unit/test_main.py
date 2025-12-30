@@ -43,7 +43,7 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
             created["exif"] = self
 
     class DummyOrchestrator:
-        def __init__(self, config, event_bus, file_scanner, exif_adapter, ffprobe_adapter, ffmpeg_adapter):
+        def __init__(self, config, event_bus, file_scanner, exif_adapter, ffprobe_adapter, ffmpeg_adapter, output_dir_map=None):
             created["config"] = config
             created["orchestrator"] = self
 
@@ -162,7 +162,7 @@ def test_main_uses_config_input_dirs_when_cli_missing(tmp_path, monkeypatch):
             created["exif"] = self
 
     class DummyOrchestrator:
-        def __init__(self, config, event_bus, file_scanner, exif_adapter, ffprobe_adapter, ffmpeg_adapter):
+        def __init__(self, config, event_bus, file_scanner, exif_adapter, ffprobe_adapter, ffmpeg_adapter, output_dir_map=None):
             created["config"] = config
 
         def run(self, directory):

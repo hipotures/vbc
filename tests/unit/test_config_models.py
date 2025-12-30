@@ -41,6 +41,26 @@ def test_config_defaults():
     assert gen.log_path == "/tmp/vbc/compression.log"
 
 
+def test_output_dirs_conflict_with_suffix():
+    general = GeneralConfig(threads=1, extensions=[".mp4"])
+    with pytest.raises(ValidationError):
+        AppConfig(
+            general=general,
+            output_dirs=["/tmp/out"],
+            suffix_output_dirs="_out",
+        )
+
+
+def test_suffix_missing_without_output_dirs():
+    general = GeneralConfig(threads=1, extensions=[".mp4"])
+    with pytest.raises(ValidationError):
+        AppConfig(
+            general=general,
+            output_dirs=[],
+            suffix_output_dirs=None,
+        )
+
+
 def test_queue_sort_alias_size():
     gen = GeneralConfig(threads=1, extensions=[".mp4"], queue_sort="size")
     assert gen.queue_sort == "size-asc"

@@ -27,7 +27,8 @@ class Orchestrator:
         file_scanner: FileScanner,
         exif_adapter: ExifToolAdapter,
         ffprobe_adapter: FFprobeAdapter,
-        ffmpeg_adapter: FFmpegAdapter
+        ffmpeg_adapter: FFmpegAdapter,
+        output_dir_map: Optional[Dict[Path, Path]] = None,
     ):
         self.config = config
         self.event_bus = event_bus
@@ -52,6 +53,8 @@ class Orchestrator:
 
         # Folder mapping (input_dir -> output_dir)
         self._folder_mapping: Dict[Path, Path] = {}
+        self._output_dir_map_override: Dict[Path, Path] = output_dir_map or {}
+        self._use_output_dir_map_override = output_dir_map is not None
 
         self._setup_subscriptions()
 
@@ -119,7 +122,30 @@ class Orchestrator:
 
     def _get_output_dir(self, input_dir: Path) -> Path:
         """Get output directory for given input directory."""
-        return input_dir.with_name(f"{input_dir.name}_out")
+        mapped = self._folder_mapping.get(input_dir)
+        if mapped is not None:
+            return mapped
+        if self._use_output_dir_map_override:
+            mapped = self._output_dir_map_override.get(input_dir)
+            if mapped is None:
+                raise ValueError(f"Output directory mapping missing for {input_dir}")
+            return mapped
+        if self.config.output_dirs:
+            raise ValueError(f"Output directory mapping missing for {input_dir}")
+        suffix = self.config.suffix_output_dirs
+        if not suffix:
+            raise ValueError("suffix_output_dirs is not set.")
+        return input_dir.with_name(f"{input_dir.name}{suffix}")
+
+    def _resolve_output_dir(self, input_dir: Path, input_index: int) -> Path:
+        if self.config.output_dirs:
+            if input_index >= len(self.config.output_dirs):
+                raise ValueError("output_dirs count must match input_dirs count.")
+            return Path(self.config.output_dirs[input_index])
+        suffix = self.config.suffix_output_dirs
+        if not suffix:
+            raise ValueError("suffix_output_dirs is not set.")
+        return input_dir.with_name(f"{input_dir.name}{suffix}")
 
     def _find_input_folder(self, file_path: Path) -> Optional[Path]:
         """Find which input folder contains this file."""
@@ -418,9 +444,16 @@ class Orchestrator:
             'ignored_err': 0
         }
 
-        for input_dir in input_dirs:
-            output_dir = self._get_output_dir(input_dir)
-            self._folder_mapping[input_dir] = output_dir
+        for idx, input_dir in enumerate(input_dirs):
+            output_dir = self._folder_mapping.get(input_dir)
+            if output_dir is None:
+                if self._use_output_dir_map_override:
+                    output_dir = self._output_dir_map_override.get(input_dir)
+                    if output_dir is None:
+                        raise ValueError(f"Output directory mapping missing for {input_dir}")
+                else:
+                    output_dir = self._resolve_output_dir(input_dir, idx)
+                self._folder_mapping[input_dir] = output_dir
 
             if self.config.general.debug:
                 self.logger.info(f"DISCOVERY_START: scanning {input_dir}")

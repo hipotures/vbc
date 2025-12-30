@@ -23,6 +23,13 @@ input_dirs:
   - /path/to/videos
   - /path/to/folder with spaces
 
+# When using output_dirs, set suffix_output_dirs to null.
+output_dirs:
+  - /path/to/videos_out
+  - /path/to/folder with spaces_out
+
+suffix_output_dirs: null
+
 general:
   # === Core Settings ===
   threads: 8                    # Max concurrent compression threads (1-16)
@@ -146,6 +153,23 @@ autorotate:
   - Missing or inaccessible directories are skipped
   - Startup fails if no valid directories remain
   - Limits: max 50 directories, max 150 characters per entry
+
+#### `output_dirs`
+- **Type**: List of strings
+- **Default**: `[]` (empty)
+- **Description**: Explicit output directories (one per input directory, in order)
+- **Rules**:
+  - Must exist and be writable
+  - Count must match input directories
+  - Cannot be used with `suffix_output_dirs` (set it to `null`)
+
+#### `suffix_output_dirs`
+- **Type**: String or null
+- **Default**: `_out`
+- **Description**: Output directory suffix appended to each input directory name
+- **Notes**:
+  - Set to `null` when using `output_dirs`
+  - Example: `/videos` → `/videos_out`
 
 #### `extensions`
 - **Type**: List of strings

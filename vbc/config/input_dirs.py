@@ -58,29 +58,69 @@ def _has_read_access(path: Path) -> bool:
     return os.access(path, os.R_OK | os.X_OK)
 
 
-def _can_write_output_dir(input_dir: Path) -> bool:
-    output_dir = input_dir.with_name(f"{input_dir.name}_out")
+def _is_dir_writable(path: Path) -> bool:
+    return path.is_dir() and os.access(path, os.W_OK | os.X_OK)
+
+
+def _can_write_output_dir_path(output_dir: Path) -> bool:
     if output_dir.exists():
-        if not output_dir.is_dir():
-            return False
-        return os.access(output_dir, os.W_OK | os.X_OK)
+        return _is_dir_writable(output_dir)
     return os.access(output_dir.parent, os.W_OK | os.X_OK)
 
 
-def evaluate_input_dirs(entries: List[str]) -> Tuple[List[Path], List[Tuple[str, str]]]:
-    valid_dirs: List[Path] = []
-    status_entries: List[Tuple[str, str]] = []
+def normalize_output_dir_entries(entries: List[str]) -> List[str]:
+    return normalize_input_dir_entries(entries)
+
+
+def validate_output_dirs(entries: List[str]) -> None:
     for entry in entries:
         path = Path(entry)
         if not path.exists():
+            raise ValueError(f"Output directory does not exist: {entry}")
+        if not _is_dir_writable(path):
+            raise ValueError(f"Output directory is not writable: {entry}")
+
+
+def evaluate_input_dirs(
+    entries: List[str],
+    output_dirs: Optional[List[str]] = None,
+    suffix_output_dirs: Optional[str] = None,
+) -> Tuple[List[Path], List[Tuple[str, str]], dict]:
+    valid_dirs: List[Path] = []
+    status_entries: List[Tuple[str, str]] = []
+    output_dir_map: dict = {}
+
+    for idx, entry in enumerate(entries):
+        path = Path(entry)
+        output_path: Optional[Path] = None
+
+        if output_dirs:
+            output_path = Path(output_dirs[idx])
+        elif suffix_output_dirs is not None:
+            output_path = path.with_name(f"{path.name}{suffix_output_dirs}")
+
+        if not path.exists():
             status_entries.append((STATUS_MISSING, entry))
             continue
-        if not _has_read_access(path) or not _can_write_output_dir(path):
+        if not _has_read_access(path):
             status_entries.append((STATUS_NO_ACCESS, entry))
             continue
+        if output_path is not None:
+            if output_dirs:
+                if not _is_dir_writable(output_path):
+                    status_entries.append((STATUS_NO_ACCESS, entry))
+                    continue
+            else:
+                if not _can_write_output_dir_path(output_path):
+                    status_entries.append((STATUS_NO_ACCESS, entry))
+                    continue
+
         status_entries.append((STATUS_OK, entry))
         valid_dirs.append(path)
-    return valid_dirs, status_entries
+        if output_path is not None:
+            output_dir_map[path] = output_path
+
+    return valid_dirs, status_entries, output_dir_map
 
 
 def render_status_icon(status: str) -> str:

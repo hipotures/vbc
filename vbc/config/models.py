@@ -93,9 +93,27 @@ class UiConfig(BaseModel):
 class AppConfig(BaseModel):
     general: GeneralConfig
     input_dirs: List[str] = Field(default_factory=list)
+    output_dirs: List[str] = Field(default_factory=list)
+    suffix_output_dirs: Optional[str] = Field(default="_out")
     autorotate: AutoRotateConfig = Field(default_factory=AutoRotateConfig)
     gpu_config: GpuConfig = Field(default_factory=GpuConfig)
     ui: UiConfig = Field(default_factory=UiConfig)
+
+    @field_validator("suffix_output_dirs")
+    @classmethod
+    def normalize_suffix_output_dirs(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = str(v).strip()
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def validate_output_dir_settings(self):
+        if self.output_dirs and self.suffix_output_dirs:
+            raise ValueError("output_dirs cannot be used with suffix_output_dirs.")
+        if not self.output_dirs and not self.suffix_output_dirs:
+            raise ValueError("suffix_output_dirs must be set when output_dirs is empty.")
+        return self
 
 class DemoExtension(BaseModel):
     ext: str

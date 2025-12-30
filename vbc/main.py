@@ -24,8 +24,10 @@ from vbc.ui.keyboard import KeyboardListener, ThreadControlEvent, RequestShutdow
 from vbc.config.input_dirs import (
     parse_cli_input_dirs,
     normalize_input_dir_entries,
+    normalize_output_dir_entries,
     dedupe_preserve_order,
     validate_input_dir_entries,
+    validate_output_dirs,
     evaluate_input_dirs,
     build_input_dir_lines,
 )
@@ -96,12 +98,39 @@ def compress(
 
         input_dir_status_entries: List[Tuple[str, str]] = []
         requested_input_dirs: List[str] = []
+        output_dir_map: dict = {}
         if not demo:
             if input_dirs_arg is not None:
                 requested_input_dirs = cli_input_dirs
             else:
                 requested_input_dirs = normalize_input_dir_entries(config.input_dirs or [])
-            requested_input_dirs = dedupe_preserve_order(requested_input_dirs)
+            output_dirs_entries = normalize_output_dir_entries(config.output_dirs or [])
+            suffix_output_dirs = config.suffix_output_dirs
+            if output_dirs_entries:
+                unique_inputs = dedupe_preserve_order(requested_input_dirs)
+                if len(output_dirs_entries) == len(requested_input_dirs):
+                    deduped_inputs: List[str] = []
+                    deduped_outputs: List[str] = []
+                    seen_inputs = set()
+                    for input_entry, output_entry in zip(requested_input_dirs, output_dirs_entries):
+                        if input_entry in seen_inputs:
+                            continue
+                        seen_inputs.add(input_entry)
+                        deduped_inputs.append(input_entry)
+                        deduped_outputs.append(output_entry)
+                    requested_input_dirs = deduped_inputs
+                    output_dirs_entries = deduped_outputs
+                elif len(output_dirs_entries) == len(unique_inputs):
+                    requested_input_dirs = unique_inputs
+                else:
+                    typer.secho(
+                        "Error: output_dirs count must match input_dirs count.",
+                        fg=typer.colors.RED,
+                        err=True,
+                    )
+                    raise typer.Exit(code=1)
+            else:
+                requested_input_dirs = dedupe_preserve_order(requested_input_dirs)
             if input_dirs_arg is not None and not requested_input_dirs:
                 typer.secho(
                     "Error: No input directories provided on the command line.",
@@ -121,7 +150,32 @@ def compress(
             except ValueError as exc:
                 typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
                 raise typer.Exit(code=1)
-            input_dirs, input_dir_status_entries = evaluate_input_dirs(requested_input_dirs)
+            if output_dirs_entries and suffix_output_dirs:
+                typer.secho(
+                    "Error: output_dirs cannot be used with suffix_output_dirs.",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+            if not output_dirs_entries and not suffix_output_dirs:
+                typer.secho(
+                    "Error: suffix_output_dirs must be set when output_dirs is empty.",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+            if output_dirs_entries:
+                try:
+                    validate_output_dirs(output_dirs_entries)
+                except ValueError as exc:
+                    typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+                    raise typer.Exit(code=1)
+            config.output_dirs = output_dirs_entries
+            input_dirs, input_dir_status_entries, output_dir_map = evaluate_input_dirs(
+                requested_input_dirs,
+                output_dirs=output_dirs_entries if output_dirs_entries else None,
+                suffix_output_dirs=suffix_output_dirs if not output_dirs_entries else None,
+            )
             if not input_dirs:
                 typer.secho(
                     "Error: No valid input directories found (missing or inaccessible).",
@@ -133,7 +187,12 @@ def compress(
             input_dirs = []
 
         # Setup output directory and logging FIRST
-        output_dir = Path("demo_out") if demo else input_dirs[0].with_name(f"{input_dirs[0].name}_out")
+        if demo:
+            output_dir = Path("demo_out")
+        else:
+            output_dir = output_dir_map.get(input_dirs[0])
+            if output_dir is None:
+                output_dir = input_dirs[0].with_name(f"{input_dirs[0].name}_out")
         log_path_value = Path(config.general.log_path) if config.general.log_path else None
         logger = setup_logging(output_dir, debug=config.general.debug, log_path=log_path_value)
         if demo and demo_config:
@@ -257,7 +316,9 @@ def compress(
                 housekeeper.cleanup_temp_files(input_dir)
                 if config.general.clean_errors:
                     # Also cleanup in output dir if it exists
-                    output_dir = input_dir.with_name(f"{input_dir.name}_out")
+                    output_dir = output_dir_map.get(input_dir)
+                    if output_dir is None:
+                        output_dir = input_dir.with_name(f"{input_dir.name}_out")
                     if output_dir.exists():
                         housekeeper.cleanup_error_markers(output_dir)
 
@@ -279,7 +340,8 @@ def compress(
                 file_scanner=scanner,
                 exif_adapter=exif,
                 ffprobe_adapter=ffprobe,
-                ffmpeg_adapter=ffmpeg
+                ffmpeg_adapter=ffmpeg,
+                output_dir_map=output_dir_map,
             )
         
         keyboard = KeyboardListener(bus)
