@@ -33,6 +33,7 @@ def test_invalid_cq():
 
 def test_config_defaults():
     gen = GeneralConfig(threads=1, extensions=[".mp4"])
+    config = AppConfig(general=gen)
     assert gen.filter_cameras == []
     assert gen.dynamic_cq == {}
     assert gen.cq == 45
@@ -41,6 +42,8 @@ def test_config_defaults():
     assert gen.log_path == "/tmp/vbc/compression.log"
     assert gen.cpu_fallback is False
     assert gen.ffmpeg_cpu_threads is None
+    assert config.errors_dirs == []
+    assert config.suffix_errors_dirs == "_err"
 
 
 def test_output_dirs_conflict_with_suffix():
@@ -60,6 +63,26 @@ def test_suffix_missing_without_output_dirs():
             general=general,
             output_dirs=[],
             suffix_output_dirs=None,
+        )
+
+
+def test_errors_dirs_conflict_with_suffix():
+    general = GeneralConfig(threads=1, extensions=[".mp4"])
+    with pytest.raises(ValidationError):
+        AppConfig(
+            general=general,
+            errors_dirs=["/tmp/errors"],
+            suffix_errors_dirs="_err",
+        )
+
+
+def test_suffix_missing_without_errors_dirs():
+    general = GeneralConfig(threads=1, extensions=[".mp4"])
+    with pytest.raises(ValidationError):
+        AppConfig(
+            general=general,
+            errors_dirs=[],
+            suffix_errors_dirs=None,
         )
 
 

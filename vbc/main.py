@@ -17,6 +17,7 @@ from vbc.infrastructure.ffmpeg import FFmpegAdapter
 from vbc.infrastructure.housekeeping import HousekeepingService
 from vbc.pipeline.orchestrator import Orchestrator
 from vbc.pipeline.demo_orchestrator import DemoOrchestrator
+from vbc.pipeline.error_file_mover import move_failed_files
 from vbc.ui.state import UIState
 from vbc.ui.manager import UIManager
 from vbc.ui.dashboard import Dashboard
@@ -25,9 +26,11 @@ from vbc.config.input_dirs import (
     parse_cli_input_dirs,
     normalize_input_dir_entries,
     normalize_output_dir_entries,
+    normalize_errors_dir_entries,
     dedupe_preserve_order,
     validate_input_dir_entries,
     validate_output_dirs,
+    validate_errors_dirs,
     evaluate_input_dirs,
     build_input_dir_lines,
 )
@@ -99,38 +102,42 @@ def compress(
         input_dir_status_entries: List[Tuple[str, str]] = []
         requested_input_dirs: List[str] = []
         output_dir_map: dict = {}
+        errors_dir_map: dict = {}
         if not demo:
             if input_dirs_arg is not None:
                 requested_input_dirs = cli_input_dirs
             else:
                 requested_input_dirs = normalize_input_dir_entries(config.input_dirs or [])
-            output_dirs_entries = normalize_output_dir_entries(config.output_dirs or [])
-            suffix_output_dirs = config.suffix_output_dirs
-            if output_dirs_entries:
+
+            def align_dir_entries(dir_entries: List[str], label: str) -> List[str]:
+                if not dir_entries:
+                    return []
                 unique_inputs = dedupe_preserve_order(requested_input_dirs)
-                if len(output_dirs_entries) == len(requested_input_dirs):
-                    deduped_inputs: List[str] = []
-                    deduped_outputs: List[str] = []
+                if len(dir_entries) == len(requested_input_dirs):
+                    deduped_dirs: List[str] = []
                     seen_inputs = set()
-                    for input_entry, output_entry in zip(requested_input_dirs, output_dirs_entries):
+                    for input_entry, dir_entry in zip(requested_input_dirs, dir_entries):
                         if input_entry in seen_inputs:
                             continue
                         seen_inputs.add(input_entry)
-                        deduped_inputs.append(input_entry)
-                        deduped_outputs.append(output_entry)
-                    requested_input_dirs = deduped_inputs
-                    output_dirs_entries = deduped_outputs
-                elif len(output_dirs_entries) == len(unique_inputs):
-                    requested_input_dirs = unique_inputs
-                else:
-                    typer.secho(
-                        "Error: output_dirs count must match input_dirs count.",
-                        fg=typer.colors.RED,
-                        err=True,
-                    )
-                    raise typer.Exit(code=1)
-            else:
-                requested_input_dirs = dedupe_preserve_order(requested_input_dirs)
+                        deduped_dirs.append(dir_entry)
+                    return deduped_dirs
+                if len(dir_entries) == len(unique_inputs):
+                    return dir_entries
+                typer.secho(
+                    f"Error: {label} count must match input_dirs count.",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+
+            output_dirs_entries = normalize_output_dir_entries(config.output_dirs or [])
+            errors_dirs_entries = normalize_errors_dir_entries(config.errors_dirs or [])
+            output_dirs_entries = align_dir_entries(output_dirs_entries, "output_dirs")
+            errors_dirs_entries = align_dir_entries(errors_dirs_entries, "errors_dirs")
+            requested_input_dirs = dedupe_preserve_order(requested_input_dirs)
+            suffix_output_dirs = config.suffix_output_dirs
+            suffix_errors_dirs = config.suffix_errors_dirs
             if input_dirs_arg is not None and not requested_input_dirs:
                 typer.secho(
                     "Error: No input directories provided on the command line.",
@@ -164,17 +171,40 @@ def compress(
                     err=True,
                 )
                 raise typer.Exit(code=1)
+            if errors_dirs_entries and suffix_errors_dirs:
+                typer.secho(
+                    "Error: errors_dirs cannot be used with suffix_errors_dirs.",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+            if not errors_dirs_entries and not suffix_errors_dirs:
+                typer.secho(
+                    "Error: suffix_errors_dirs must be set when errors_dirs is empty.",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                raise typer.Exit(code=1)
             if output_dirs_entries:
                 try:
                     validate_output_dirs(output_dirs_entries)
                 except ValueError as exc:
                     typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
                     raise typer.Exit(code=1)
+            if errors_dirs_entries:
+                try:
+                    validate_errors_dirs(errors_dirs_entries)
+                except ValueError as exc:
+                    typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+                    raise typer.Exit(code=1)
             config.output_dirs = output_dirs_entries
-            input_dirs, input_dir_status_entries, output_dir_map = evaluate_input_dirs(
+            config.errors_dirs = errors_dirs_entries
+            input_dirs, input_dir_status_entries, output_dir_map, errors_dir_map = evaluate_input_dirs(
                 requested_input_dirs,
                 output_dirs=output_dirs_entries if output_dirs_entries else None,
                 suffix_output_dirs=suffix_output_dirs if not output_dirs_entries else None,
+                errors_dirs=errors_dirs_entries if errors_dirs_entries else None,
+                suffix_errors_dirs=suffix_errors_dirs if not errors_dirs_entries else None,
             )
             if not input_dirs:
                 typer.secho(
@@ -391,6 +421,7 @@ def compress(
         max_active = config.ui.active_jobs_max_display if hasattr(config, 'ui') else 8
         dashboard = Dashboard(ui_state, panel_height_scale=panel_scale, max_active_jobs=max_active)
 
+        processing_finished = False
         keyboard.start()
         try:
             with dashboard:
@@ -406,6 +437,7 @@ def compress(
                         )
                         ui_state.show_info = True
                     threading.Event().wait(2.0)
+                processing_finished = True
         finally:
             keyboard.stop()
             if gpu_monitor:
@@ -414,6 +446,14 @@ def compress(
             if exif and exif.et.running:
                 exif.et.terminate()
                 logger.info("ExifTool terminated")
+            if processing_finished and not demo and errors_dir_map:
+                move_failed_files(
+                    input_dirs,
+                    output_dir_map,
+                    errors_dir_map,
+                    config.general.extensions,
+                    logger=logger,
+                )
 
     except KeyboardInterrupt:
         # Ctrl+C was already handled by orchestrator - just exit gracefully

@@ -13,6 +13,14 @@
 # suffix_output_dirs: _out
 # suffix_output_dirs: null
 #
+# # When using errors_dirs, set suffix_errors_dirs to null.
+# errors_dirs:
+#   - /path/to/videos_err
+#   - /path/to/folder with spaces_err
+#
+# suffix_errors_dirs: _err
+# suffix_errors_dirs: null
+#
 # general:
 #   threads: 1
 #   cq: 44

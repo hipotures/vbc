@@ -81,23 +81,45 @@ def validate_output_dirs(entries: List[str]) -> None:
             raise ValueError(f"Output directory is not writable: {entry}")
 
 
+def normalize_errors_dir_entries(entries: List[str]) -> List[str]:
+    return normalize_input_dir_entries(entries)
+
+
+def validate_errors_dirs(entries: List[str]) -> None:
+    for entry in entries:
+        path = Path(entry)
+        if not path.exists():
+            raise ValueError(f"Errors directory does not exist: {entry}")
+        if not _is_dir_writable(path):
+            raise ValueError(f"Errors directory is not writable: {entry}")
+
+
 def evaluate_input_dirs(
     entries: List[str],
     output_dirs: Optional[List[str]] = None,
     suffix_output_dirs: Optional[str] = None,
-) -> Tuple[List[Path], List[Tuple[str, str]], dict]:
+    errors_dirs: Optional[List[str]] = None,
+    suffix_errors_dirs: Optional[str] = None,
+) -> Tuple[List[Path], List[Tuple[str, str]], dict, dict]:
     valid_dirs: List[Path] = []
     status_entries: List[Tuple[str, str]] = []
     output_dir_map: dict = {}
+    errors_dir_map: dict = {}
 
     for idx, entry in enumerate(entries):
         path = Path(entry)
         output_path: Optional[Path] = None
+        errors_path: Optional[Path] = None
 
         if output_dirs:
             output_path = Path(output_dirs[idx])
         elif suffix_output_dirs is not None:
             output_path = path.with_name(f"{path.name}{suffix_output_dirs}")
+
+        if errors_dirs:
+            errors_path = Path(errors_dirs[idx])
+        elif suffix_errors_dirs is not None:
+            errors_path = path.with_name(f"{path.name}{suffix_errors_dirs}")
 
         if not path.exists():
             status_entries.append((STATUS_MISSING, entry))
@@ -114,13 +136,24 @@ def evaluate_input_dirs(
                 if not _can_write_output_dir_path(output_path):
                     status_entries.append((STATUS_NO_ACCESS, entry))
                     continue
+        if errors_path is not None:
+            if errors_dirs:
+                if not _is_dir_writable(errors_path):
+                    status_entries.append((STATUS_NO_ACCESS, entry))
+                    continue
+            else:
+                if not _can_write_output_dir_path(errors_path):
+                    status_entries.append((STATUS_NO_ACCESS, entry))
+                    continue
 
         status_entries.append((STATUS_OK, entry))
         valid_dirs.append(path)
         if output_path is not None:
             output_dir_map[path] = output_path
+        if errors_path is not None:
+            errors_dir_map[path] = errors_path
 
-    return valid_dirs, status_entries, output_dir_map
+    return valid_dirs, status_entries, output_dir_map, errors_dir_map
 
 
 def render_status_icon(status: str) -> str:

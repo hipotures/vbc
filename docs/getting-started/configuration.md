@@ -30,6 +30,13 @@ output_dirs:
 
 suffix_output_dirs: null
 
+# When using errors_dirs, set suffix_errors_dirs to null.
+errors_dirs:
+  - /path/to/videos_err
+  - /path/to/folder with spaces_err
+
+suffix_errors_dirs: null
+
 general:
   # === Core Settings ===
   threads: 8                    # Max concurrent compression threads (1-16)
@@ -185,6 +192,24 @@ autorotate:
 - **Notes**:
   - Set to `null` when using `output_dirs`
   - Example: `/videos` → `/videos_out`
+
+#### `errors_dirs`
+- **Type**: List of strings
+- **Default**: `[]` (empty)
+- **Description**: Explicit directories for failed files (one per input directory, in order)
+- **Rules**:
+  - Must exist and be writable
+  - Count must match input directories
+  - Cannot be used with `suffix_errors_dirs` (set it to `null`)
+
+#### `suffix_errors_dirs`
+- **Type**: String or null
+- **Default**: `_err`
+- **Description**: Suffix appended to each input directory name for failed files
+- **Behavior**: After processing, failed source files and their `.err` markers are moved here
+- **Notes**:
+  - Set to `null` when using `errors_dirs`
+  - Example: `/videos` → `/videos_err`
 
 #### `extensions`
 - **Type**: List of strings
