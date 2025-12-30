@@ -202,13 +202,14 @@ class Dashboard:
         return f"{val:.1f}{units[idx]}"
 
     def format_time(self, seconds: float) -> str:
-        """Format time: mm:ss (for <1h) or hh:mm."""
+        """Format time: 59s, 01m 01s, 1h 01m."""
         if seconds is None:
             return "--:--"
+        if seconds < 60:
+            return f"{int(seconds)}s"
         if seconds < 3600:
-            return f"{int(seconds // 60):02d}:{int(seconds % 60):02d}"
-        else:
-            return f"{int(seconds // 3600):02d}h {int((seconds % 3600) // 60):02d}m"
+            return f"{int(seconds // 60):02d}m {int(seconds % 60):02d}s"
+        return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60):02d}m"
             
     def format_global_eta(self, seconds: float) -> str:
         """Format global ETA: hh:mm or mm:ss."""

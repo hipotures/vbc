@@ -7,7 +7,7 @@ import time
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from vbc.config.models import AppConfig, GeneralConfig
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
@@ -60,6 +60,11 @@ class Orchestrator:
         self.event_bus.subscribe(ThreadControlEvent, self._on_thread_control)
         self.event_bus.subscribe(RefreshRequested, self._on_refresh_request)
         self.event_bus.subscribe(InterruptRequested, self._on_interrupt_requested)
+
+    def _normalize_input_dirs(self, input_dirs: Union[Path, List[Path]]) -> List[Path]:
+        if isinstance(input_dirs, (list, tuple)):
+            return [Path(p) for p in input_dirs]
+        return [Path(input_dirs)]
 
     def _on_shutdown_request(self, event: RequestShutdown):
         with self._thread_lock:
@@ -398,10 +403,11 @@ class Orchestrator:
         except Exception as e:
             self.logger.warning(f"Failed to write VBC tags for {output_path.name}: {e}")
 
-    def _perform_discovery(self, input_dirs: List[Path]) -> tuple:
+    def _perform_discovery(self, input_dirs: Union[Path, List[Path]]) -> tuple:
         """Performs file discovery across multiple directories and returns (files_to_process, discovery_stats)."""
         import os
 
+        input_dirs = self._normalize_input_dirs(input_dirs)
         all_files = []
         total_stats = {
             'files_found': 0,
@@ -505,7 +511,7 @@ class Orchestrator:
 
         return all_files, total_stats
 
-    def _process_file(self, video_file: VideoFile):
+    def _process_file(self, video_file: VideoFile, input_dir: Optional[Path] = None):
         """Processes a single file with dynamic concurrency control."""
         filename = video_file.path.name
         start_time = time.monotonic() if self.config.general.debug else None
@@ -533,17 +539,21 @@ class Orchestrator:
 
         try:
             # Find which input folder contains this file
-            input_dir = self._find_input_folder(video_file.path)
+            if input_dir is None:
+                input_dir = self._find_input_folder(video_file.path)
             if not input_dir:
                 self.logger.error(f"Cannot determine input folder for {video_file.path}")
                 return
+            output_dir = self._folder_mapping.get(input_dir)
+            if output_dir is None:
+                output_dir = self._get_output_dir(input_dir)
+                self._folder_mapping[input_dir] = output_dir
 
             try:
                 rel_path = video_file.path.relative_to(input_dir)
             except ValueError:
                 rel_path = Path(video_file.path.name)
 
-            output_dir = self._folder_mapping[input_dir]
             # Always output as .mp4 (lowercase), regardless of input extension
             output_path = output_dir / rel_path.with_suffix('.mp4')
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -701,8 +711,11 @@ class Orchestrator:
                 self._active_threads -= 1
                 self._thread_lock.notify_all()
 
-    def run(self, input_dirs: List[Path]):
+    def run(self, input_dirs: Union[Path, List[Path]]):
+        input_dirs = self._normalize_input_dirs(input_dirs)
         self.logger.info(f"Discovery started: {len(input_dirs)} folders")
+        for input_dir in input_dirs:
+            self.event_bus.publish(DiscoveryStarted(directory=input_dir))
         files_to_process, discovery_stats = self._perform_discovery(input_dirs)
 
         self.logger.info(

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 import pytest
-from rich.console import Group
+from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
 
@@ -115,7 +115,7 @@ def test_dashboard_create_display_overlay():
 
     state.show_config = False
     display = dashboard.create_display()
-    assert isinstance(display, Group)
+    assert isinstance(display, Layout)
 
 
 def test_dashboard_create_display_info_overlay():

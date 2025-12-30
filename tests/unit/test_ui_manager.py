@@ -79,9 +79,9 @@ def test_ui_manager_discovery_and_controls():
     bus.publish(ThreadControlEvent(change=-5))
     assert state.current_threads == 1
 
-    state.current_threads = 16
+    state.current_threads = 8
     bus.publish(ThreadControlEvent(change=2))
-    assert state.current_threads == 16
+    assert state.current_threads == 8
 
     bus.publish(RequestShutdown())
     assert state.shutdown_requested is True

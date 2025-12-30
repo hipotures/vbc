@@ -59,7 +59,7 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
             created["keyboard_stopped"] = True
 
     class DummyDashboard:
-        def __init__(self, _state):
+        def __init__(self, *_args, **_kwargs):
             pass
 
         def __enter__(self):
@@ -115,7 +115,7 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
     assert config.general.min_size_bytes == 123
     assert config.general.manual_rotation == 180
     assert config.general.debug is True
-    assert created["run_dir"] == input_dir
+    assert created["run_dir"] == [input_dir]
     assert created["log_path"] == output_dir
     assert created["log_debug"] is True
     assert created["keyboard_started"] is True

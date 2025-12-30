@@ -24,7 +24,7 @@ def test_concurrency_threads_limit():
     # Test increasing threads
     old_val = orchestrator._current_max_threads
     with orchestrator._thread_lock:
-        orchestrator._current_max_threads = min(16, old_val + 1)
+        orchestrator._current_max_threads = min(8, old_val + 1)
     assert orchestrator._current_max_threads == 3
 
     # Test decreasing threads
@@ -60,8 +60,8 @@ def test_concurrency_dynamic_adjustment():
     assert orchestrator._current_max_threads == 4
 
 def test_concurrency_max_limit():
-    """Test that threads cannot exceed max limit of 16."""
-    config = AppConfig(general=GeneralConfig(threads=15))
+    """Test that threads cannot exceed max limit of 8."""
+    config = AppConfig(general=GeneralConfig(threads=7))
 
     orchestrator = Orchestrator(
         config=config,
@@ -72,16 +72,16 @@ def test_concurrency_max_limit():
         ffmpeg_adapter=MagicMock()
     )
 
-    assert orchestrator._current_max_threads == 15
+    assert orchestrator._current_max_threads == 7
 
     # Try to increase beyond limit
     event_increase = ThreadControlEvent(change=1)
     orchestrator._on_thread_control(event_increase)
-    assert orchestrator._current_max_threads == 16  # Should cap at 16
+    assert orchestrator._current_max_threads == 8  # Should cap at 8
 
-    # Try to increase again - should stay at 16
+    # Try to increase again - should stay at 8
     orchestrator._on_thread_control(event_increase)
-    assert orchestrator._current_max_threads == 16
+    assert orchestrator._current_max_threads == 8
 
 def test_concurrency_min_limit():
     """Test that threads cannot go below 1."""
