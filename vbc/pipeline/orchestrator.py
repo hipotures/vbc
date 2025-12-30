@@ -81,13 +81,17 @@ class Orchestrator:
 
         old_val = self._current_max_threads
         with self._thread_lock:
-            new_val = self._current_max_threads + event.change
-            self._current_max_threads = max(1, min(8, new_val))
+            requested = self._current_max_threads + event.change
+            self._current_max_threads = max(1, min(8, requested))
             self._thread_lock.notify_all()
         # Publish feedback message (like old vbc.py lines 769, 776)
         from vbc.domain.events import ActionMessage
-        if new_val != old_val:
+        if self._current_max_threads != old_val:
             self.event_bus.publish(ActionMessage(message=f"Threads: {old_val} → {self._current_max_threads}"))
+        elif requested > self._current_max_threads:
+            self.event_bus.publish(ActionMessage(message=f"Threads: {self._current_max_threads} (max)"))
+        elif requested < self._current_max_threads:
+            self.event_bus.publish(ActionMessage(message=f"Threads: {self._current_max_threads} (min)"))
 
     def _on_refresh_request(self, event):
         with self._refresh_lock:

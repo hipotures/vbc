@@ -65,7 +65,7 @@ class UIManager:
             if self.state.shutdown_requested:
                 return
             new_val = self.state.current_threads + event.change
-            self.state.current_threads = max(1, min(16, new_val))
+            self.state.current_threads = max(1, min(8, new_val))
 
     def on_shutdown_request(self, event: RequestShutdown):
         with self.state._lock:
