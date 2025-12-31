@@ -20,14 +20,14 @@ def _find_source_for_error(
     if direct.exists():
         return direct
 
-    base = direct.with_suffix("")
-    if not base.parent.exists():
+    base_parent = direct.parent
+    if not base_parent.exists():
         return None
 
     candidates: List[Path] = []
-    base_name = base.name
+    base_name = output_rel.name
     base_name_lower = base_name.lower()
-    for entry in base.parent.iterdir():
+    for entry in base_parent.iterdir():
         if not entry.is_file():
             continue
         if entry.stem != base_name and entry.stem.lower() != base_name_lower:

@@ -49,3 +49,32 @@ def test_collect_error_entries_counts(tmp_path):
     )
 
     assert len(entries) == 2
+
+
+def test_move_failed_files_handles_dotted_names(tmp_path):
+    input_dir = tmp_path / "input"
+    output_dir = tmp_path / "input_out"
+    errors_dir = tmp_path / "input_err"
+
+    input_dir.mkdir()
+    output_dir.mkdir()
+
+    source = input_dir / "a.b.c.mp4"
+    source.write_bytes(b"x" * 10)
+
+    err_file = output_dir / "a.b.c.err"
+    err_file.write_text("error")
+
+    moved = move_failed_files(
+        [input_dir],
+        {input_dir: output_dir},
+        {input_dir: errors_dir},
+        [".mp4"],
+        logger=None,
+    )
+
+    assert moved == 1
+    assert not source.exists()
+    assert not err_file.exists()
+    assert (errors_dir / "a.b.c.mp4").exists()
+    assert (errors_dir / "a.b.c.err").exists()
