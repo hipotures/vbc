@@ -5,7 +5,7 @@ Complete reference for VBC command-line interface.
 ## Basic Syntax
 
 ```bash
-uv run vbc/main.py [INPUT_DIR] [OPTIONS]
+uv run vbc [INPUT_DIR] [OPTIONS]
 ```
 
 ## Positional Arguments
@@ -16,7 +16,7 @@ Optional. Directory containing videos to compress.
 If omitted, VBC uses `input_dirs` from the config file (CLI overrides config, no merge).
 
 ```bash
-uv run vbc/main.py /path/to/videos
+uv run vbc /path/to/videos
 ```
 
 **Behavior:**
@@ -37,7 +37,7 @@ Path to YAML configuration file.
 **Default:** `conf/vbc.yaml`
 
 ```bash
-uv run vbc/main.py /videos --config custom.yaml
+uv run vbc /videos --config custom.yaml
 ```
 
 #### `--threads INT`, `-t INT`
@@ -47,7 +47,7 @@ Number of concurrent compression threads (1-16).
 **Default:** From config (usually 4)
 
 ```bash
-uv run vbc/main.py /videos --threads 8
+uv run vbc /videos --threads 8
 ```
 
 **Note:** Can be adjusted at runtime with `<`/`>` keys.
@@ -59,7 +59,7 @@ Constant quality value (0-63). Lower = better quality.
 **Default:** From config (usually 45)
 
 ```bash
-uv run vbc/main.py /videos --cq 38
+uv run vbc /videos --cq 38
 ```
 
 **Recommendations:**
@@ -78,10 +78,10 @@ Enable/disable GPU acceleration.
 
 ```bash
 # Use GPU (NVENC AV1)
-uv run vbc/main.py /videos --gpu
+uv run vbc /videos --gpu
 
 # Use CPU (SVT-AV1)
-uv run vbc/main.py /videos --cpu
+uv run vbc /videos --cpu
 ```
 
 **Trade-offs:**
@@ -101,10 +101,10 @@ Queue ordering mode.
 
 ```bash
 # Sort by file size (small → large)
-uv run vbc/main.py /videos --queue-sort size
+uv run vbc /videos --queue-sort size
 
 # Process directories in CLI order, sort within each directory
-uv run vbc/main.py /dir1,/dir2 --queue-sort dir
+uv run vbc /dir1,/dir2 --queue-sort dir
 ```
 
 #### `--queue-seed INT`
@@ -112,7 +112,7 @@ uv run vbc/main.py /dir1,/dir2 --queue-sort dir
 Seed for deterministic random order when using `--queue-sort rand`.
 
 ```bash
-uv run vbc/main.py /videos --queue-sort rand --queue-seed 42
+uv run vbc /videos --queue-sort rand --queue-seed 42
 ```
 
 ### Filtering
@@ -124,7 +124,7 @@ Skip files already encoded in AV1 codec.
 **Default:** false
 
 ```bash
-uv run vbc/main.py /videos --skip-av1
+uv run vbc /videos --skip-av1
 ```
 
 **Use case:** Mixed library with some AV1 files.
@@ -137,10 +137,10 @@ Only process files from specific camera models (comma-separated).
 
 ```bash
 # Single camera
-uv run vbc/main.py /videos --camera "Sony"
+uv run vbc /videos --camera "Sony"
 
 # Multiple cameras
-uv run vbc/main.py /videos --camera "Sony,DJI,ILCE-7RM5"
+uv run vbc /videos --camera "Sony,DJI,ILCE-7RM5"
 ```
 
 **Matching:** Substring, case-insensitive.
@@ -153,10 +153,10 @@ Minimum input file size in bytes.
 
 ```bash
 # 5 MiB minimum
-uv run vbc/main.py /videos --min-size 5242880
+uv run vbc /videos --min-size 5242880
 
 # No minimum (process all files)
-uv run vbc/main.py /videos --min-size 0
+uv run vbc /videos --min-size 0
 ```
 
 #### `--min-ratio FLOAT`
@@ -167,10 +167,10 @@ Minimum compression ratio required (0.0-1.0).
 
 ```bash
 # Require 20% savings
-uv run vbc/main.py /videos --min-ratio 0.2
+uv run vbc /videos --min-ratio 0.2
 
 # Accept any compression
-uv run vbc/main.py /videos --min-ratio 0.0
+uv run vbc /videos --min-ratio 0.0
 ```
 
 **Behavior:** If savings < threshold, original file copied to output (not compressed version).
@@ -184,7 +184,7 @@ Rotate all videos 180 degrees.
 **Default:** false
 
 ```bash
-uv run vbc/main.py /videos --rotate-180
+uv run vbc /videos --rotate-180
 ```
 
 **Note:** Overrides auto-rotation patterns from config.
@@ -198,7 +198,7 @@ Remove existing `.err` markers on startup and retry those files.
 **Default:** false (skip files with .err)
 
 ```bash
-uv run vbc/main.py /videos --clean-errors
+uv run vbc /videos --clean-errors
 ```
 
 **Use case:** Fixed issue causing errors, want to retry.
@@ -212,7 +212,7 @@ Enable/disable verbose debug logging.
 **Default:** `--no-debug`
 
 ```bash
-uv run vbc/main.py /videos --debug
+uv run vbc /videos --debug
 ```
 
 **Debug logs:**
@@ -226,7 +226,7 @@ uv run vbc/main.py /videos --debug
 Path to log file (overrides config).
 
 ```bash
-uv run vbc/main.py /videos --log-path /tmp/vbc/compression.log
+uv run vbc /videos --log-path /tmp/vbc/compression.log
 ```
 
 ### Demo
@@ -238,7 +238,7 @@ Run simulated processing (no file IO). The UI and event flow behave like a real 
 **Note:** `INPUT_DIR` is optional; in demo mode it is ignored.
 
 ```bash
-uv run vbc/main.py --demo
+uv run vbc --demo
 ```
 
 #### `--demo-config PATH`
@@ -248,7 +248,7 @@ Path to demo simulation settings.
 **Default:** `conf/demo.yaml`
 
 ```bash
-uv run vbc/main.py --demo --demo-config conf/demo.yaml
+uv run vbc --demo --demo-config conf/demo.yaml
 ```
 
 ## Examples
@@ -257,28 +257,28 @@ uv run vbc/main.py --demo --demo-config conf/demo.yaml
 
 ```bash
 # Default settings (4 threads, CQ=45, GPU)
-uv run vbc/main.py /videos
+uv run vbc /videos
 ```
 
 ### High Quality Archive
 
 ```bash
 # CPU mode, low CQ, 4 threads
-uv run vbc/main.py /videos --cpu --cq 35 --threads 4
+uv run vbc /videos --cpu --cq 35 --threads 4
 ```
 
 ### Fast GPU Compression
 
 ```bash
 # GPU mode, 8 threads, standard quality
-uv run vbc/main.py /videos --gpu --threads 8 --cq 45
+uv run vbc /videos --gpu --threads 8 --cq 45
 ```
 
 ### Camera-Specific Processing
 
 ```bash
 # Only Sony cameras, high quality
-uv run vbc/main.py /videos \
+uv run vbc /videos \
   --camera "Sony" \
   --cq 38 \
   --threads 6
@@ -288,20 +288,20 @@ uv run vbc/main.py /videos \
 
 ```bash
 # Remove error markers and retry
-uv run vbc/main.py /videos --clean-errors
+uv run vbc /videos --clean-errors
 ```
 
 ### Debug Run
 
 ```bash
 # Debug logging, fewer threads for clarity
-uv run vbc/main.py /videos --threads 2 --debug
+uv run vbc /videos --threads 2 --debug
 ```
 
 ### Complete Custom Run
 
 ```bash
-uv run vbc/main.py /videos \
+uv run vbc /videos \
   --config conf/production.yaml \
   --threads 12 \
   --cq 40 \
@@ -329,7 +329,7 @@ general:
 ```
 
 ```bash
-uv run vbc/main.py /videos --threads 8 --cq 38 --cpu
+uv run vbc /videos --threads 8 --cq 38 --cpu
 ```
 
 **Result:**
@@ -393,13 +393,13 @@ Hardware is lacking required capabilities
 **Bash:**
 ```bash
 # Add to ~/.bashrc
-eval "$(uv run vbc/main.py --show-completion bash)"
+eval "$(uv run vbc --show-completion bash)"
 ```
 
 **Zsh:**
 ```bash
 # Add to ~/.zshrc
-eval "$(uv run vbc/main.py --show-completion zsh)"
+eval "$(uv run vbc --show-completion zsh)"
 ```
 
 ## Next Steps

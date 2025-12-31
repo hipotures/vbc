@@ -15,8 +15,8 @@ Thank you for considering contributing to VBC! This document provides guidelines
 
 ```bash
 # Clone repository
-git clone git@github.com:your-org/scriptoza.git
-cd scriptoza
+git clone git@github.com:your-org/vbc.git
+cd vbc
 
 # Install dependencies
 uv sync
@@ -25,7 +25,7 @@ uv sync
 uv sync --extra docs
 
 # Verify installation
-uv run vbc/main.py --help
+uv run vbc --help
 ```
 
 ### Project Structure
@@ -221,7 +221,7 @@ git commit -m "chore: update dependencies to latest versions"
 
 ### Known Issues
 
-See [GitHub Issues](https://github.com/your-org/scriptoza/issues) for current bugs and feature requests.
+See [GitHub Issues](https://github.com/your-org/vbc/issues) for current bugs and feature requests.
 
 ## Testing
 
@@ -334,12 +334,11 @@ Releases are handled by maintainers:
 2. Update CHANGELOG.md
 3. Tag release: `git tag v1.2.3`
 4. Push: `git push --tags`
-5. GitHub Actions builds and publishes
 
 ## Getting Help
 
-- **Questions**: Open a [Discussion](https://github.com/your-org/scriptoza/discussions)
-- **Bugs**: Open an [Issue](https://github.com/your-org/scriptoza/issues)
+- **Questions**: Open a [Discussion](https://github.com/your-org/vbc/discussions)
+- **Bugs**: Open an [Issue](https://github.com/your-org/vbc/issues)
 - **Chat**: Join our Discord/Slack (link)
 
 ## License

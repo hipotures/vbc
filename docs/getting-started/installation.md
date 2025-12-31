@@ -4,7 +4,7 @@
 
 ### System Requirements
 
-- **Python**: 3.10 or higher
+- **Python**: 3.12 or higher
 - **FFmpeg**: Version 6.0+ with AV1 codec support
   - For GPU: FFmpeg compiled with `--enable-nvenc`
   - For CPU: FFmpeg with `libsvtav1` support
@@ -15,7 +15,7 @@
 
 ```bash
 # Check Python version
-python3 --version  # Should be 3.10+
+python3 --version  # Should be 3.12+
 
 # Check FFmpeg
 ffmpeg -version | head -1
@@ -36,10 +36,10 @@ VBC uses `uv` for fast, reliable dependency management:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone repository
-cd ~/DEV/scriptoza
+cd ~/DEV/vbc
 
 # Dependencies are automatically installed when running via uv
-uv run vbc/main.py --help
+uv run vbc
 ```
 
 ### Method 2: Manual Virtual Environment
@@ -50,7 +50,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
-pip install rich pyyaml pyexiftool typer
+pip install rich pyyaml pyexiftool typer pydantic
 
 # Run VBC
 python vbc/main.py --help
@@ -123,7 +123,7 @@ sudo make install
 
 ```bash
 # Check all dependencies
-uv run vbc/main.py --help
+uv run vbc
 
 # You should see the help message without errors
 # Test with a small video file

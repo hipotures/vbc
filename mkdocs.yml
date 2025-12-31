@@ -1,8 +1,8 @@
 site_name: VBC - Video Batch Compression
 site_description: Modular video batch compression tool with AV1/NVENC support
 site_author: VBC Development Team
-repo_url: https://github.com/your-org/scriptoza
-repo_name: scriptoza
+repo_url: https://github.com/your-org/vbc
+repo_name: vbc
 
 theme:
   name: material

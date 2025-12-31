@@ -86,6 +86,16 @@ general:
   # === Manual Rotation ===
   manual_rotation: null         # Global rotation (null, 0, 90, 180, 270)
 
+gpu_config:
+  enabled: true
+  sample_interval_s: 5.0
+  history_window_s: 300.0
+  nvtop_device_index: 0
+
+ui:
+  activity_feed_max_items: 5
+  panel_height_scale: 0.7
+
 autorotate:
   patterns:                     # Regex -> Rotation angle
     "DJI_.*\\.MP4": 0          # DJI drones - no rotation
@@ -133,6 +143,7 @@ autorotate:
 - **Type**: Integer or null
 - **Default**: `null`
 - **Description**: Seed for deterministic `rand` queue order
+- **Example**: `42` (ensure same random order across runs)
 
 #### `log_path`
 - **Type**: String or null
@@ -162,6 +173,50 @@ autorotate:
 - **CPU (SVT-AV1)**:
   - Pros: Excellent quality, no session limits
   - Cons: Much slower
+
+### GPU Monitoring (`gpu_config`)
+
+Advanced settings for GPU monitoring sparklines.
+
+#### `enabled`
+- **Type**: Boolean
+- **Default**: `true`
+- **Description**: Enable GPU monitoring and dashboard sparklines.
+- **Note**: Requires NVIDIA GPU and `nvidia-smi`.
+
+#### `sample_interval_s`
+- **Type**: Float
+- **Default**: `5.0`
+- **Description**: How often to sample GPU metrics (seconds).
+
+#### `history_window_s`
+- **Type**: Float
+- **Default**: `300.0`
+- **Description**: Total time window shown in sparklines (default 5 minutes).
+
+#### `nvtop_device_index`
+- **Type**: Integer
+- **Default**: `0`
+- **Description**: Index of the GPU to monitor.
+
+### UI Configuration (`ui`)
+
+Dashboard display settings.
+
+#### `activity_feed_max_items`
+- **Type**: Integer (1-20)
+- **Default**: `5`
+- **Description**: Maximum number of events shown in the activity feed panel.
+
+#### `active_jobs_max_display`
+- **Type**: Integer (1-16)
+- **Default**: `8`
+- **Description**: Maximum number of concurrent jobs to display in the active panel.
+
+#### `panel_height_scale`
+- **Type**: Float (0.3-1.0)
+- **Default**: `0.7`
+- **Description**: Vertical scaling factor for panels (0.7 = 30% reduction in height).
 
 ### Input/Output
 

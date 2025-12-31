@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "scriptoza"
-version = "0.1.0"
-description = "Modular utility scripts including VBC - Video Batch Compression with AV1/NVENC support"
+name = "vbc"
+version = "1.0.0"
+description = "VBC - Video Batch Compression with AV1/NVENC support"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -13,9 +13,11 @@ dependencies = [
     "pyexiftool>=0.5.6",
     "pyyaml>=6.0.3",
     "rich>=14.2.0",
-    "textual>=0.50.0",
     "typer>=0.20.1",
 ]
+
+[project.scripts]
+vbc = "vbc.main:app"
 
 [project.optional-dependencies]
 dev = [

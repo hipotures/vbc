@@ -15,6 +15,7 @@ VBC is a modular, high-performance tool for batch video compression with a real-
 - Python 3.12+
 - FFmpeg 6.0+ with AV1 support (av1_nvenc and/or libsvtav1)
 - ExifTool (optional but recommended)
+- Libraries: `rich`, `pydantic`, `pyyaml`, `pyexiftool`, `typer`
 - Linux, macOS, or Windows (WSL)
 
 ## Installation
@@ -26,7 +27,7 @@ VBC uses `uv` for dependency management.
 uv sync
 
 # Verify
-uv run vbc/main.py --help
+uv run vbc --help
 ```
 
 Full installation details are in `docs/getting-started/installation.md`.
@@ -35,13 +36,13 @@ Full installation details are in `docs/getting-started/installation.md`.
 
 ```bash
 # Basic run
-uv run vbc/main.py /path/to/videos
+uv run vbc /path/to/videos
 
 # GPU acceleration with more threads
-uv run vbc/main.py /path/to/videos --gpu --threads 8
+uv run vbc /path/to/videos --gpu --threads 8
 
 # CPU mode for higher quality
-uv run vbc/main.py /path/to/videos --cpu --cq 35
+uv run vbc /path/to/videos --cpu --cq 35
 ```
 
 Output is written to `{INPUT_DIR}_out/` with optional `.err` markers. Logs default to `/tmp/vbc/compression.log` (override via `general.log_path`).
@@ -51,8 +52,8 @@ Output is written to `{INPUT_DIR}_out/` with optional `.err` markers. Logs defau
 Simulate a full run without touching real files. The UI shows `VBC - demo` and uses synthetic filenames.
 
 ```bash
-uv run vbc/main.py demo --demo
-uv run vbc/main.py demo --demo --demo-config conf/demo.yaml
+uv run vbc demo --demo
+uv run vbc demo --demo --demo-config conf/demo.yaml
 ```
 
 Demo settings live in `conf/demo.yaml`.
@@ -62,7 +63,7 @@ Demo settings live in `conf/demo.yaml`.
 Default configuration is `conf/vbc.yaml`. CLI arguments override config values.
 
 ```bash
-uv run vbc/main.py /path/to/videos --config conf/vbc.yaml --threads 8 --cq 40
+uv run vbc /path/to/videos --config conf/vbc.yaml --threads 8 --cq 40
 ```
 
 See `docs/getting-started/configuration.md` for the full reference.

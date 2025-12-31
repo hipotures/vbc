@@ -1,72 +1,148 @@
-# Example VBC configuration (all options commented).
-# Un-comment and edit only the settings you want to override.
-#
-# input_dirs:
-#   - /path/to/videos
-#   - /path/to/folder with spaces
-#
-# # When using output_dirs, set suffix_output_dirs to null.
-# output_dirs:
-#   - /path/to/videos_out
-#   - /path/to/folder with spaces_out
-#
-# suffix_output_dirs: _out
-# suffix_output_dirs: null
-#
-# # When using errors_dirs, set suffix_errors_dirs to null.
-# errors_dirs:
-#   - /path/to/videos_err
-#   - /path/to/folder with spaces_err
-#
-# suffix_errors_dirs: _err
-# suffix_errors_dirs: null
-#
-# general:
-#   threads: 1
-#   cq: 44
-#   prefetch_factor: 1
-#   gpu: true
-#   gpu_refresh_rate: 5
-#   # queue_sort options: name | rand | dir | size | size-asc | size-desc | ext
-#   queue_sort: name
-#   queue_seed: null
-#   log_path: /tmp/vbc/compression.log
-#   cpu_fallback: false
-#   ffmpeg_cpu_threads: null
-#   copy_metadata: true
-#   use_exif: true
-#   filter_cameras: []
-#   dynamic_cq:
-#     "DJI OsmoPocket3": 40
-#     "DC-GH7": 35
-#     "ILCE-7RM5": 35
-#   extensions:
-#     - mp4
-#     - flv
-#     - webm
-#     - mov
-#     - mkv
-#   min_size_bytes: 1048576
-#   clean_errors: false
-#   skip_av1: false
-#   strip_unicode_display: true
-#   manual_rotation: null
-#   min_compression_ratio: 0.1
-#   debug: false
-#
-# autorotate:
-#   patterns:
-#     "QVR_\\d{8}_\\d{6}\\.mp4": 180
-#
-# gpu_config:
-#   enabled: true
-#   refresh_rate: 5
-#   sample_interval_s: 10.0
-#   history_window_s: 300.0
-#   nvtop_device_index: 0
-#   nvtop_device_name: null
-#
-# ui:
-#   activity_feed_max_items: 5
-#   active_jobs_max_display: 8
-#   panel_height_scale: 0.7
+# VBC Configuration Example
+# All available parameters with descriptions
+
+# --- Input/Output Settings ---
+
+# List of directories to scan for videos.
+# CLI argument overrides this (no merge).
+input_dirs:
+  - /path/to/videos
+  - /another/path
+
+# Explicit output directories (one per input directory, in order).
+# Must have the same count as input_dirs.
+# Cannot be used if suffix_output_dirs is set.
+output_dirs: []
+
+# Suffix appended to each input directory name to create output directory.
+# Example: /videos -> /videos_out
+# Default: "_out"
+suffix_output_dirs: "_out"
+
+# Explicit directories for failed files (one per input directory, in order).
+# Cannot be used if suffix_errors_dirs is set.
+errors_dirs: []
+
+# Suffix appended to each input directory name for failed files.
+# After processing, failed source files and their .err markers are moved here.
+# Default: "_err"
+suffix_errors_dirs: "_err"
+
+# --- General Settings ---
+
+general:
+  # Max concurrent compression threads (1-16).
+  # Can be adjusted at runtime with < and > keys.
+  threads: 4
+
+  # Default constant quality (0-63). Lower = better quality, larger files.
+  # Recommendations: 35-38 (Archival), 40-45 (High), 48-52 (Good).
+  cq: 45
+
+  # Submit-on-demand queue multiplier (1-5).
+  # Formula: max_queued = prefetch_factor * threads.
+  prefetch_factor: 1
+
+  # Use GPU acceleration (NVENC AV1) if true, otherwise CPU (SVT-AV1).
+  gpu: true
+
+  # GPU polling interval in updates per second (legacy, see gpu_config).
+  gpu_refresh_rate: 5
+
+  # Processing order: name, rand, dir, size, size-asc, size-desc, ext.
+  queue_sort: "name"
+
+  # Optional seed for deterministic random queue sorting.
+  queue_seed: null
+
+  # Path to log file. Default: /tmp/vbc/compression.log
+  log_path: "/tmp/vbc/compression.log"
+
+  # Retry on CPU if NVENC hits hardware capability error.
+  cpu_fallback: false
+
+  # Max CPU threads per FFmpeg worker (null = auto).
+  ffmpeg_cpu_threads: null
+
+  # Copy EXIF/XMP/GPS tags from source to output.
+  copy_metadata: true
+
+  # Use ExifTool for deep metadata analysis (required for dynamic_cq/filtering).
+  use_exif: true
+
+  # Only process specific camera models (substring match, case-insensitive).
+  # Example: ["Sony", "DJI"]
+  filter_cameras: []
+
+  # Camera-specific CQ values (First match wins).
+  # Example: {"ILCE-7RM5": 38, "Sony": 40}
+  dynamic_cq: {}
+
+  # File extensions to scan and process.
+  extensions:
+    - ".mp4"
+    - ".mov"
+    - ".avi"
+    - ".flv"
+    - ".webm"
+
+  # Minimum input file size in bytes to process (Default: 1 MiB).
+  min_size_bytes: 1048576
+
+  # Remove existing .err markers on startup and retry those files.
+  clean_errors: false
+
+  # Skip files already encoded in AV1 codec.
+  skip_av1: false
+
+  # Replace non-ASCII characters with '?' in UI to prevent alignment issues.
+  strip_unicode_display: true
+
+  # Global rotation override (null, 0, 90, 180, 270).
+  manual_rotation: null
+
+  # Minimum compression savings required (0.0-1.0).
+  # If compression < 10%, keep original file instead of compressed version.
+  min_compression_ratio: 0.1
+
+  # Enable verbose debug logging.
+  debug: false
+
+# --- GPU Monitoring Settings ---
+
+gpu_config:
+  # Enable GPU monitoring panel and sparklines.
+  enabled: true
+
+  # How often to sample GPU metrics (seconds).
+  sample_interval_s: 5.0
+
+  # Total time window shown in sparklines (seconds).
+  history_window_s: 300.0
+
+  # Index of the GPU device to monitor.
+  nvtop_device_index: 0
+
+  # Optional: specific device name to monitor (overrides index).
+  nvtop_device_name: null
+
+# --- UI Settings ---
+
+ui:
+  # Max events shown in the activity feed panel (1-20).
+  activity_feed_max_items: 5
+
+  # Max concurrent jobs to display in the active panel (1-16).
+  active_jobs_max_display: 8
+
+  # Vertical scaling factor for dashboard panels (0.3-1.0).
+  panel_height_scale: 0.7
+
+# --- Auto-Rotation Settings ---
+
+autorotate:
+  # Regex pattern -> Rotation angle (0, 90, 180, 270).
+  # First match wins.
+  patterns:
+    "GOPR\d+\.MP4": 180
+    "IMG_\d{4}\.MOV": 90
