@@ -1,45 +1,46 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from rich.progress import Progress, BarColumn, SpinnerColumn, TextColumn, TimeRemainingColumn
 
 
-def _normalize_extensions(extensions: List[str]) -> Set[str]:
-    return {ext.lower().lstrip(".") for ext in extensions}
-
-
-def _find_source_for_error(
+def _find_sources_for_error(
     input_dir: Path,
     rel_err_path: Path,
-    allowed_exts: Set[str],
-) -> Optional[Path]:
+) -> List[Path]:
     output_rel = rel_err_path.with_suffix("")
     direct = input_dir / output_rel
     if direct.exists():
-        return direct
+        return [direct]
 
     base_parent = direct.parent
     if not base_parent.exists():
-        return None
+        return []
 
     candidates: List[Path] = []
     base_name = output_rel.name
     base_name_lower = base_name.lower()
+    base_name_core = Path(base_name).stem
+    base_name_core_lower = base_name_core.lower()
     for entry in base_parent.iterdir():
         if not entry.is_file():
             continue
-        if entry.stem != base_name and entry.stem.lower() != base_name_lower:
+        stem = entry.stem
+        stem_lower = stem.lower()
+        if (
+            stem != base_name
+            and stem_lower != base_name_lower
+            and stem != base_name_core
+            and stem_lower != base_name_core_lower
+        ):
             continue
-        ext = entry.suffix.lower().lstrip(".")
-        if ext in allowed_exts:
-            candidates.append(entry)
-
+        candidates.append(entry)
     if not candidates:
-        return None
+        return []
     candidates.sort(key=lambda path: path.name.lower())
-    return candidates[0]
+    return candidates
 
 
 def collect_error_entries(
@@ -68,7 +69,6 @@ def move_failed_files(
     logger: Optional[logging.Logger] = None,
     error_entries: Optional[List[Tuple[Path, Path, Path, Path]]] = None,
 ) -> int:
-    allowed_exts = _normalize_extensions(extensions)
     error_entries = error_entries or collect_error_entries(
         input_dirs, output_dir_map, errors_dir_map
     )
@@ -96,14 +96,21 @@ def move_failed_files(
             dest_err.parent.mkdir(parents=True, exist_ok=True)
             if err_file.exists() and err_file != dest_err:
                 shutil.move(str(err_file), str(dest_err))
+                if logger:
+                    logger.info(f"Moved error marker: {err_file} -> {dest_err}")
 
-            source_path = _find_source_for_error(input_dir, rel_err, allowed_exts)
-            if source_path and source_path.exists():
-                rel_source = source_path.relative_to(input_dir)
-                dest_source = errors_dir / rel_source
-                dest_source.parent.mkdir(parents=True, exist_ok=True)
-                if source_path != dest_source:
-                    shutil.move(str(source_path), str(dest_source))
+            source_paths = _find_sources_for_error(input_dir, rel_err)
+            if source_paths:
+                for source_path in source_paths:
+                    if not source_path.exists():
+                        continue
+                    rel_source = source_path.relative_to(input_dir)
+                    dest_source = errors_dir / rel_source
+                    dest_source.parent.mkdir(parents=True, exist_ok=True)
+                    if source_path != dest_source:
+                        shutil.move(str(source_path), str(dest_source))
+                        if logger:
+                            logger.info(f"Moved source file: {source_path} -> {dest_source}")
             else:
                 if logger:
                     logger.warning(f"Failed source file not found for {rel_err}")

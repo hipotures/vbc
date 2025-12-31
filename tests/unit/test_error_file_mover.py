@@ -32,6 +32,38 @@ def test_move_failed_files_moves_source_and_err(tmp_path):
     assert (errors_dir / "sub" / "clip.mp4.err").exists()
 
 
+def test_move_failed_files_moves_multiple_sources(tmp_path):
+    input_dir = tmp_path / "input"
+    output_dir = tmp_path / "input_out"
+    errors_dir = tmp_path / "input_err"
+
+    input_dir.mkdir()
+    output_dir.mkdir()
+
+    source_mp4 = input_dir / "clip.mp4"
+    source_avi = input_dir / "clip.avi"
+    source_mp4.write_bytes(b"x" * 10)
+    source_avi.write_bytes(b"x" * 10)
+
+    err_file = output_dir / "clip.mp4.err"
+    err_file.write_text("Compression failed")
+
+    moved = move_failed_files(
+        [input_dir],
+        {input_dir: output_dir},
+        {input_dir: errors_dir},
+        [".mp4", ".avi"],
+        logger=None,
+    )
+
+    assert moved == 1
+    assert not source_mp4.exists()
+    assert not source_avi.exists()
+    assert (errors_dir / "clip.mp4").exists()
+    assert (errors_dir / "clip.avi").exists()
+    assert (errors_dir / "clip.mp4.err").exists()
+
+
 def test_collect_error_entries_counts(tmp_path):
     input_dir = tmp_path / "input"
     output_dir = tmp_path / "input_out"
