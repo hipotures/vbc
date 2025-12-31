@@ -71,6 +71,8 @@ def compress(
     clean_errors: bool = typer.Option(False, "--clean-errors", help="Remove existing .err markers and retry"),
     skip_av1: bool = typer.Option(False, "--skip-av1", help="Skip files already encoded in AV1"),
     min_size: Optional[int] = typer.Option(None, "--min-size", help="Minimum input size in bytes to process"),
+    min_ratio: Optional[float] = typer.Option(None, "--min-ratio", help="Minimum compression ratio required (0.0-1.0)"),
+    camera: Optional[str] = typer.Option(None, "--camera", help="Comma-separated list of camera models to filter"),
     rotate_180: bool = typer.Option(False, "--rotate-180", help="Rotate output 180 degrees"),
     debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable verbose debug logging")
 ):
@@ -94,6 +96,9 @@ def compress(
         if clean_errors: config.general.clean_errors = True
         if skip_av1: config.general.skip_av1 = True
         if min_size is not None: config.general.min_size_bytes = min_size
+        if min_ratio is not None: config.general.min_compression_ratio = min_ratio
+        if camera:
+            config.general.filter_cameras = [c.strip() for c in camera.split(",") if c.strip()]
         if debug: config.general.debug = True
         if rotate_180: config.general.manual_rotation = 180
 
