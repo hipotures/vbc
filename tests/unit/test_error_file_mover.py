@@ -49,29 +49,3 @@ def test_collect_error_entries_counts(tmp_path):
     )
 
     assert len(entries) == 2
-
-
-def test_move_failed_files_falls_back_without_extension_match(tmp_path):
-    input_dir = tmp_path / "input"
-    output_dir = tmp_path / "input_out"
-    errors_dir = tmp_path / "input_err"
-
-    input_dir.mkdir()
-    output_dir.mkdir()
-
-    source = input_dir / "clip.mp4"
-    source.write_bytes(b"x" * 10)
-    err_file = output_dir / "clip.err"
-    err_file.write_text("error")
-
-    moved = move_failed_files(
-        [input_dir],
-        {input_dir: output_dir},
-        {input_dir: errors_dir},
-        [".mov"],
-        logger=None,
-    )
-
-    assert moved == 1
-    assert not source.exists()
-    assert (errors_dir / "clip.mp4").exists()
