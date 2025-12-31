@@ -658,8 +658,7 @@ class Orchestrator:
                 and self.config.general.cpu_fallback
                 and job_config.gpu
             ):
-                if self.config.general.debug:
-                    self.logger.info(f"FFMPEG_FALLBACK: {filename} (hw_cap -> CPU)")
+                self.logger.info(f"FFMPEG_FALLBACK: {filename} (hw_cap -> CPU)")
                 job_config = job_config.model_copy()
                 job_config.gpu = False
                 job.status = JobStatus.PROCESSING

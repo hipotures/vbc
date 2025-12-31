@@ -151,7 +151,11 @@ class FFmpegAdapter:
                 if line is None:
                     break
 
-                if "Hardware is lacking required capabilities" in line:
+                if (
+                    "Hardware is lacking required capabilities" in line
+                    or "No capable devices found" in line
+                    or "not supported" in line and "nvenc" in line.lower()
+                ):
                     hw_cap_error = True
                 if "is not a valid value for color_primaries" in line or "is not a valid value for color_trc" in line:
                     color_error = True
