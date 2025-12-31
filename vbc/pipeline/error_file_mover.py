@@ -37,6 +37,13 @@ def _find_source_for_error(
             candidates.append(entry)
 
     if not candidates:
+        for entry in base.parent.iterdir():
+            if not entry.is_file():
+                continue
+            if entry.stem != base_name and entry.stem.lower() != base_name_lower:
+                continue
+            candidates.append(entry)
+    if not candidates:
         return None
     candidates.sort(key=lambda path: path.name.lower())
     return candidates[0]
