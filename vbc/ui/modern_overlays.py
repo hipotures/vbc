@@ -162,9 +162,9 @@ class SettingsOverlay:
         """Pobiera wartość z parsowanej konfiguracji."""
         return self._parsed.get(key, default)
     
-    def render(self) -> Panel:
-        """Renderuje panel Settings."""
-        
+    def _render_content(self) -> Group:
+        """Returns content without outer Panel or footer (for tabbed overlay)."""
+
         # === HEADER ===
         title_line = self.config_lines[0] if self.config_lines else "Video Batch Compression"
         start_time = self._get("start", "")
@@ -304,14 +304,7 @@ class SettingsOverlay:
         row2 = make_two_column_layout(io_card, quality_card)
         # Row 3: Metadata (full width)
         
-        # Footer hint
-        footer = Text.from_markup(
-            f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] L [/] Reference • "
-            f"[white on {COLORS['border']}] M [/] Shortcuts[/]",
-            justify="center"
-        )
-        
+        # Build content Group
         content = Group(
             header_panel,
             "",
@@ -320,12 +313,27 @@ class SettingsOverlay:
             row2,
             "",
             metadata_card,
+        )
+
+        return content
+
+    def render(self) -> Panel:
+        """Returns complete Panel with footer (for backward compatibility)."""
+        footer = Text.from_markup(
+            f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
+            f"[white on {COLORS['border']}] L [/] Reference • "
+            f"[white on {COLORS['border']}] M [/] Shortcuts[/]",
+            justify="center"
+        )
+
+        content_with_footer = Group(
+            self._render_content(),
             "",
             footer
         )
-        
+
         return Panel(
-            content,
+            content_with_footer,
             title="[bold white]⚙ SETTINGS[/]",
             subtitle=f"[{COLORS['dim']}][C] to toggle[/]",
             border_style=COLORS['accent_green'],
@@ -684,41 +692,42 @@ def generate_shortcuts_overlay() -> Panel:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# DASHBOARD INTEGRATION SNIPPET
+# CONTENT RENDERING FUNCTIONS (for tabbed overlay)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def render_settings_content(config_lines: List[str], spinner_frame: int = 0) -> RenderableType:
+    """Render Settings tab content (without outer Panel or footer)."""
+    return SettingsOverlay(config_lines, spinner_frame)._render_content()
+
+
+def render_reference_content(spinner_frame: int = 0) -> RenderableType:
+    """Render Reference tab content (without outer Panel or footer)."""
+    # TODO: Refactor ReferenceOverlay to have _render_content() like SettingsOverlay
+    # For now, return the full Panel (will have nested borders in tabbed view)
+    return ReferenceOverlay(spinner_frame).render()
+
+
+def render_shortcuts_content() -> RenderableType:
+    """Render Shortcuts tab content (without outer Panel or footer)."""
+    # TODO: Refactor ShortcutsOverlay to have _render_content() like SettingsOverlay
+    # For now, return the full Panel (will have nested borders in tabbed view)
+    return ShortcutsOverlay().render()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD INTEGRATION SNIPPET (UPDATED FOR TABBED OVERLAY)
 # ═══════════════════════════════════════════════════════════════════════════════
 """
-Aby zintegrować z istniejącym dashboard.py, zamień metody:
+Tabbed overlay integration is complete. The dashboard now uses:
 
-1. W klasie Dashboard, zamień metodę _generate_config_overlay na:
+- render_settings_content() for Settings tab content
+- render_reference_content() for Reference tab content
+- render_shortcuts_content() for Shortcuts tab content
 
-    def _generate_config_overlay(self) -> Panel:
-        from vbc.ui.modern_overlays import generate_settings_overlay
-        with self.state._lock:
-            lines = self.state.config_lines[:]
-        return generate_settings_overlay(lines, self._spinner_frame)
-
-2. Zamień metodę _generate_legend_overlay na:
-
-    def _generate_legend_overlay(self) -> Panel:
-        from vbc.ui.modern_overlays import generate_reference_overlay
-        return generate_reference_overlay(self._spinner_frame)
-
-3. Zamień metodę _generate_menu_overlay na:
-
-    def _generate_menu_overlay(self) -> Panel:
-        from vbc.ui.modern_overlays import generate_shortcuts_overlay
-        return generate_shortcuts_overlay()
-
-4. W metodzie create_display(), zmień overlay_width z 80 na 85:
-
-        if self.state.show_config:
-            return _Overlay(layout, self._generate_config_overlay(), overlay_width=85)
-        elif self.state.show_legend:
-            return _Overlay(layout, self._generate_legend_overlay(), overlay_width=85)
-        elif self.state.show_menu:
-            return _Overlay(layout, self._generate_menu_overlay(), overlay_width=85)
-
-Alternatywnie, zapisz ten plik jako vbc/ui/modern_overlays.py i zaimportuj funkcje.
+Old standalone overlay functions (for backward compatibility):
+- generate_settings_overlay() - returns complete Panel
+- generate_reference_overlay() - returns complete Panel
+- generate_shortcuts_overlay() - returns complete Panel
 """
 
 

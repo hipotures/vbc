@@ -2,11 +2,14 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from collections import deque
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, ClassVar
 from vbc.domain.models import CompressionJob
 
 class UIState:
     """Thread-safe state manager for the interactive UI."""
+
+    # Tab order for cycling
+    OVERLAY_TABS: ClassVar[List[str]] = ["settings", "reference", "shortcuts"]
 
     def __init__(self, activity_feed_max_items: int = 5):
         self._lock = threading.RLock()
@@ -50,9 +53,9 @@ class UIState:
         self.finished = False
         self.strip_unicode_display = True
         self.ui_title = "VBC"
-        self.show_config = False
-        self.show_legend = False
-        self.show_menu = False
+        # Tabbed overlay state
+        self.show_overlay = False
+        self.active_tab = "settings"  # "settings" | "reference" | "shortcuts"
         self.show_info = False
         self.info_message = ""
         self.config_lines: List[str] = []
@@ -134,3 +137,42 @@ class UIState:
                     self.last_action = ""
                     self.last_action_time = None
             return self.last_action
+
+    def open_overlay(self, tab: Optional[str] = None) -> None:
+        """Open overlay, optionally on a specific tab."""
+        with self._lock:
+            self.show_overlay = True
+            if tab and tab in self.OVERLAY_TABS:
+                self.active_tab = tab
+
+    def close_overlay(self) -> None:
+        """Close overlay."""
+        with self._lock:
+            self.show_overlay = False
+
+    def toggle_overlay(self, tab: Optional[str] = None) -> None:
+        """Toggle overlay. If open on different tab, switch tabs."""
+        with self._lock:
+            if not self.show_overlay:
+                # Closed → Open
+                self.show_overlay = True
+                if tab:
+                    self.active_tab = tab
+            elif tab and self.active_tab != tab:
+                # Open on different tab → Switch tab
+                self.active_tab = tab
+            else:
+                # Open on same tab → Close
+                self.show_overlay = False
+
+    def cycle_tab(self, direction: int = 1) -> None:
+        """Cycle through tabs. direction: 1=next, -1=previous."""
+        with self._lock:
+            if not self.show_overlay:
+                # Closed → Open on first tab
+                self.show_overlay = True
+                return
+
+            current_idx = self.OVERLAY_TABS.index(self.active_tab)
+            next_idx = (current_idx + direction) % len(self.OVERLAY_TABS)
+            self.active_tab = self.OVERLAY_TABS[next_idx]

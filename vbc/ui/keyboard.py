@@ -4,6 +4,7 @@ import termios
 import tty
 import select
 from typing import Optional
+from pydantic import BaseModel
 from vbc.infrastructure.event_bus import EventBus
 from vbc.domain.events import Event
 
@@ -15,20 +16,34 @@ class InterruptRequested(Event):
     """Event emitted when user requests immediate interrupt (Ctrl+C)."""
     pass
 
+# Deprecated overlay events (kept for compatibility)
 class ToggleConfig(Event):
-    """Event emitted when user toggles config display (Key 'C')."""
+    """DEPRECATED: Use ToggleOverlayTab instead. Event emitted when user toggles config display (Key 'C')."""
     pass
 
 class ToggleLegend(Event):
-    """Event emitted when user toggles legend display (Key 'L')."""
+    """DEPRECATED: Use ToggleOverlayTab instead. Event emitted when user toggles legend display (Key 'L')."""
     pass
 
 class ToggleMenu(Event):
-    """Event emitted when user toggles menu display (Key 'M')."""
+    """DEPRECATED: Use ToggleOverlayTab instead. Event emitted when user toggles menu display (Key 'M')."""
     pass
 
 class HideConfig(Event):
-    """Event emitted when user closes config display (Esc)."""
+    """DEPRECATED: Use CloseOverlay instead. Event emitted when user closes config display (Esc)."""
+    pass
+
+# New tabbed overlay events
+class ToggleOverlayTab(Event):
+    """Event emitted to toggle overlay with optional tab selection."""
+    tab: Optional[str] = None  # "settings" | "reference" | "shortcuts" | None
+
+class CycleOverlayTab(Event):
+    """Event emitted to cycle through overlay tabs."""
+    direction: int = 1  # 1=next, -1=previous
+
+class CloseOverlay(Event):
+    """Event emitted to close the overlay."""
     pass
 
 class RotateGpuMetric(Event):
@@ -72,16 +87,17 @@ class KeyboardListener:
                         # Immediate feedback (like old vbc.py line 787)
                         self.event_bus.publish(ActionMessage(message="REFRESH requested"))
                     elif key in ('C', 'c'):
-                        self.event_bus.publish(ToggleConfig())
+                        self.event_bus.publish(ToggleOverlayTab(tab="settings"))
                     elif key in ('L', 'l'):
-                        from vbc.ui.keyboard import ToggleLegend
-                        self.event_bus.publish(ToggleLegend())
+                        self.event_bus.publish(ToggleOverlayTab(tab="reference"))
+                    elif key in ('M', 'm'):
+                        self.event_bus.publish(ToggleOverlayTab(tab="shortcuts"))
+                    elif key == '\t':  # Tab key
+                        self.event_bus.publish(CycleOverlayTab(direction=1))
                     elif key in ('G', 'g'):
                         self.event_bus.publish(RotateGpuMetric())
-                    elif key in ('M', 'm'):
-                        self.event_bus.publish(ToggleMenu())
                     elif key == '\x1b':
-                        self.event_bus.publish(HideConfig())
+                        self.event_bus.publish(CloseOverlay())
                     elif key == '\x03':
                         # Ctrl+C detected - signal orchestrator to stop
                         self.event_bus.publish(InterruptRequested())

@@ -7,7 +7,10 @@ from vbc.domain.events import (
     JobProgressUpdated, HardwareCapabilityExceeded, QueueUpdated,
     ActionMessage, ProcessingFinished
 )
-from vbc.ui.keyboard import ThreadControlEvent, RequestShutdown, InterruptRequested, ToggleConfig, ToggleLegend, HideConfig, RotateGpuMetric, ToggleMenu
+from vbc.ui.keyboard import (
+    ThreadControlEvent, RequestShutdown, InterruptRequested,
+    ToggleOverlayTab, CycleOverlayTab, CloseOverlay, RotateGpuMetric
+)
 
 class UIManager:
     """Subscribes to EventBus and updates UIState."""
@@ -28,11 +31,10 @@ class UIManager:
         self.bus.subscribe(ThreadControlEvent, self.on_thread_control)
         self.bus.subscribe(RequestShutdown, self.on_shutdown_request)
         self.bus.subscribe(InterruptRequested, self.on_interrupt_request)
-        self.bus.subscribe(ToggleConfig, self.on_toggle_config)
-        self.bus.subscribe(ToggleLegend, self.on_toggle_legend)
-        self.bus.subscribe(ToggleMenu, self.on_toggle_menu)
+        self.bus.subscribe(ToggleOverlayTab, self.on_toggle_overlay_tab)
+        self.bus.subscribe(CycleOverlayTab, self.on_cycle_overlay_tab)
+        self.bus.subscribe(CloseOverlay, self.on_close_overlay)
         self.bus.subscribe(RotateGpuMetric, self.on_rotate_gpu_metric)
-        self.bus.subscribe(HideConfig, self.on_hide_config)
         self.bus.subscribe(QueueUpdated, self.on_queue_updated)
         self.bus.subscribe(ActionMessage, self.on_action_message)
         self.bus.subscribe(ProcessingFinished, self.on_processing_finished)
@@ -76,26 +78,17 @@ class UIManager:
         with self.state._lock:
             self.state.interrupt_requested = True
 
-    def on_toggle_config(self, event: ToggleConfig):
-        with self.state._lock:
-            self.state.show_config = not self.state.show_config
-            if self.state.show_config:
-                self.state.show_legend = False
-                self.state.show_menu = False
+    def on_toggle_overlay_tab(self, event: ToggleOverlayTab):
+        """Handle overlay toggle with optional tab selection."""
+        self.state.toggle_overlay(event.tab)
 
-    def on_toggle_legend(self, event: ToggleLegend):
-        with self.state._lock:
-            self.state.show_legend = not self.state.show_legend
-            if self.state.show_legend:
-                self.state.show_config = False
-                self.state.show_menu = False
+    def on_cycle_overlay_tab(self, event: CycleOverlayTab):
+        """Handle tab cycling."""
+        self.state.cycle_tab(event.direction)
 
-    def on_toggle_menu(self, event: ToggleMenu):
-        with self.state._lock:
-            self.state.show_menu = not self.state.show_menu
-            if self.state.show_menu:
-                self.state.show_config = False
-                self.state.show_legend = False
+    def on_close_overlay(self, event: CloseOverlay):
+        """Handle overlay close."""
+        self.state.close_overlay()
 
     def on_rotate_gpu_metric(self, event: RotateGpuMetric):
         """Rotate GPU sparkline metric (temp → fan → pwr → gpu → mem)."""
@@ -105,12 +98,6 @@ class UIManager:
             self.state.gpu_sparkline_metric_idx = (self.state.gpu_sparkline_metric_idx + 1) % 5
             current_name = metric_names[self.state.gpu_sparkline_metric_idx]
             self.state.set_last_action(f"GPU Graph: {current_name}")
-
-    def on_hide_config(self, event: HideConfig):
-        with self.state._lock:
-            self.state.show_config = False
-            self.state.show_legend = False
-            self.state.show_menu = False
 
     def on_job_started(self, event: JobStarted):
         # Track when first job starts

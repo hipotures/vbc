@@ -15,8 +15,15 @@ from rich.align import Align
 from rich.segment import Segment
 from rich._loop import loop_last
 from rich.text import Text
+from rich.rule import Rule
+from rich.box import ROUNDED, SIMPLE
 from vbc.ui.state import UIState
 from vbc.domain.models import JobStatus
+from vbc.ui.modern_overlays import (
+    render_settings_content,
+    render_reference_content,
+    render_shortcuts_content,
+)
 
 # Layout Constants
 TOP_BAR_LINES = 3  # Status, Gap, KPI
@@ -803,8 +810,8 @@ class Dashboard:
                  if (datetime.now() - self.state.discovery_finished_time).total_seconds() < 5:
                      show_zeros = True
 
-            # Also show all stats when legend is active
-            if self.state.show_legend:
+            # Also show all stats when overlay is active (especially Reference tab)
+            if self.state.show_overlay:
                 show_zeros = True
             
             parts = []
@@ -848,19 +855,82 @@ class Dashboard:
             
             return grid
 
-    def _generate_config_overlay(self) -> Panel:
-        from vbc.ui.modern_overlays import generate_settings_overlay
+    def _generate_tabbed_overlay(self) -> Panel:
+        """Generate unified tabbed overlay."""
+
         with self.state._lock:
-            lines = self.state.config_lines[:]
-        return generate_settings_overlay(lines, self._spinner_frame)
+            active_tab = self.state.active_tab
+            config_lines = self.state.config_lines[:]
 
-    def _generate_legend_overlay(self) -> Panel:
-        from vbc.ui.modern_overlays import generate_reference_overlay
-        return generate_reference_overlay(self._spinner_frame)
+        # === TAB HEADER ===
+        tabs_table = Table(show_header=False, box=None, expand=True, padding=0)
+        tabs_table.add_column(ratio=1)
+        tabs_table.add_column(ratio=1)
+        tabs_table.add_column(ratio=1)
 
-    def _generate_menu_overlay(self) -> Panel:
-        from vbc.ui.modern_overlays import generate_shortcuts_overlay
-        return generate_shortcuts_overlay()
+        def tab_style(tab_id: str) -> Tuple[str, str, Any]:
+            """Return (text_style, border_style, box_type) for tab."""
+            if tab_id == active_tab:
+                return ("bold white", "green", ROUNDED)
+            return ("dim", "dim", SIMPLE)
+
+        settings_text, settings_border, settings_box = tab_style("settings")
+        reference_text, reference_border, reference_box = tab_style("reference")
+        shortcuts_text, shortcuts_border, shortcuts_box = tab_style("shortcuts")
+
+        tabs_table.add_row(
+            Panel(
+                f"[{settings_text}]⚙ Settings[/] [{settings_text}][C][/]",
+                border_style=settings_border,
+                box=settings_box,
+                padding=(0, 1),
+            ),
+            Panel(
+                f"[{reference_text}]📖 Reference[/] [{reference_text}][L][/]",
+                border_style=reference_border,
+                box=reference_box,
+                padding=(0, 1),
+            ),
+            Panel(
+                f"[{shortcuts_text}]⌨ Shortcuts[/] [{shortcuts_text}][M][/]",
+                border_style=shortcuts_border,
+                box=shortcuts_box,
+                padding=(0, 1),
+            ),
+        )
+
+        # === ACTIVE TAB CONTENT ===
+        if active_tab == "settings":
+            content = render_settings_content(config_lines, self._spinner_frame)
+        elif active_tab == "reference":
+            content = render_reference_content(self._spinner_frame)
+        else:  # shortcuts
+            content = render_shortcuts_content()
+
+        # === FOOTER ===
+        footer = Text.from_markup(
+            "[dim]Press [white on #30363d] Tab [/] next • "
+            "[white on #30363d] Esc [/] close[/]",
+            justify="center"
+        )
+
+        # === COMPOSE ===
+        full_content = Group(
+            tabs_table,
+            Rule(style="#30363d"),
+            "",
+            content,
+            "",
+            Rule(style="#30363d"),
+            footer,
+        )
+
+        return Panel(
+            full_content,
+            border_style="cyan",
+            box=ROUNDED,
+            padding=(1, 2),
+        )
 
     # --- Main Layout Engine ---
 
@@ -1019,13 +1089,9 @@ class Dashboard:
         # Footer
         layout["bottom"].update(self._generate_footer())
 
-        # Overlays
-        if self.state.show_config:
-            return _Overlay(layout, self._generate_config_overlay(), overlay_width=85)
-        elif self.state.show_legend:
-            return _Overlay(layout, self._generate_legend_overlay(), overlay_width=85)
-        elif self.state.show_menu:
-            return _Overlay(layout, self._generate_menu_overlay(), overlay_width=85)
+        # Overlay
+        if self.state.show_overlay:
+            return _Overlay(layout, self._generate_tabbed_overlay(), overlay_width=88)
         elif self.state.show_info:
              info = Panel(Align.center(self.state.info_message), title="NOTICE", border_style="yellow", width=60)
              return _Overlay(layout, info, overlay_width=60)
