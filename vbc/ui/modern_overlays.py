@@ -358,10 +358,10 @@ class ReferenceOverlay:
     
     def __init__(self, spinner_frame: int = 0):
         self.spinner_frame = spinner_frame
-    
-    def render(self) -> Panel:
-        """Renderuje panel Reference."""
-        
+
+    def _render_content(self) -> Group:
+        """Returns content without outer Panel or footer (for tabbed overlay)."""
+
         # === STATUS CODES ===
         status_left = Table(show_header=False, box=None, padding=(0, 1))
         status_left.add_column("Code", width=8)
@@ -490,25 +490,33 @@ class ReferenceOverlay:
         
         # === LAYOUT ===
         bottom_row = make_two_column_layout(spinners_card, gpu_card)
-        
-        # Footer hint
+
+        # Build content without footer (footer is in tabbed overlay now)
+        content = Group(
+            status_card,
+            "",
+            bottom_row,
+        )
+
+        return content
+
+    def render(self) -> Panel:
+        """Returns complete Panel with footer (for backward compatibility)."""
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
             f"[white on {COLORS['border']}] C [/] Settings • "
             f"[white on {COLORS['border']}] M [/] Shortcuts[/]",
             justify="center"
         )
-        
-        content = Group(
-            status_card,
-            "",
-            bottom_row,
+
+        content_with_footer = Group(
+            self._render_content(),
             "",
             footer
         )
-        
+
         return Panel(
-            content,
+            content_with_footer,
             title="[bold white]📖 REFERENCE[/]",
             subtitle=f"[{COLORS['dim']}][L] to toggle[/]",
             border_style=COLORS['accent_orange'],
@@ -531,10 +539,10 @@ class ShortcutsOverlay:
     - JOB CONTROL: S, R, </>, </>
     + Quick Reference z kolorowymi badge'ami
     """
-    
-    def render(self) -> Panel:
-        """Renderuje panel Shortcuts."""
-        
+
+    def _render_content(self) -> Group:
+        """Returns content without outer Panel or footer (for tabbed overlay)."""
+
         # === NAVIGATION ===
         nav_table = Table(show_header=False, box=None, padding=(0, 0))
         nav_table.add_column(width=14)
@@ -643,27 +651,35 @@ class ShortcutsOverlay:
         
         # === LAYOUT ===
         top_row = make_two_column_layout(nav_card, panels_card)
-        
-        # Footer hint
-        footer = Text.from_markup(
-            f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] C [/] Settings • "
-            f"[white on {COLORS['border']}] L [/] Reference[/]",
-            justify="center"
-        )
-        
+
+        # Build content without footer (footer is in tabbed overlay now)
         content = Group(
             top_row,
             "",
             jobs_card,
             "",
             quick_ref_card,
+        )
+
+        return content
+
+    def render(self) -> Panel:
+        """Returns complete Panel with footer (for backward compatibility)."""
+        footer = Text.from_markup(
+            f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
+            f"[white on {COLORS['border']}] C [/] Settings • "
+            f"[white on {COLORS['border']}] L [/] Reference[/]",
+            justify="center"
+        )
+
+        content_with_footer = Group(
+            self._render_content(),
             "",
             footer
         )
-        
+
         return Panel(
-            content,
+            content_with_footer,
             title="[bold white]⌨ SHORTCUTS[/]",
             subtitle=f"[{COLORS['dim']}][M] to toggle[/]",
             border_style=COLORS['accent_cyan'],
@@ -702,16 +718,12 @@ def render_settings_content(config_lines: List[str], spinner_frame: int = 0) -> 
 
 def render_reference_content(spinner_frame: int = 0) -> RenderableType:
     """Render Reference tab content (without outer Panel or footer)."""
-    # TODO: Refactor ReferenceOverlay to have _render_content() like SettingsOverlay
-    # For now, return the full Panel (will have nested borders in tabbed view)
-    return ReferenceOverlay(spinner_frame).render()
+    return ReferenceOverlay(spinner_frame)._render_content()
 
 
 def render_shortcuts_content() -> RenderableType:
     """Render Shortcuts tab content (without outer Panel or footer)."""
-    # TODO: Refactor ShortcutsOverlay to have _render_content() like SettingsOverlay
-    # For now, return the full Panel (will have nested borders in tabbed view)
-    return ShortcutsOverlay().render()
+    return ShortcutsOverlay()._render_content()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
