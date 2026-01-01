@@ -849,83 +849,18 @@ class Dashboard:
             return grid
 
     def _generate_config_overlay(self) -> Panel:
-        # Same as before
+        from vbc.ui.modern_overlays import generate_settings_overlay
         with self.state._lock:
             lines = self.state.config_lines[:]
-            
-        def _fmt(line):
-            if ": " not in line: return line
-            return re.sub(r"(^|[|(]\s*)([^:|()]+):\s+", lambda m: f"{m.group(1)}[grey70]{m.group(2)}:[/] ", line)
-            
-        content = "\n".join([_fmt(l) for l in lines]) if lines else "No config."
-        w = self.console.size.width
-        pw = min(max(40, int(w * 0.6)), max(20, w - 4))
-        return Panel(content, title="CONFIG", border_style="cyan", width=pw, style="white on black")
+        return generate_settings_overlay(lines, self._spinner_frame)
 
     def _generate_legend_overlay(self) -> Panel:
-        """Dashboard status legend."""
-        # Animated spinners
-        spinner_frames = "●○◉◎"
-        spinner_rotating = "◐◓◑◒"
-        normal_spinner = spinner_frames[self._spinner_frame % len(spinner_frames)]
-        rotating_spinner = spinner_rotating[self._spinner_frame % len(spinner_rotating)]
-
-        legend = [
-            "[red]fail[/]   : Current session errors (FFmpeg crash, no space)",
-            "[red]err[/]    : Historic errors (existing .err file found on disk)",
-            "[yellow]hw_cap[/] : Out of hardware encoder slots (NVENC sessions)",
-            "[yellow]skip[/]   : Skipped (already AV1 or camera filter mismatch)",
-            "[dim white]kept[/]   : Original kept (compression gain below threshold)",
-            "[dim white]small[/]  : Ignored (file smaller than min-size threshold)",
-            "[dim white]av1[/]    : Skipped (detected AV1 codec)",
-            "[dim white]cam[/]    : Skipped (camera model doesn't match filter)",
-            "",
-            "[green]✓[/] : Success | [red]✗[/] : Error | [dim]≡[/] : Kept | [red]⚡[/] : Interrupted",
-            "",
-            "[bold cyan]Active Jobs Spinners[/]",
-            f"  [green]{normal_spinner}[/] : Normal processing",
-            f"  [green]{rotating_spinner}[/] : Video rotation in progress",
-            "",
-            "[bold cyan]GPU Graph (Key: G)[/]",
-            "  [dim]Rotate metric:[/] temp → fan → pwr → gpu → mem",
-            "  [dim]Scales:[/]",
-            "    temp: 35°C..70°C (5°C/bin), ≥70°C = max",
-            "    pwr:  100W..400W linear, ≥400W = max",
-            "    %:    0..100% linear",
-            "  [dim]Symbols:[/]",
-            "    ▁▂▃▄▅▆▇█ = low..high value",
-            "    · = missing sample",
-            "  [dim]Time:[/] left=older, right=newer (5min window)",
-        ]
-        content = "\n".join(legend)
-        w = self.console.size.width
-        pw = min(max(65, int(w * 0.6)), max(20, w - 4))
-        return Panel(content, title="LEGEND", border_style="cyan", width=pw, style="white on black")
+        from vbc.ui.modern_overlays import generate_reference_overlay
+        return generate_reference_overlay(self._spinner_frame)
 
     def _generate_menu_overlay(self) -> Panel:
-        """Keyboard shortcuts menu."""
-        menu_items = [
-            "[bold cyan]Navigation & Control[/]",
-            "  [white]M[/]         Toggle this menu",
-            "  [white]Esc[/]       Close overlays",
-            "  [white]Ctrl+C[/]    Immediate interrupt & exit",
-            "",
-            "[bold cyan]Job Management[/]",
-            "  [white]S[/]         Shutdown toggle (graceful, press again to cancel)",
-            "  [white]‹ or ,[/]    Decrease thread count (-1)",
-            "  [white]› or .[/]    Increase thread count (+1)",
-            "  [white]R[/]         Refresh queue (re-scan for new files)",
-            "",
-            "[bold cyan]Information Panels[/]",
-            "  [white]C[/]         Toggle config panel",
-            "  [white]L[/]         Toggle legend panel (status symbols)",
-            "  [white]G[/]         Rotate GPU graph metric",
-            "                  [dim](temp → fan → pwr → gpu → mem)[/]",
-        ]
-        content = "\n".join(menu_items)
-        w = self.console.size.width
-        pw = min(max(65, int(w * 0.6)), max(20, w - 4))
-        return Panel(content, title="KEYBOARD SHORTCUTS", border_style="cyan", width=pw, style="white on black")
+        from vbc.ui.modern_overlays import generate_shortcuts_overlay
+        return generate_shortcuts_overlay()
 
     # --- Main Layout Engine ---
 
@@ -1086,11 +1021,11 @@ class Dashboard:
 
         # Overlays
         if self.state.show_config:
-            return _Overlay(layout, self._generate_config_overlay(), overlay_width=80)
+            return _Overlay(layout, self._generate_config_overlay(), overlay_width=85)
         elif self.state.show_legend:
-            return _Overlay(layout, self._generate_legend_overlay(), overlay_width=80)
+            return _Overlay(layout, self._generate_legend_overlay(), overlay_width=85)
         elif self.state.show_menu:
-            return _Overlay(layout, self._generate_menu_overlay(), overlay_width=80)
+            return _Overlay(layout, self._generate_menu_overlay(), overlay_width=85)
         elif self.state.show_info:
              info = Panel(Align.center(self.state.info_message), title="NOTICE", border_style="yellow", width=60)
              return _Overlay(layout, info, overlay_width=60)
