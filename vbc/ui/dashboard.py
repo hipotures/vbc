@@ -17,6 +17,7 @@ from rich._loop import loop_last
 from rich.text import Text
 from rich.rule import Rule
 from rich.box import ROUNDED, SIMPLE
+from rich.style import Style
 from vbc.ui.state import UIState
 from vbc.domain.models import JobStatus
 from vbc.ui.modern_overlays import (
@@ -109,10 +110,11 @@ def render_sparkline(
 
 class _Overlay:
     """Render overlay panel centered over a background renderable."""
-    def __init__(self, background, overlay, overlay_width: int):
+    def __init__(self, background, overlay, overlay_width: int, dim_background: bool = False):
         self.background = background
         self.overlay = overlay
         self.overlay_width = overlay_width
+        self.dim_background = dim_background
 
     def _slice_line(self, line, start: int, end: int):
         if start >= end:
@@ -147,6 +149,13 @@ class _Overlay:
         width, height = options.size
         bg_lines = console.render_lines(self.background, options, pad=True)
         bg_lines = Segment.set_shape(bg_lines, width, height)
+        if self.dim_background:
+            dim_style = Style(dim=True)
+            wash_style = Style(color="#5a5a5a")
+            bg_lines = [
+                list(Segment.apply_style(line, dim_style, post_style=wash_style))
+                for line in bg_lines
+            ]
         
         overlay_lines = console.render_lines(
             self.overlay,
@@ -1100,7 +1109,12 @@ class Dashboard:
         if self.state.show_overlay:
             w = self.console.size.width
             overlay_w = max(85, w - 10)  # Dynamic width, full console minus margins
-            return _Overlay(layout, self._generate_tabbed_overlay(), overlay_width=overlay_w)
+            return _Overlay(
+                layout,
+                self._generate_tabbed_overlay(),
+                overlay_width=overlay_w,
+                dim_background=True,
+            )
         elif self.state.show_info:
              info = Panel(Align.center(self.state.info_message), title="NOTICE", border_style="yellow", width=60)
              return _Overlay(layout, info, overlay_width=60)

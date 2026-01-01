@@ -164,31 +164,6 @@ class SettingsOverlay:
     
     def _render_content(self) -> Group:
         """Returns content without outer Panel or footer (for tabbed overlay)."""
-
-        # === HEADER ===
-        title_line = self.config_lines[0] if self.config_lines else "Video Batch Compression"
-        start_time = self._get("start", "")
-        
-        header = Table(show_header=False, box=None, expand=True, padding=0)
-        header.add_column(ratio=3)
-        header.add_column(justify="right", ratio=1)
-        header.add_row(
-            f"[bold white]{title_line}[/]",
-            f"[{COLORS['accent_green']}]● Active[/]"
-        )
-        if start_time:
-            header.add_row(
-                f"[{COLORS['muted']}]Started {start_time}[/]",
-                ""
-            )
-        
-        header_panel = Panel(
-            header,
-            border_style=COLORS['accent_green'],
-            box=ROUNDED,
-            padding=(0, 1),
-        )
-        
         # === ENCODING CARD ===
         encoding_data = [
             ("Encoder", self._get("encoder", "").split(" | ")[0] if "encoder" in self._parsed else "—"),
@@ -306,8 +281,6 @@ class SettingsOverlay:
         
         # Build content Group
         content = Group(
-            header_panel,
-            "",
             row1,
             "",
             row2,
