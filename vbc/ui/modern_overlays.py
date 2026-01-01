@@ -518,21 +518,32 @@ class ShortcutsOverlay:
     def _render_content(self) -> Group:
         """Returns content without outer Panel or footer (for tabbed overlay)."""
 
+        key_labels = [
+            "M", "Esc", "Ctrl+C",
+            "C", "L", "T", "D", "G",
+            "S", "R", "< ,", "> .",
+            "< >", "S", "R",
+        ]
+        badge_width = max(len(label) for label in key_labels)
+
+        def key_badge(label: str, color: str = COLORS['border']) -> str:
+            return f"[bold white on {color}] {label.center(badge_width)} [/]"
+
         # === NAVIGATION ===
         nav_table = Table(show_header=False, box=None, padding=(0, 0))
         nav_table.add_column(width=14)
         nav_table.add_column()
         
         nav_table.add_row(
-            f"[bold white on {COLORS['border']}]   M   [/]",
+            key_badge("M"),
             "Toggle this menu"
         )
         nav_table.add_row(
-            f"[bold white on {COLORS['border']}]  Esc  [/]",
+            key_badge("Esc"),
             "Close any overlay"
         )
         nav_table.add_row(
-            f"[bold white on {COLORS['border']}] Ctrl+C [/]",
+            key_badge("Ctrl+C"),
             "Immediate interrupt & exit"
         )
         
@@ -551,23 +562,23 @@ class ShortcutsOverlay:
         panels_table.add_column()
         
         panels_table.add_row(
-            f"[bold white on {COLORS['border']}]   C   [/]",
+            key_badge("C"),
             "Configuration details"
         )
         panels_table.add_row(
-            f"[bold white on {COLORS['border']}]   L   [/]",
+            key_badge("L"),
             "Legend & reference"
         )
         panels_table.add_row(
-            f"[bold white on {COLORS['border']}]   T   [/]",
+            key_badge("T"),
             "TUI settings"
         )
         panels_table.add_row(
-            f"[bold white on {COLORS['border']}]   D   [/]",
+            key_badge("D"),
             "Cycle overlay dim level"
         )
         panels_table.add_row(
-            f"[bold white on {COLORS['border']}]   G   [/]",
+            key_badge("G"),
             "Rotate GPU metric graph"
         )
         
@@ -588,15 +599,15 @@ class ShortcutsOverlay:
         jobs_table.add_column(ratio=1)
         
         jobs_table.add_row(
-            f"[bold white on {COLORS['border']}]   S   [/]",
+            key_badge("S"),
             "Shutdown toggle (graceful)",
-            f"[bold white on {COLORS['border']}]   R   [/]",
+            key_badge("R"),
             "Refresh queue (re-scan)"
         )
         jobs_table.add_row(
-            f"[bold white on {COLORS['border']}]  < ,  [/]",
+            key_badge("< ,"),
             "Decrease thread count",
-            f"[bold white on {COLORS['border']}]  > .  [/]",
+            key_badge("> ."),
             "Increase thread count"
         )
         
@@ -616,9 +627,9 @@ class ShortcutsOverlay:
         quick_ref.add_column(justify="center", ratio=1)
         
         quick_ref.add_row(
-            f"[bold white on {COLORS['accent_green']}] < > [/] Threads",
-            f"[bold white on {COLORS['warning_yellow']}]  S  [/] Shutdown",
-            f"[bold white on {COLORS['accent_blue']}]  R  [/] Refresh"
+            f"{key_badge('< >', COLORS['accent_green'])} Threads",
+            f"{key_badge('S', COLORS['warning_yellow'])} Shutdown",
+            f"{key_badge('R', COLORS['accent_blue'])} Refresh"
         )
         
         quick_ref_card = Panel(
