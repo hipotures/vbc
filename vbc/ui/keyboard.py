@@ -36,7 +36,7 @@ class HideConfig(Event):
 # New tabbed overlay events
 class ToggleOverlayTab(Event):
     """Event emitted to toggle overlay with optional tab selection."""
-    tab: Optional[str] = None  # "settings" | "reference" | "shortcuts" | None
+    tab: Optional[str] = None  # "settings" | "reference" | "shortcuts" | "tui" | None
 
 class CycleOverlayTab(Event):
     """Event emitted to cycle through overlay tabs."""
@@ -45,6 +45,10 @@ class CycleOverlayTab(Event):
 class CloseOverlay(Event):
     """Event emitted to close the overlay."""
     pass
+
+class CycleOverlayDim(Event):
+    """Event emitted to cycle overlay background dimming level."""
+    direction: int = 1  # 1=next, -1=previous
 
 class RotateGpuMetric(Event):
     """Event emitted when user rotates GPU sparkline metric (Key 'G')."""
@@ -92,8 +96,12 @@ class KeyboardListener:
                         self.event_bus.publish(ToggleOverlayTab(tab="reference"))
                     elif key in ('M', 'm'):
                         self.event_bus.publish(ToggleOverlayTab(tab="shortcuts"))
+                    elif key in ('T', 't'):
+                        self.event_bus.publish(ToggleOverlayTab(tab="tui"))
                     elif key == '\t':  # Tab key
                         self.event_bus.publish(CycleOverlayTab(direction=1))
+                    elif key in ('D', 'd'):
+                        self.event_bus.publish(CycleOverlayDim(direction=1))
                     elif key in ('G', 'g'):
                         self.event_bus.publish(RotateGpuMetric())
                     elif key == '\x1b':

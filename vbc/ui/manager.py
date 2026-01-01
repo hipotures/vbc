@@ -9,7 +9,7 @@ from vbc.domain.events import (
 )
 from vbc.ui.keyboard import (
     ThreadControlEvent, RequestShutdown, InterruptRequested,
-    ToggleOverlayTab, CycleOverlayTab, CloseOverlay, RotateGpuMetric
+    ToggleOverlayTab, CycleOverlayTab, CloseOverlay, CycleOverlayDim, RotateGpuMetric
 )
 
 class UIManager:
@@ -34,6 +34,7 @@ class UIManager:
         self.bus.subscribe(ToggleOverlayTab, self.on_toggle_overlay_tab)
         self.bus.subscribe(CycleOverlayTab, self.on_cycle_overlay_tab)
         self.bus.subscribe(CloseOverlay, self.on_close_overlay)
+        self.bus.subscribe(CycleOverlayDim, self.on_cycle_overlay_dim)
         self.bus.subscribe(RotateGpuMetric, self.on_rotate_gpu_metric)
         self.bus.subscribe(QueueUpdated, self.on_queue_updated)
         self.bus.subscribe(ActionMessage, self.on_action_message)
@@ -89,6 +90,14 @@ class UIManager:
     def on_close_overlay(self, event: CloseOverlay):
         """Handle overlay close."""
         self.state.close_overlay()
+
+    def on_cycle_overlay_dim(self, event: CycleOverlayDim):
+        """Cycle overlay background dimming level (TUI tab only)."""
+        with self.state._lock:
+            if not self.state.show_overlay or self.state.active_tab != "tui":
+                return
+        self.state.cycle_overlay_dim_level(event.direction)
+        self.state.set_last_action(f"TUI: Overlay dim {self.state.overlay_dim_level}")
 
     def on_rotate_gpu_metric(self, event: RotateGpuMetric):
         """Rotate GPU sparkline metric (temp → fan → pwr → gpu → mem)."""

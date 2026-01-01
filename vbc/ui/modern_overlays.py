@@ -1,15 +1,16 @@
 """
 VBC Modernized Overlays
 =======================
-Nowoczesny, estetyczny design dla paneli CONFIG, REFERENCE (dawniej LEGEND) i SHORTCUTS (dawniej MENU).
+Nowoczesny, estetyczny design dla paneli CONFIG, REFERENCE (dawniej LEGEND), SHORTCUTS (dawniej MENU) i TUI.
 Używa Rich library z kartami, tabelami i hierarchiczną strukturą.
 
 Koncepcja:
 - Settings (C) - konfiguracja sesji w kartach tematycznych
-- Reference (L) - legenda statusów i symboli  
+- Reference (L) - legenda statusów i symboli
 - Shortcuts (M) - skróty klawiszowe z podziałem funkcjonalnym
+- TUI (T) - ustawienia interfejsu terminalowego
 
-Wszystkie trzy panele zachowują 100% obecnej funkcjonalności, ale prezentują
+Wszystkie panele zachowują 100% obecnej funkcjonalności, ale prezentują
 ją w bardziej przejrzysty i nowoczesny sposób.
 """
 
@@ -57,6 +58,7 @@ ICONS = {
     'nav': '▸',
     'panels': '▸',
     'jobs': '▸',
+    'tui': '◈',
 }
 
 
@@ -557,6 +559,14 @@ class ShortcutsOverlay:
             "Legend & reference"
         )
         panels_table.add_row(
+            f"[bold white on {COLORS['border']}]   T   [/]",
+            "TUI settings"
+        )
+        panels_table.add_row(
+            f"[bold white on {COLORS['border']}]   D   [/]",
+            "Cycle overlay dim level"
+        )
+        panels_table.add_row(
             f"[bold white on {COLORS['border']}]   G   [/]",
             "Rotate GPU metric graph"
         )
@@ -662,6 +672,76 @@ class ShortcutsOverlay:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# TUI OVERLAY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TuiOverlay:
+    """Panel ustawien TUI - wyglad i zachowanie interfejsu."""
+
+    def __init__(self, dim_level: str = "mid"):
+        self.dim_level = dim_level
+
+    def _render_dim_levels(self) -> str:
+        levels = ["light", "mid", "dark"]
+        badges = []
+        for level in levels:
+            style = (
+                f"bold white on {COLORS['accent_green']}"
+                if level == self.dim_level
+                else f"white on {COLORS['border']}"
+            )
+            badges.append(f"[{style}] {level.upper()} [/]")
+        return " ".join(badges)
+
+    def _render_content(self) -> Group:
+        """Returns content without outer Panel or footer (for tabbed overlay)."""
+        options_table = Table(show_header=False, box=None, padding=(0, 1), expand=True)
+        options_table.add_column(style=COLORS['muted'], width=18)
+        options_table.add_column(ratio=1)
+        options_table.add_row(
+            "Overlay dim",
+            f"{self._render_dim_levels()}  [{COLORS['dim']}][D] cycle[/]",
+        )
+
+        options_card = make_card(
+            "APPEARANCE",
+            options_table,
+            icon=ICONS['tui'],
+            title_color=COLORS['accent_blue'],
+        )
+
+        hint = Text.from_markup(
+            f"[{COLORS['dim']}]Applies while the overlay is open[/]",
+            justify="center",
+        )
+
+        return Group(options_card, "", hint)
+
+    def render(self) -> Panel:
+        """Returns complete Panel with footer (for backward compatibility)."""
+        footer = Text.from_markup(
+            f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
+            f"[white on {COLORS['border']}] D [/] Dim level[/]",
+            justify="center",
+        )
+
+        content_with_footer = Group(
+            self._render_content(),
+            "",
+            footer,
+        )
+
+        return Panel(
+            content_with_footer,
+            title=f"[bold white]{ICONS['tui']} TUI[/]",
+            subtitle=f"[{COLORS['dim']}][T] to toggle[/]",
+            border_style=COLORS['accent_purple'],
+            box=ROUNDED,
+            padding=(1, 2),
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # INTEGRATION - metody do podmiany w klasie Dashboard
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -678,6 +758,11 @@ def generate_reference_overlay(spinner_frame: int = 0) -> Panel:
 def generate_shortcuts_overlay() -> Panel:
     """Generuje overlay Shortcuts (dawniej Menu) dla Dashboard."""
     return ShortcutsOverlay().render()
+
+
+def generate_tui_overlay(dim_level: str = "mid") -> Panel:
+    """Generuje overlay TUI dla Dashboard."""
+    return TuiOverlay(dim_level).render()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -699,6 +784,11 @@ def render_shortcuts_content() -> RenderableType:
     return ShortcutsOverlay()._render_content()
 
 
+def render_tui_content(dim_level: str = "mid") -> RenderableType:
+    """Render TUI tab content (without outer Panel or footer)."""
+    return TuiOverlay(dim_level)._render_content()
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # DASHBOARD INTEGRATION SNIPPET (UPDATED FOR TABBED OVERLAY)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -708,11 +798,13 @@ Tabbed overlay integration is complete. The dashboard now uses:
 - render_settings_content() for Settings tab content
 - render_reference_content() for Reference tab content
 - render_shortcuts_content() for Shortcuts tab content
+- render_tui_content() for TUI tab content
 
 Old standalone overlay functions (for backward compatibility):
 - generate_settings_overlay() - returns complete Panel
 - generate_reference_overlay() - returns complete Panel
 - generate_shortcuts_overlay() - returns complete Panel
+- generate_tui_overlay() - returns complete Panel
 """
 
 

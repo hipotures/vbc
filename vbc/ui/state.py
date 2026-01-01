@@ -9,7 +9,8 @@ class UIState:
     """Thread-safe state manager for the interactive UI."""
 
     # Tab order for cycling (shortcuts first as it's the main menu)
-    OVERLAY_TABS: ClassVar[List[str]] = ["shortcuts", "settings", "reference"]
+    OVERLAY_TABS: ClassVar[List[str]] = ["shortcuts", "settings", "tui", "reference"]
+    OVERLAY_DIM_LEVELS: ClassVar[List[str]] = ["light", "mid", "dark"]
 
     def __init__(self, activity_feed_max_items: int = 5):
         self._lock = threading.RLock()
@@ -55,7 +56,8 @@ class UIState:
         self.ui_title = "VBC"
         # Tabbed overlay state
         self.show_overlay = False
-        self.active_tab = "shortcuts"  # "shortcuts" | "settings" | "reference"
+        self.active_tab = "shortcuts"  # "shortcuts" | "settings" | "tui" | "reference"
+        self.overlay_dim_level = "mid"  # "light" | "mid" | "dark"
         self.show_info = False
         self.info_message = ""
         self.config_lines: List[str] = []
@@ -176,3 +178,10 @@ class UIState:
             current_idx = self.OVERLAY_TABS.index(self.active_tab)
             next_idx = (current_idx + direction) % len(self.OVERLAY_TABS)
             self.active_tab = self.OVERLAY_TABS[next_idx]
+
+    def cycle_overlay_dim_level(self, direction: int = 1) -> None:
+        """Cycle overlay dim level. direction: 1=next, -1=previous."""
+        with self._lock:
+            current_idx = self.OVERLAY_DIM_LEVELS.index(self.overlay_dim_level)
+            next_idx = (current_idx + direction) % len(self.OVERLAY_DIM_LEVELS)
+            self.overlay_dim_level = self.OVERLAY_DIM_LEVELS[next_idx]

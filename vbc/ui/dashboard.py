@@ -24,6 +24,7 @@ from vbc.ui.modern_overlays import (
     render_settings_content,
     render_reference_content,
     render_shortcuts_content,
+    render_tui_content,
 )
 
 # Layout Constants
@@ -110,11 +111,11 @@ def render_sparkline(
 
 class _Overlay:
     """Render overlay panel centered over a background renderable."""
-    def __init__(self, background, overlay, overlay_width: int, dim_background: bool = False):
+    def __init__(self, background, overlay, overlay_width: int, dim_level: Optional[str] = None):
         self.background = background
         self.overlay = overlay
         self.overlay_width = overlay_width
-        self.dim_background = dim_background
+        self.dim_level = dim_level
 
     def _slice_line(self, line, start: int, end: int):
         if start >= end:
@@ -149,9 +150,14 @@ class _Overlay:
         width, height = options.size
         bg_lines = console.render_lines(self.background, options, pad=True)
         bg_lines = Segment.set_shape(bg_lines, width, height)
-        if self.dim_background:
+        if self.dim_level:
             dim_style = Style(dim=True)
-            wash_style = Style(color="#5a5a5a")
+            wash_color = {
+                "light": "#6a6a6a",
+                "mid": "#5a5a5a",
+                "dark": "#2f2f2f",
+            }.get(self.dim_level, "#5a5a5a")
+            wash_style = Style(color=wash_color)
             bg_lines = [
                 list(Segment.apply_style(line, dim_style, post_style=wash_style))
                 for line in bg_lines
@@ -871,6 +877,7 @@ class Dashboard:
         with self.state._lock:
             active_tab = self.state.active_tab
             config_lines = self.state.config_lines[:]
+            dim_level = self.state.overlay_dim_level
 
         # Get console dimensions for responsive sizing
         w = self.console.size.width
@@ -878,6 +885,7 @@ class Dashboard:
 
         # === TAB HEADER ===
         tabs_table = Table(show_header=False, box=None, expand=True, padding=0)
+        tabs_table.add_column(ratio=1)
         tabs_table.add_column(ratio=1)
         tabs_table.add_column(ratio=1)
         tabs_table.add_column(ratio=1)
@@ -890,9 +898,10 @@ class Dashboard:
 
         shortcuts_text, shortcuts_border, shortcuts_box = tab_style("shortcuts")
         settings_text, settings_border, settings_box = tab_style("settings")
+        tui_text, tui_border, tui_box = tab_style("tui")
         reference_text, reference_border, reference_box = tab_style("reference")
 
-        # Tab order: Shortcuts (M), Settings (C), Reference (L)
+        # Tab order: Shortcuts (M), Settings (C), TUI (T), Reference (L)
         tabs_table.add_row(
             Panel(
                 f"[{shortcuts_text}]⌨ Shortcuts[/] [{shortcuts_text}][M][/]",
@@ -904,6 +913,12 @@ class Dashboard:
                 f"[{settings_text}]⚙ Settings[/] [{settings_text}][C][/]",
                 border_style=settings_border,
                 box=settings_box,
+                padding=(0, 1),
+            ),
+            Panel(
+                f"[{tui_text}]◈ TUI[/] [{tui_text}][T][/]",
+                border_style=tui_border,
+                box=tui_box,
                 padding=(0, 1),
             ),
             Panel(
@@ -919,6 +934,8 @@ class Dashboard:
             content = render_shortcuts_content()
         elif active_tab == "settings":
             content = render_settings_content(config_lines, self._spinner_frame)
+        elif active_tab == "tui":
+            content = render_tui_content(dim_level)
         else:  # reference
             content = render_reference_content(self._spinner_frame)
 
@@ -1113,7 +1130,7 @@ class Dashboard:
                 layout,
                 self._generate_tabbed_overlay(),
                 overlay_width=overlay_w,
-                dim_background=True,
+                dim_level=self.state.overlay_dim_level,
             )
         elif self.state.show_info:
              info = Panel(Align.center(self.state.info_message), title="NOTICE", border_style="yellow", width=60)
