@@ -8,8 +8,8 @@ from vbc.domain.models import CompressionJob
 class UIState:
     """Thread-safe state manager for the interactive UI."""
 
-    # Tab order for cycling
-    OVERLAY_TABS: ClassVar[List[str]] = ["settings", "reference", "shortcuts"]
+    # Tab order for cycling (shortcuts first as it's the main menu)
+    OVERLAY_TABS: ClassVar[List[str]] = ["shortcuts", "settings", "reference"]
 
     def __init__(self, activity_feed_max_items: int = 5):
         self._lock = threading.RLock()
@@ -55,7 +55,7 @@ class UIState:
         self.ui_title = "VBC"
         # Tabbed overlay state
         self.show_overlay = False
-        self.active_tab = "settings"  # "settings" | "reference" | "shortcuts"
+        self.active_tab = "shortcuts"  # "shortcuts" | "settings" | "reference"
         self.show_info = False
         self.info_message = ""
         self.config_lines: List[str] = []

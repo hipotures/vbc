@@ -879,11 +879,18 @@ class Dashboard:
                 return ("bold white", "green", ROUNDED)
             return ("dim", "dim", SIMPLE)
 
+        shortcuts_text, shortcuts_border, shortcuts_box = tab_style("shortcuts")
         settings_text, settings_border, settings_box = tab_style("settings")
         reference_text, reference_border, reference_box = tab_style("reference")
-        shortcuts_text, shortcuts_border, shortcuts_box = tab_style("shortcuts")
 
+        # Tab order: Shortcuts (M), Settings (C), Reference (L)
         tabs_table.add_row(
+            Panel(
+                f"[{shortcuts_text}]⌨ Shortcuts[/] [{shortcuts_text}][M][/]",
+                border_style=shortcuts_border,
+                box=shortcuts_box,
+                padding=(0, 1),
+            ),
             Panel(
                 f"[{settings_text}]⚙ Settings[/] [{settings_text}][C][/]",
                 border_style=settings_border,
@@ -896,21 +903,15 @@ class Dashboard:
                 box=reference_box,
                 padding=(0, 1),
             ),
-            Panel(
-                f"[{shortcuts_text}]⌨ Shortcuts[/] [{shortcuts_text}][M][/]",
-                border_style=shortcuts_border,
-                box=shortcuts_box,
-                padding=(0, 1),
-            ),
         )
 
         # === ACTIVE TAB CONTENT ===
-        if active_tab == "settings":
-            content = render_settings_content(config_lines, self._spinner_frame)
-        elif active_tab == "reference":
-            content = render_reference_content(self._spinner_frame)
-        else:  # shortcuts
+        if active_tab == "shortcuts":
             content = render_shortcuts_content()
+        elif active_tab == "settings":
+            content = render_settings_content(config_lines, self._spinner_frame)
+        else:  # reference
+            content = render_reference_content(self._spinner_frame)
 
         # === FOOTER ===
         footer = Text.from_markup(
