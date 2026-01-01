@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 from vbc.infrastructure.event_bus import EventBus
 from vbc.ui.state import UIState
 from vbc.domain.events import (
@@ -7,6 +8,7 @@ from vbc.domain.events import (
     JobProgressUpdated, HardwareCapabilityExceeded, QueueUpdated,
     ActionMessage, ProcessingFinished
 )
+from vbc.config.input_dirs import STATUS_OK
 from vbc.ui.keyboard import (
     ThreadControlEvent, RequestShutdown, InterruptRequested,
     ToggleOverlayTab, CycleOverlayTab, CloseOverlay, CycleOverlayDim, RotateGpuMetric
@@ -182,9 +184,42 @@ class UIManager:
                     break
 
     def on_queue_updated(self, event: QueueUpdated):
+        pending_files = list(event.pending_files)
         with self.state._lock:
             # Store VideoFile objects (not just paths) to preserve metadata
-            self.state.pending_files = list(event.pending_files)
+            self.state.pending_files = pending_files
+            dir_stats = list(self.state.io_input_dir_stats)
+
+        if not dir_stats:
+            return
+
+        dir_paths = []
+        for status, entry, _, _ in dir_stats:
+            dir_paths.append((status, entry, Path(entry)))
+
+        counts = {entry: [0, 0] for _, entry, _ in dir_paths}
+        for vf in pending_files:
+            for status, entry, dir_path in dir_paths:
+                if status != STATUS_OK:
+                    continue
+                try:
+                    vf.path.relative_to(dir_path)
+                except ValueError:
+                    continue
+                counts[entry][0] += 1
+                counts[entry][1] += vf.size_bytes
+                break
+
+        new_stats = []
+        for status, entry, _ in dir_paths:
+            if status != STATUS_OK:
+                new_stats.append((status, entry, None, None))
+                continue
+            count, size_bytes = counts.get(entry, [0, 0])
+            new_stats.append((status, entry, count, size_bytes))
+
+        with self.state._lock:
+            self.state.io_input_dir_stats = new_stats
 
     def on_action_message(self, event: ActionMessage):
         """Handle user action feedback messages (like old vbc.py)."""
