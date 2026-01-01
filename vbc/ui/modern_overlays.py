@@ -397,9 +397,15 @@ class IoOverlay:
             return table
         for idx, (status, entry, file_count, size_bytes) in enumerate(self.input_dir_stats, start=1):
             icon = render_status_icon(status).rstrip()
+            is_empty = file_count == 0
+            row_style = COLORS["dim"] if is_empty else None
             label = f"{icon} {idx}. {entry}"
             count_str = "—" if file_count is None else str(file_count)
             size_str = format_size(size_bytes)
+            if row_style:
+                label = f"[{row_style}]{label}[/]"
+                count_str = f"[{row_style}]{count_str}[/]"
+                size_str = f"[{row_style}]{size_str}[/]"
             table.add_row(label, count_str, size_str)
         return table
 
