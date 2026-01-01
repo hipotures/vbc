@@ -159,7 +159,8 @@ class _Overlay:
 
         overlay_height = len(overlay_lines)
         left = max((width - self.overlay_width) // 2, 0)
-        top = max((height - overlay_height) // 2, 0)
+        # Align to top instead of center to prevent overflow on small terminals
+        top = 1  # Small margin from top
 
         for idx, overlay_line in enumerate(overlay_lines):
             target_row = top + idx
@@ -856,11 +857,15 @@ class Dashboard:
             return grid
 
     def _generate_tabbed_overlay(self) -> Panel:
-        """Generate unified tabbed overlay."""
+        """Generate unified tabbed overlay with dynamic width."""
 
         with self.state._lock:
             active_tab = self.state.active_tab
             config_lines = self.state.config_lines[:]
+
+        # Get console dimensions for responsive sizing
+        w = self.console.size.width
+        pw = max(85, w - 10)  # Use full width minus small margins
 
         # === TAB HEADER ===
         tabs_table = Table(show_header=False, box=None, expand=True, padding=0)
@@ -930,6 +935,7 @@ class Dashboard:
             border_style="cyan",
             box=ROUNDED,
             padding=(1, 2),
+            width=pw,  # Dynamic width
         )
 
     # --- Main Layout Engine ---
@@ -1091,7 +1097,9 @@ class Dashboard:
 
         # Overlay
         if self.state.show_overlay:
-            return _Overlay(layout, self._generate_tabbed_overlay(), overlay_width=88)
+            w = self.console.size.width
+            overlay_w = max(85, w - 10)  # Dynamic width, full console minus margins
+            return _Overlay(layout, self._generate_tabbed_overlay(), overlay_width=overlay_w)
         elif self.state.show_info:
              info = Panel(Align.center(self.state.info_message), title="NOTICE", border_style="yellow", width=60)
              return _Overlay(layout, info, overlay_width=60)
