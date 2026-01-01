@@ -24,6 +24,7 @@ from vbc.ui.modern_overlays import (
     render_settings_content,
     render_reference_content,
     render_shortcuts_content,
+    render_io_content,
     render_tui_content,
 )
 
@@ -878,6 +879,15 @@ class Dashboard:
             active_tab = self.state.active_tab
             config_lines = self.state.config_lines[:]
             dim_level = self.state.overlay_dim_level
+            input_dir_stats = self.state.io_input_dir_stats[:]
+            output_dir_lines = self.state.io_output_dir_lines[:]
+            errors_dir_lines = self.state.io_errors_dir_lines[:]
+            suffix_output_dirs = self.state.io_suffix_output_dirs
+            suffix_errors_dirs = self.state.io_suffix_errors_dirs
+            queue_sort = self.state.io_queue_sort
+            queue_seed = self.state.io_queue_seed
+            log_path = self.state.log_path
+            debug_enabled = self.state.debug_enabled
 
         # Get console dimensions for responsive sizing
         w = self.console.size.width
@@ -885,6 +895,7 @@ class Dashboard:
 
         # === TAB HEADER ===
         tabs_table = Table(show_header=False, box=None, expand=True, padding=0)
+        tabs_table.add_column(ratio=1)
         tabs_table.add_column(ratio=1)
         tabs_table.add_column(ratio=1)
         tabs_table.add_column(ratio=1)
@@ -898,10 +909,11 @@ class Dashboard:
 
         shortcuts_text, shortcuts_border, shortcuts_box = tab_style("shortcuts")
         settings_text, settings_border, settings_box = tab_style("settings")
+        io_text, io_border, io_box = tab_style("io")
         tui_text, tui_border, tui_box = tab_style("tui")
         reference_text, reference_border, reference_box = tab_style("reference")
 
-        # Tab order: Shortcuts (M), Settings (C), TUI (T), Reference (L)
+        # Tab order: Shortcuts (M), Settings (C), I/O (F), TUI (T), Reference (L)
         tabs_table.add_row(
             Panel(
                 f"[{shortcuts_text}]⌨ Shortcuts[/] [{shortcuts_text}][M][/]",
@@ -913,6 +925,12 @@ class Dashboard:
                 f"[{settings_text}]⚙ Settings[/] [{settings_text}][C][/]",
                 border_style=settings_border,
                 box=settings_box,
+                padding=(0, 1),
+            ),
+            Panel(
+                f"[{io_text}]📁 I/O[/] [{io_text}][F][/]",
+                border_style=io_border,
+                box=io_box,
                 padding=(0, 1),
             ),
             Panel(
@@ -933,7 +951,18 @@ class Dashboard:
         if active_tab == "shortcuts":
             content = render_shortcuts_content()
         elif active_tab == "settings":
-            content = render_settings_content(config_lines, self._spinner_frame)
+            content = render_settings_content(config_lines, self._spinner_frame, log_path, debug_enabled)
+        elif active_tab == "io":
+            content = render_io_content(
+                config_lines,
+                input_dir_stats,
+                output_dir_lines,
+                errors_dir_lines,
+                suffix_output_dirs,
+                suffix_errors_dirs,
+                queue_sort,
+                queue_seed,
+            )
         elif active_tab == "tui":
             content = render_tui_content(dim_level)
         else:  # reference

@@ -36,7 +36,7 @@ class HideConfig(Event):
 # New tabbed overlay events
 class ToggleOverlayTab(Event):
     """Event emitted to toggle overlay with optional tab selection."""
-    tab: Optional[str] = None  # "settings" | "reference" | "shortcuts" | "tui" | None
+    tab: Optional[str] = None  # "settings" | "io" | "reference" | "shortcuts" | "tui" | None
 
 class CycleOverlayTab(Event):
     """Event emitted to cycle through overlay tabs."""
@@ -96,6 +96,8 @@ class KeyboardListener:
                         self.event_bus.publish(ToggleOverlayTab(tab="reference"))
                     elif key in ('M', 'm'):
                         self.event_bus.publish(ToggleOverlayTab(tab="shortcuts"))
+                    elif key in ('F', 'f'):
+                        self.event_bus.publish(ToggleOverlayTab(tab="io"))
                     elif key in ('T', 't'):
                         self.event_bus.publish(ToggleOverlayTab(tab="tui"))
                     elif key == '\t':  # Tab key

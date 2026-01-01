@@ -2,14 +2,14 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from collections import deque
-from typing import List, Optional, Dict, Any, ClassVar
+from typing import List, Optional, Dict, Any, ClassVar, Tuple
 from vbc.domain.models import CompressionJob
 
 class UIState:
     """Thread-safe state manager for the interactive UI."""
 
     # Tab order for cycling (shortcuts first as it's the main menu)
-    OVERLAY_TABS: ClassVar[List[str]] = ["shortcuts", "settings", "tui", "reference"]
+    OVERLAY_TABS: ClassVar[List[str]] = ["shortcuts", "settings", "io", "tui", "reference"]
     OVERLAY_DIM_LEVELS: ClassVar[List[str]] = ["light", "mid", "dark"]
 
     def __init__(self, activity_feed_max_items: int = 5):
@@ -56,11 +56,20 @@ class UIState:
         self.ui_title = "VBC"
         # Tabbed overlay state
         self.show_overlay = False
-        self.active_tab = "shortcuts"  # "shortcuts" | "settings" | "tui" | "reference"
+        self.active_tab = "shortcuts"  # "shortcuts" | "settings" | "io" | "tui" | "reference"
         self.overlay_dim_level = "mid"  # "light" | "mid" | "dark"
         self.show_info = False
         self.info_message = ""
         self.config_lines: List[str] = []
+        self.io_input_dir_stats: List[Tuple[str, str, Optional[int], Optional[int]]] = []
+        self.io_output_dir_lines: List[str] = []
+        self.io_errors_dir_lines: List[str] = []
+        self.io_suffix_output_dirs: Optional[str] = None
+        self.io_suffix_errors_dirs: Optional[str] = None
+        self.io_queue_sort: str = "name"
+        self.io_queue_seed: Optional[int] = None
+        self.log_path: Optional[str] = None
+        self.debug_enabled: bool = False
         self.processing_start_time: Optional[datetime] = None
 
         self.last_action: str = ""

@@ -68,6 +68,11 @@ def _can_write_output_dir_path(output_dir: Path) -> bool:
     return os.access(output_dir.parent, os.W_OK | os.X_OK)
 
 
+def can_write_output_dir_path(output_dir: Path) -> bool:
+    """Public wrapper for output/errors dir writability check."""
+    return _can_write_output_dir_path(output_dir)
+
+
 def normalize_output_dir_entries(entries: List[str]) -> List[str]:
     return normalize_input_dir_entries(entries)
 

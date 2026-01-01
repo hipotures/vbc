@@ -1,13 +1,14 @@
 """
 VBC Modernized Overlays
 =======================
-Nowoczesny, estetyczny design dla paneli CONFIG, REFERENCE (dawniej LEGEND), SHORTCUTS (dawniej MENU) i TUI.
+Nowoczesny, estetyczny design dla paneli CONFIG, REFERENCE (dawniej LEGEND), SHORTCUTS (dawniej MENU), I/O i TUI.
 Używa Rich library z kartami, tabelami i hierarchiczną strukturą.
 
 Koncepcja:
 - Settings (C) - konfiguracja sesji w kartach tematycznych
 - Reference (L) - legenda statusów i symboli
 - Shortcuts (M) - skróty klawiszowe z podziałem funkcjonalnym
+- I/O (F) - foldery i ustawienia kolejki
 - TUI (T) - ustawienia interfejsu terminalowego
 
 Wszystkie panele zachowują 100% obecnej funkcjonalności, ale prezentują
@@ -15,7 +16,7 @@ ją w bardziej przejrzysty i nowoczesny sposób.
 """
 
 import re
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from rich.console import Console, Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -23,6 +24,7 @@ from rich.text import Text
 from rich.align import Align
 from rich.rule import Rule
 from rich.box import ROUNDED, SIMPLE, MINIMAL, HEAVY_HEAD
+from vbc.config.input_dirs import render_status_icon
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -52,6 +54,7 @@ ICONS = {
     'io': '📁',
     'quality': '🎯',
     'metadata': '📋',
+    'logging': '📝',
     'status': '◆',
     'spinners': '◈',
     'gpu': '◈',
@@ -127,6 +130,32 @@ def make_shortcut_row(key: str, description: str, key_color: str = "white") -> T
     return table
 
 
+def parse_config_lines(lines: List[str]) -> dict:
+    """Parsuje config_lines do słownika."""
+    result = {}
+    for line in lines:
+        if ": " in line:
+            parts = line.split(": ", 1)
+            key = parts[0].strip()
+            value = parts[1].strip() if len(parts) > 1 else ""
+            result[key.lower().replace(" ", "_")] = value
+    return result
+
+
+def format_size(size_bytes: Optional[int]) -> str:
+    """Format size: 123B, 1.2KB, 45.1MB, 3.2GB."""
+    if size_bytes is None:
+        return "—"
+    if size_bytes == 0:
+        return "0B"
+    size = float(size_bytes)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024.0:
+            return f"{size:.1f}{unit}"
+        size /= 1024.0
+    return f"{size:.1f}PB"
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # SETTINGS OVERLAY (dawniej CONFIG)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -138,27 +167,23 @@ class SettingsOverlay:
     Karty:
     - ENCODING: encoder, preset, quality, audio, fallback
     - PROCESSING: threads, prefetch, queue sort, cpu threads
-    - INPUT/OUTPUT: folders, extensions, output format, min size
     - QUALITY & FILTERS: dynamic CQ, camera filter, skip AV1, rotation
-    - METADATA & DEBUG: exiftool, analysis, autorotate, debug flags
+    - LOGGING: log path, debug flags
+    - METADATA & CLEANUP: exiftool, analysis, autorotate, cleanup flags
     """
     
-    def __init__(self, config_lines: List[str], spinner_frame: int = 0):
+    def __init__(
+        self,
+        config_lines: List[str],
+        spinner_frame: int = 0,
+        log_path: Optional[str] = None,
+        debug_enabled: bool = False,
+    ):
         self.config_lines = config_lines
         self.spinner_frame = spinner_frame
-        self._parsed = self._parse_config(config_lines)
-    
-    def _parse_config(self, lines: List[str]) -> dict:
-        """Parsuje config_lines do słownika."""
-        result = {}
-        for line in lines:
-            if ": " in line:
-                # Handle complex patterns like "Dynamic CQ: DJI:40, DC-GH7:35"
-                parts = line.split(": ", 1)
-                key = parts[0].strip()
-                value = parts[1].strip() if len(parts) > 1 else ""
-                result[key.lower().replace(" ", "_")] = value
-        return result
+        self.log_path = log_path
+        self.debug_enabled = debug_enabled
+        self._parsed = parse_config_lines(config_lines)
     
     def _get(self, key: str, default: str = "—") -> str:
         """Pobiera wartość z parsowanej konfiguracji."""
@@ -202,21 +227,17 @@ class SettingsOverlay:
             title_color=COLORS['accent_blue']
         )
         
-        # === INPUT/OUTPUT CARD ===
-        input_folders = self._get("input_folders", "1")
-        extensions = self._get("extensions", ".mp4, .mov, .avi")
-        min_size = self._get("min_size", "1.0MB").split(" | ")[0] if "min_size" in self._parsed else "1.0MB"
-        
-        io_data = [
-            ("Input Folders", input_folders),
-            ("Extensions", extensions.split(" → ")[0] if " → " in extensions else extensions),
-            ("Output", extensions.split(" → ")[-1] if " → " in extensions else ".mp4"),
-            ("Min Size", min_size),
+        # === LOGGING CARD ===
+        log_path = self.log_path or "—"
+        debug = "True" if self.debug_enabled else "False"
+        logging_data = [
+            ("Log Path", log_path),
+            ("Debug", debug),
         ]
-        io_card = make_card(
-            "INPUT / OUTPUT",
-            make_kv_table(io_data, {"Output"}),
-            icon=ICONS['io'],
+        logging_card = make_card(
+            "LOGGING",
+            make_kv_table(logging_data, {"Log Path"}),
+            icon=ICONS['logging'],
             title_color=COLORS['accent_blue']
         )
         
@@ -239,14 +260,13 @@ class SettingsOverlay:
             title_color=COLORS['accent_blue']
         )
         
-        # === METADATA & DEBUG CARD (full width) ===
+        # === METADATA & CLEANUP CARD (full width) ===
         metadata = self._get("metadata", "")
         analysis = "True" if "(Analysis: True)" in metadata else "False"
         metadata_method = metadata.split(" (")[0] if " (" in metadata else metadata
         autorotate = self._get("autorotate", "0 rules")
         clean_errors = self._get("clean_errors", "").split(" | ")[0] if "clean_errors" in self._parsed else "False"
         strip_unicode = self._get("clean_errors", "").split("Strip Unicode: ")[-1] if "Strip Unicode:" in self._get("clean_errors", "") else "True"
-        debug = self._get("debug_logging", "False")
         
         meta_table = Table(show_header=False, box=None, padding=(0, 1), expand=True)
         meta_table.add_column(style=COLORS['muted'], ratio=1)
@@ -264,11 +284,11 @@ class SettingsOverlay:
         meta_table.add_row(
             "Clean Errors", f"[{COLORS['dim'] if clean_errors == 'False' else 'white'}]{clean_errors}[/]",
             "Strip Unicode", f"[white]{strip_unicode}[/]",
-            "Debug", f"[white]{debug}[/]"
+            "", ""
         )
         
         metadata_card = make_card(
-            "METADATA & DEBUG",
+            "METADATA & CLEANUP",
             meta_table,
             icon=ICONS['metadata'],
             title_color=COLORS['accent_blue']
@@ -277,8 +297,8 @@ class SettingsOverlay:
         # === LAYOUT ===
         # Row 1: Encoding + Processing (side by side)
         row1 = make_two_column_layout(encoding_card, processing_card)
-        # Row 2: I/O + Quality (side by side)
-        row2 = make_two_column_layout(io_card, quality_card)
+        # Row 2: Logging + Quality (side by side)
+        row2 = make_two_column_layout(logging_card, quality_card)
         # Row 3: Metadata (full width)
         
         # Build content Group
@@ -312,6 +332,163 @@ class SettingsOverlay:
             title="[bold white]⚙ SETTINGS[/]",
             subtitle=f"[{COLORS['dim']}][C] to toggle[/]",
             border_style=COLORS['accent_green'],
+            box=ROUNDED,
+            padding=(1, 2),
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# I/O OVERLAY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class IoOverlay:
+    """Panel I/O - foldery i ustawienia kolejkowania."""
+
+    def __init__(
+        self,
+        config_lines: List[str],
+        input_dir_stats: List[Tuple[str, str, Optional[int], Optional[int]]],
+        output_dir_lines: List[str],
+        errors_dir_lines: List[str],
+        suffix_output_dirs: Optional[str],
+        suffix_errors_dirs: Optional[str],
+        queue_sort: str,
+        queue_seed: Optional[int],
+    ):
+        self.config_lines = config_lines
+        self.input_dir_stats = input_dir_stats
+        self.output_dir_lines = output_dir_lines
+        self.errors_dir_lines = errors_dir_lines
+        self.suffix_output_dirs = suffix_output_dirs
+        self.suffix_errors_dirs = suffix_errors_dirs
+        self.queue_sort = queue_sort
+        self.queue_seed = queue_seed
+        self._parsed = parse_config_lines(config_lines)
+
+    def _get(self, key: str, default: str = "—") -> str:
+        """Pobiera wartosc z parsowanej konfiguracji."""
+        return self._parsed.get(key, default)
+
+    def _render_dir_card(self, title: str, lines: List[str], suffix: Optional[str]) -> Panel:
+        content_lines: List[str] = []
+        if suffix:
+            content_lines.append(f"[{COLORS['muted']}]Suffix[/]: [white]{suffix}[/]")
+            if lines:
+                content_lines.append("")
+        if lines:
+            content_lines.extend(lines)
+        elif not suffix:
+            content_lines.append(f"[{COLORS['dim']}]None[/]")
+        return make_card(
+            title,
+            "\n".join(content_lines),
+            icon=ICONS['io'],
+            title_color=COLORS['accent_blue'],
+        )
+
+    def _render_input_dir_table(self) -> Table:
+        table = Table(show_header=False, box=None, padding=(0, 1), expand=True)
+        table.add_column(ratio=1)
+        table.add_column(justify="right", no_wrap=True)
+        table.add_column(justify="right", no_wrap=True)
+        table.add_row("", f"[{COLORS['dim']}]Files[/]", f"[{COLORS['dim']}]Size[/]")
+        if not self.input_dir_stats:
+            table.add_row(f"[{COLORS['dim']}]None[/]", "", "")
+            return table
+        for idx, (status, entry, file_count, size_bytes) in enumerate(self.input_dir_stats, start=1):
+            icon = render_status_icon(status).rstrip()
+            label = f"{icon} {idx}. {entry}"
+            count_str = "—" if file_count is None else str(file_count)
+            size_str = format_size(size_bytes)
+            table.add_row(label, count_str, size_str)
+        return table
+
+    def _render_content(self) -> Group:
+        """Returns content without outer Panel or footer (for tabbed overlay)."""
+        # === INPUT/OUTPUT CARD ===
+        input_folders = self._get("input_folders", "1")
+        extensions = self._get("extensions", ".mp4, .mov, .avi")
+        min_size = self._get("min_size", "1.0MB").split(" | ")[0] if "min_size" in self._parsed else "1.0MB"
+
+        io_data = [
+            ("Input Folders", input_folders),
+            ("Extensions", extensions.split(" → ")[0] if " → " in extensions else extensions),
+            ("Output", extensions.split(" → ")[-1] if " → " in extensions else ".mp4"),
+            ("Min Size", min_size),
+        ]
+        io_card = make_card(
+            "INPUT / OUTPUT",
+            make_kv_table(io_data, {"Output"}),
+            icon=ICONS['io'],
+            title_color=COLORS['accent_blue']
+        )
+
+        # === QUEUE CARD ===
+        queue_sort = self.queue_sort or "—"
+        queue_seed = str(self.queue_seed) if self.queue_seed is not None else "—"
+        queue_data = [
+            ("Queue Sort", queue_sort),
+            ("Queue Seed", queue_seed),
+        ]
+        queue_card = make_card(
+            "QUEUE",
+            make_kv_table(queue_data, {"Queue Sort"}),
+            icon=ICONS['processing'],
+            title_color=COLORS['accent_blue']
+        )
+
+        # === DIRECTORIES ===
+        input_card = make_card(
+            "INPUT DIRS",
+            self._render_input_dir_table(),
+            icon=ICONS['io'],
+            title_color=COLORS['accent_blue'],
+        )
+        output_card = None
+        errors_card = None
+        if self.output_dir_lines or self.suffix_output_dirs:
+            output_card = self._render_dir_card("OUTPUT DIRS", self.output_dir_lines, self.suffix_output_dirs)
+        if self.errors_dir_lines or self.suffix_errors_dirs:
+            errors_card = self._render_dir_card("ERRORS DIRS", self.errors_dir_lines, self.suffix_errors_dirs)
+
+        # === LAYOUT ===
+        row1 = make_two_column_layout(io_card, queue_card)
+
+        content_items: List[RenderableType] = [
+            row1,
+            "",
+            input_card,
+        ]
+
+        if output_card and errors_card:
+            content_items.extend(["", make_two_column_layout(output_card, errors_card)])
+        elif output_card:
+            content_items.extend(["", output_card])
+        elif errors_card:
+            content_items.extend(["", errors_card])
+
+        return Group(*content_items)
+
+    def render(self) -> Panel:
+        """Returns complete Panel with footer (for backward compatibility)."""
+        footer = Text.from_markup(
+            f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
+            f"[white on {COLORS['border']}] C [/] Settings • "
+            f"[white on {COLORS['border']}] L [/] Reference[/]",
+            justify="center"
+        )
+
+        content_with_footer = Group(
+            self._render_content(),
+            "",
+            footer
+        )
+
+        return Panel(
+            content_with_footer,
+            title="[bold white]📁 I/O[/]",
+            subtitle=f"[{COLORS['dim']}][F] to toggle[/]",
+            border_style=COLORS['accent_blue'],
             box=ROUNDED,
             padding=(1, 2),
         )
@@ -520,7 +697,7 @@ class ShortcutsOverlay:
 
         key_labels = [
             "M", "Esc", "Ctrl+C",
-            "C", "L", "T", "D", "G",
+            "C", "F", "L", "T", "D", "G",
             "S", "R", "< ,", "> .",
             "< >", "S", "R",
         ]
@@ -566,12 +743,16 @@ class ShortcutsOverlay:
             "Configuration details"
         )
         panels_table.add_row(
-            key_badge("L"),
-            "Legend & reference"
+            key_badge("F"),
+            "I/O folders & queue"
         )
         panels_table.add_row(
             key_badge("T"),
             "TUI settings"
+        )
+        panels_table.add_row(
+            key_badge("L"),
+            "Legend & reference"
         )
         panels_table.add_row(
             key_badge("D"),
@@ -756,9 +937,37 @@ class TuiOverlay:
 # INTEGRATION - metody do podmiany w klasie Dashboard
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def generate_settings_overlay(config_lines: List[str], spinner_frame: int = 0) -> Panel:
+def generate_settings_overlay(
+    config_lines: List[str],
+    spinner_frame: int = 0,
+    log_path: Optional[str] = None,
+    debug_enabled: bool = False,
+) -> Panel:
     """Generuje overlay Settings (dawniej Config) dla Dashboard."""
-    return SettingsOverlay(config_lines, spinner_frame).render()
+    return SettingsOverlay(config_lines, spinner_frame, log_path, debug_enabled).render()
+
+
+def generate_io_overlay(
+    config_lines: List[str],
+    input_dir_stats: List[Tuple[str, str, Optional[int], Optional[int]]],
+    output_dir_lines: List[str],
+    errors_dir_lines: List[str],
+    suffix_output_dirs: Optional[str],
+    suffix_errors_dirs: Optional[str],
+    queue_sort: str,
+    queue_seed: Optional[int],
+) -> Panel:
+    """Generuje overlay I/O dla Dashboard."""
+    return IoOverlay(
+        config_lines,
+        input_dir_stats,
+        output_dir_lines,
+        errors_dir_lines,
+        suffix_output_dirs,
+        suffix_errors_dirs,
+        queue_sort,
+        queue_seed,
+    ).render()
 
 
 def generate_reference_overlay(spinner_frame: int = 0) -> Panel:
@@ -780,9 +989,14 @@ def generate_tui_overlay(dim_level: str = "mid") -> Panel:
 # CONTENT RENDERING FUNCTIONS (for tabbed overlay)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def render_settings_content(config_lines: List[str], spinner_frame: int = 0) -> RenderableType:
+def render_settings_content(
+    config_lines: List[str],
+    spinner_frame: int = 0,
+    log_path: Optional[str] = None,
+    debug_enabled: bool = False,
+) -> RenderableType:
     """Render Settings tab content (without outer Panel or footer)."""
-    return SettingsOverlay(config_lines, spinner_frame)._render_content()
+    return SettingsOverlay(config_lines, spinner_frame, log_path, debug_enabled)._render_content()
 
 
 def render_reference_content(spinner_frame: int = 0) -> RenderableType:
@@ -793,6 +1007,28 @@ def render_reference_content(spinner_frame: int = 0) -> RenderableType:
 def render_shortcuts_content() -> RenderableType:
     """Render Shortcuts tab content (without outer Panel or footer)."""
     return ShortcutsOverlay()._render_content()
+
+def render_io_content(
+    config_lines: List[str],
+    input_dir_stats: List[Tuple[str, str, Optional[int], Optional[int]]],
+    output_dir_lines: List[str],
+    errors_dir_lines: List[str],
+    suffix_output_dirs: Optional[str],
+    suffix_errors_dirs: Optional[str],
+    queue_sort: str,
+    queue_seed: Optional[int],
+) -> RenderableType:
+    """Render I/O tab content (without outer Panel or footer)."""
+    return IoOverlay(
+        config_lines,
+        input_dir_stats,
+        output_dir_lines,
+        errors_dir_lines,
+        suffix_output_dirs,
+        suffix_errors_dirs,
+        queue_sort,
+        queue_seed,
+    )._render_content()
 
 
 def render_tui_content(dim_level: str = "mid") -> RenderableType:
@@ -807,12 +1043,14 @@ def render_tui_content(dim_level: str = "mid") -> RenderableType:
 Tabbed overlay integration is complete. The dashboard now uses:
 
 - render_settings_content() for Settings tab content
+- render_io_content() for I/O tab content
 - render_reference_content() for Reference tab content
 - render_shortcuts_content() for Shortcuts tab content
 - render_tui_content() for TUI tab content
 
 Old standalone overlay functions (for backward compatibility):
 - generate_settings_overlay() - returns complete Panel
+- generate_io_overlay() - returns complete Panel
 - generate_reference_overlay() - returns complete Panel
 - generate_shortcuts_overlay() - returns complete Panel
 - generate_tui_overlay() - returns complete Panel

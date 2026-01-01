@@ -33,6 +33,9 @@ from vbc.config.input_dirs import (
     validate_errors_dirs,
     evaluate_input_dirs,
     build_input_dir_lines,
+    STATUS_OK,
+    STATUS_NO_ACCESS,
+    can_write_output_dir_path,
 )
 from vbc.config.models import validate_queue_sort
 from vbc.domain.events import (
@@ -108,6 +111,10 @@ def compress(
         requested_input_dirs: List[str] = []
         output_dir_map: dict = {}
         errors_dir_map: dict = {}
+        output_dirs_entries: List[str] = []
+        errors_dirs_entries: List[str] = []
+        suffix_output_dirs: Optional[str] = None
+        suffix_errors_dirs: Optional[str] = None
         if not demo:
             if input_dirs_arg is not None:
                 requested_input_dirs = cli_input_dirs
@@ -257,6 +264,85 @@ def compress(
                 size /= 1024.0
             return f"{size:.1f}TB"
 
+        def build_output_status_entries(entries: List[str]) -> List[Tuple[str, str]]:
+            status_entries: List[Tuple[str, str]] = []
+            for entry in entries:
+                path = Path(entry)
+                status = STATUS_OK if can_write_output_dir_path(path) else STATUS_NO_ACCESS
+                status_entries.append((status, entry))
+            return status_entries
+
+        def scan_input_dir_stats(
+            status_entries: List[Tuple[str, str]],
+            output_dir_map: dict,
+            suffix_output_dirs: Optional[str],
+            extensions: List[str],
+            min_size_bytes: int,
+            clean_errors: bool,
+            cpu_fallback: bool,
+        ) -> List[Tuple[str, str, Optional[int], Optional[int]]]:
+            stats: List[Tuple[str, str, Optional[int], Optional[int]]] = []
+            scanner = FileScanner(extensions=extensions, min_size_bytes=min_size_bytes)
+
+            for status, entry in status_entries:
+                if status != STATUS_OK:
+                    stats.append((status, entry, None, None))
+                    continue
+                input_dir = Path(entry)
+                output_dir = output_dir_map.get(input_dir)
+                if output_dir is None and suffix_output_dirs:
+                    output_dir = input_dir.with_name(f"{input_dir.name}{suffix_output_dirs}")
+                if output_dir is None:
+                    stats.append((STATUS_NO_ACCESS, entry, None, None))
+                    continue
+
+                count = 0
+                size_bytes = 0
+                for vf in scanner.scan(input_dir):
+                    try:
+                        rel_path = vf.path.relative_to(input_dir)
+                    except ValueError:
+                        rel_path = Path(vf.path.name)
+                    output_path = output_dir / rel_path.with_suffix(".mp4")
+                    err_path = output_path.with_suffix(".err")
+
+                    if err_path.exists():
+                        if clean_errors:
+                            try:
+                                err_path.unlink()
+                            except OSError:
+                                continue
+                        else:
+                            try:
+                                err_content = err_path.read_text()
+                                if "Hardware is lacking required capabilities" in err_content:
+                                    if cpu_fallback:
+                                        try:
+                                            err_path.unlink()
+                                        except OSError:
+                                            continue
+                                    else:
+                                        continue
+                                else:
+                                    continue
+                            except OSError:
+                                continue
+                            if err_path.exists():
+                                continue
+
+                    try:
+                        if output_path.exists() and output_path.stat().st_mtime >= vf.path.stat().st_mtime:
+                            continue
+                    except OSError:
+                        continue
+
+                    count += 1
+                    size_bytes += vf.size_bytes
+
+                stats.append((status, entry, count, size_bytes))
+            return stats
+
+
         encoder_name = "NVENC AV1 (GPU)" if config.general.gpu else "SVT-AV1 (CPU)"
         preset = "p7 (Slow/HQ)" if config.general.gpu else "6"
         metadata_method = (
@@ -282,7 +368,30 @@ def compress(
             demo_extensions = config.general.extensions
             input_dir_count = len(input_dir_status_entries)
             input_dir_lines = build_input_dir_lines(input_dir_status_entries)
+        output_dir_status_entries: List[Tuple[str, str]] = []
+        errors_dir_status_entries: List[Tuple[str, str]] = []
+        if output_dirs_entries:
+            output_dir_status_entries = build_output_status_entries(output_dirs_entries)
+        if errors_dirs_entries:
+            errors_dir_status_entries = build_output_status_entries(errors_dirs_entries)
+
+        output_dir_lines = build_input_dir_lines(output_dir_status_entries) if output_dir_status_entries else []
+        errors_dir_lines = build_input_dir_lines(errors_dir_status_entries) if errors_dir_status_entries else []
+        ui_suffix_output_dirs = None if output_dirs_entries else suffix_output_dirs
+        ui_suffix_errors_dirs = None if errors_dirs_entries else suffix_errors_dirs
         extensions = [ext if ext.startswith(".") else f".{ext}" for ext in demo_extensions]
+        if demo and demo_config:
+            input_dir_stats = [(STATUS_OK, str(path), None, None) for path in input_dirs_display]
+        else:
+            input_dir_stats = scan_input_dir_stats(
+                input_dir_status_entries,
+                output_dir_map,
+                suffix_output_dirs,
+                extensions,
+                config.general.min_size_bytes,
+                config.general.clean_errors,
+                config.general.cpu_fallback,
+            )
         ext_list = ", ".join(extensions)
 
         if demo and demo_config:
@@ -332,6 +441,16 @@ def compress(
                 f"Clean errors: {config.general.clean_errors} | Strip Unicode: {config.general.strip_unicode_display}",
                 f"Debug logging: {config.general.debug}",
             ]
+
+        ui_state.io_input_dir_stats = input_dir_stats
+        ui_state.io_output_dir_lines = output_dir_lines
+        ui_state.io_errors_dir_lines = errors_dir_lines
+        ui_state.io_suffix_output_dirs = ui_suffix_output_dirs
+        ui_state.io_suffix_errors_dirs = ui_suffix_errors_dirs
+        ui_state.io_queue_sort = config.general.queue_sort
+        ui_state.io_queue_seed = config.general.queue_seed
+        ui_state.log_path = config.general.log_path
+        ui_state.debug_enabled = config.general.debug
 
         if config.general.filter_cameras and not config.general.use_exif:
             logger.warning("Camera filtering requires EXIF analysis. Enabling use_exif automatically.")
