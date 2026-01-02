@@ -25,6 +25,14 @@ from rich.align import Align
 from rich.rule import Rule
 from rich.box import ROUNDED, SIMPLE, MINIMAL, HEAVY_HEAD
 from vbc.config.input_dirs import render_status_icon
+from vbc.ui.gpu_sparkline import (
+    DEFAULT_GPU_SPARKLINE_PRESET,
+    build_cycle_text,
+    build_scale_entries,
+    format_preset_label,
+    get_gpu_sparkline_config,
+    list_gpu_sparkline_presets,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -514,8 +522,9 @@ class ReferenceOverlay:
     - GPU GRAPH: metryki, skale, symbole sparkline
     """
     
-    def __init__(self, spinner_frame: int = 0):
+    def __init__(self, spinner_frame: int = 0, sparkline_preset: Optional[str] = None):
         self.spinner_frame = spinner_frame
+        self.sparkline_preset = sparkline_preset
 
     def _render_content(self) -> Group:
         """Returns content without outer Panel or footer (for tabbed overlay)."""
@@ -624,16 +633,21 @@ class ReferenceOverlay:
         )
         
         # === GPU GRAPH ===
+        spark_cfg = get_gpu_sparkline_config(self.sparkline_preset)
+        cycle_text = build_cycle_text(spark_cfg.metrics) or "—"
+        scale_entries = build_scale_entries(spark_cfg.metrics)
+        scales_text = " • ".join(scale_entries) if scale_entries else "—"
+
         gpu_content = []
-        gpu_content.append(f"[{COLORS['muted']}]Cycle: [white]temp → fan → pwr → gpu → mem[/][/]")
+        gpu_content.append(f"[{COLORS['muted']}]Cycle: [white]{cycle_text}[/][/]")
         gpu_content.append("")
         gpu_content.append(f"[{COLORS['dim']}]Scales:[/]")
-        gpu_content.append(f"  [{COLORS['muted']}]temp: 35°C..70°C • pwr: 100W..400W • %: 0..100%[/]")
+        gpu_content.append(f"  [{COLORS['muted']}]{scales_text}[/]")
         gpu_content.append("")
         gpu_content.append(
-            f"[{COLORS['dim']}]Symbols:[/] [{COLORS['accent_blue']}]▁▂▃▄▅▆▇█[/] "
+            f"[{COLORS['dim']}]Symbols:[/] [{COLORS['accent_blue']}]{spark_cfg.style.blocks}[/] "
             f"[{COLORS['muted']}]low→high[/]   "
-            f"[{COLORS['dim']}]·[/] [{COLORS['muted']}]missing[/]"
+            f"[{COLORS['dim']}]{spark_cfg.style.missing}[/] [{COLORS['muted']}]missing[/]"
         )
         gpu_content.append(f"[{COLORS['dim']}]Time:[/] [{COLORS['muted']}]left=older, right=newer (5min window)[/]")
         
@@ -703,7 +717,7 @@ class ShortcutsOverlay:
 
         key_labels = [
             "M", "Esc", "Ctrl+C",
-            "C", "F", "L", "T", "D", "G",
+            "C", "F", "L", "T", "D", "W", "G",
             "S", "R", "< ,", "> .",
             "< >", "S", "R",
         ]
@@ -763,6 +777,10 @@ class ShortcutsOverlay:
         panels_table.add_row(
             key_badge("D"),
             "Cycle overlay dim level"
+        )
+        panels_table.add_row(
+            key_badge("W"),
+            "Cycle GPU sparkline preset"
         )
         panels_table.add_row(
             key_badge("G"),
@@ -876,8 +894,9 @@ class ShortcutsOverlay:
 class TuiOverlay:
     """Panel ustawien TUI - wyglad i zachowanie interfejsu."""
 
-    def __init__(self, dim_level: str = "mid"):
+    def __init__(self, dim_level: str = "mid", sparkline_preset: Optional[str] = None):
         self.dim_level = dim_level
+        self.sparkline_preset = sparkline_preset
 
     def _render_dim_levels(self) -> str:
         levels = ["light", "mid", "dark"]
@@ -890,6 +909,25 @@ class TuiOverlay:
             )
             badges.append(f"[{style}] {level.upper()} [/]")
         return " ".join(badges)
+
+    def _render_sparkline_presets(self) -> str:
+        presets = list_gpu_sparkline_presets()
+        if not presets:
+            return f"[{COLORS['dim']}]—[/]"
+        selected = self.sparkline_preset or DEFAULT_GPU_SPARKLINE_PRESET
+        if selected not in presets:
+            selected = presets[0]
+        lines = []
+        for preset in presets:
+            config = get_gpu_sparkline_config(preset)
+            label = format_preset_label(preset, config)
+            style = (
+                f"bold white on {COLORS['accent_green']}"
+                if preset == selected
+                else f"white on {COLORS['border']}"
+            )
+            lines.append(f"[{style}] {label} [/]")
+        return "\n".join(lines)
 
     def _render_content(self) -> Group:
         """Returns content without outer Panel or footer (for tabbed overlay)."""
@@ -908,18 +946,34 @@ class TuiOverlay:
             title_color=COLORS['accent_blue'],
         )
 
+        sparkline_table = Table(show_header=False, box=None, padding=(0, 1), expand=True)
+        sparkline_table.add_column(style=COLORS['muted'], width=18)
+        sparkline_table.add_column(ratio=1)
+        sparkline_table.add_row(
+            "Sparkline",
+            f"{self._render_sparkline_presets()}\n[{COLORS['dim']}][W] cycle[/]",
+        )
+
+        sparkline_card = make_card(
+            "SPARKLINE",
+            sparkline_table,
+            icon=ICONS['gpu'],
+            title_color=COLORS['accent_cyan'],
+        )
+
         hint = Text.from_markup(
-            f"[{COLORS['dim']}]Applies while the overlay is open[/]",
+            f"[{COLORS['dim']}]Changes apply immediately[/]",
             justify="center",
         )
 
-        return Group(options_card, "", hint)
+        return Group(options_card, "", sparkline_card, "", hint)
 
     def render(self) -> Panel:
         """Returns complete Panel with footer (for backward compatibility)."""
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] D [/] Dim level[/]",
+            f"[white on {COLORS['border']}] D [/] Dim level • "
+            f"[white on {COLORS['border']}] W [/] Sparkline[/]",
             justify="center",
         )
 
@@ -976,9 +1030,9 @@ def generate_io_overlay(
     ).render()
 
 
-def generate_reference_overlay(spinner_frame: int = 0) -> Panel:
+def generate_reference_overlay(spinner_frame: int = 0, sparkline_preset: Optional[str] = None) -> Panel:
     """Generuje overlay Reference (dawniej Legend) dla Dashboard."""
-    return ReferenceOverlay(spinner_frame).render()
+    return ReferenceOverlay(spinner_frame, sparkline_preset).render()
 
 
 def generate_shortcuts_overlay() -> Panel:
@@ -986,9 +1040,9 @@ def generate_shortcuts_overlay() -> Panel:
     return ShortcutsOverlay().render()
 
 
-def generate_tui_overlay(dim_level: str = "mid") -> Panel:
+def generate_tui_overlay(dim_level: str = "mid", sparkline_preset: Optional[str] = None) -> Panel:
     """Generuje overlay TUI dla Dashboard."""
-    return TuiOverlay(dim_level).render()
+    return TuiOverlay(dim_level, sparkline_preset).render()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1005,9 +1059,9 @@ def render_settings_content(
     return SettingsOverlay(config_lines, spinner_frame, log_path, debug_enabled)._render_content()
 
 
-def render_reference_content(spinner_frame: int = 0) -> RenderableType:
+def render_reference_content(spinner_frame: int = 0, sparkline_preset: Optional[str] = None) -> RenderableType:
     """Render Reference tab content (without outer Panel or footer)."""
-    return ReferenceOverlay(spinner_frame)._render_content()
+    return ReferenceOverlay(spinner_frame, sparkline_preset)._render_content()
 
 
 def render_shortcuts_content() -> RenderableType:
@@ -1037,9 +1091,9 @@ def render_io_content(
     )._render_content()
 
 
-def render_tui_content(dim_level: str = "mid") -> RenderableType:
+def render_tui_content(dim_level: str = "mid", sparkline_preset: Optional[str] = None) -> RenderableType:
     """Render TUI tab content (without outer Panel or footer)."""
-    return TuiOverlay(dim_level)._render_content()
+    return TuiOverlay(dim_level, sparkline_preset)._render_content()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

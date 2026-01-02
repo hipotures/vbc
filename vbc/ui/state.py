@@ -4,6 +4,7 @@ from pathlib import Path
 from collections import deque
 from typing import List, Optional, Dict, Any, ClassVar, Tuple
 from vbc.domain.models import CompressionJob
+from vbc.ui.gpu_sparkline import DEFAULT_GPU_SPARKLINE_PRESET
 
 class UIState:
     """Thread-safe state manager for the interactive UI."""
@@ -81,7 +82,8 @@ class UIState:
         self.gpu_data: Optional[Dict[str, Any]] = None
 
         # GPU Sparkline
-        self.gpu_sparkline_metric_idx: int = 0  # 0=temp, 1=fan, 2=pwr, 3=gpu, 4=mem
+        self.gpu_sparkline_metric_idx: int = 0  # Index into active GPU sparkline metric order
+        self.gpu_sparkline_preset: str = DEFAULT_GPU_SPARKLINE_PRESET
         self.gpu_history_temp: deque = deque(maxlen=60)
         self.gpu_history_pwr: deque = deque(maxlen=60)
         self.gpu_history_gpu: deque = deque(maxlen=60)

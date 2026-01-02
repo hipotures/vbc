@@ -9,9 +9,15 @@ from vbc.domain.events import (
     ActionMessage, ProcessingFinished, RefreshFinished
 )
 from vbc.config.input_dirs import STATUS_OK
+from vbc.ui.gpu_sparkline import (
+    format_preset_label,
+    get_gpu_sparkline_config,
+    list_gpu_sparkline_presets,
+)
 from vbc.ui.keyboard import (
     ThreadControlEvent, RequestShutdown, InterruptRequested,
-    ToggleOverlayTab, CycleOverlayTab, CloseOverlay, CycleOverlayDim, RotateGpuMetric
+    ToggleOverlayTab, CycleOverlayTab, CloseOverlay, CycleOverlayDim, RotateGpuMetric,
+    CycleSparklinePreset,
 )
 
 class UIManager:
@@ -38,6 +44,7 @@ class UIManager:
         self.bus.subscribe(CloseOverlay, self.on_close_overlay)
         self.bus.subscribe(CycleOverlayDim, self.on_cycle_overlay_dim)
         self.bus.subscribe(RotateGpuMetric, self.on_rotate_gpu_metric)
+        self.bus.subscribe(CycleSparklinePreset, self.on_cycle_sparkline_preset)
         self.bus.subscribe(QueueUpdated, self.on_queue_updated)
         self.bus.subscribe(ActionMessage, self.on_action_message)
         self.bus.subscribe(RefreshFinished, self.on_refresh_finished)
@@ -110,13 +117,41 @@ class UIManager:
         self.state.set_last_action(f"TUI: Overlay dim {self.state.overlay_dim_level}")
 
     def on_rotate_gpu_metric(self, event: RotateGpuMetric):
-        """Rotate GPU sparkline metric (temp → fan → pwr → gpu → mem)."""
-        metric_names = ["Temperature", "Fan Speed", "Power Draw", "GPU Utilization", "Memory Utilization"]
+        """Rotate GPU sparkline metric."""
+        spark_cfg = get_gpu_sparkline_config(self.state.gpu_sparkline_preset)
+        metric_names = [metric.display_label for metric in spark_cfg.metrics]
+        if not metric_names:
+            return
 
         with self.state._lock:
-            self.state.gpu_sparkline_metric_idx = (self.state.gpu_sparkline_metric_idx + 1) % 5
+            self.state.gpu_sparkline_metric_idx = (
+                self.state.gpu_sparkline_metric_idx + 1
+            ) % len(metric_names)
             current_name = metric_names[self.state.gpu_sparkline_metric_idx]
             self.state.set_last_action(f"GPU Graph: {current_name}")
+
+    def on_cycle_sparkline_preset(self, event: CycleSparklinePreset):
+        """Cycle GPU sparkline preset (TUI tab only)."""
+        with self.state._lock:
+            if not self.state.show_overlay or self.state.active_tab != "tui":
+                return
+            presets = list_gpu_sparkline_presets()
+            if not presets:
+                return
+            try:
+                current_idx = presets.index(self.state.gpu_sparkline_preset)
+            except ValueError:
+                current_idx = 0
+            next_idx = (current_idx + event.direction) % len(presets)
+            next_preset = presets[next_idx]
+            self.state.gpu_sparkline_preset = next_preset
+            spark_cfg = get_gpu_sparkline_config(next_preset)
+            if spark_cfg.metrics:
+                self.state.gpu_sparkline_metric_idx %= len(spark_cfg.metrics)
+            else:
+                self.state.gpu_sparkline_metric_idx = 0
+            preset_label = format_preset_label(next_preset, spark_cfg)
+            self.state.set_last_action(f"Sparkline: {preset_label}")
 
     def on_job_started(self, event: JobStarted):
         # Track when first job starts

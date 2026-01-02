@@ -54,6 +54,10 @@ class RotateGpuMetric(Event):
     """Event emitted when user rotates GPU sparkline metric (Key 'G')."""
     pass
 
+class CycleSparklinePreset(Event):
+    """Event emitted to cycle GPU sparkline preset (Key 'W')."""
+    direction: int = 1  # 1=next, -1=previous
+
 class ThreadControlEvent(Event):
     """Event emitted to adjust thread count (Keys '<' or '>')."""
     change: int # +1 or -1
@@ -104,6 +108,8 @@ class KeyboardListener:
                         self.event_bus.publish(CycleOverlayTab(direction=1))
                     elif key in ('D', 'd'):
                         self.event_bus.publish(CycleOverlayDim(direction=1))
+                    elif key in ('W', 'w'):
+                        self.event_bus.publish(CycleSparklinePreset(direction=1))
                     elif key in ('G', 'g'):
                         self.event_bus.publish(RotateGpuMetric())
                     elif key == '\x1b':
