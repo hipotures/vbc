@@ -920,13 +920,16 @@ class TuiOverlay:
         lines = []
         for preset in presets:
             config = get_gpu_sparkline_config(preset)
-            label = format_preset_label(preset, config)
+            label = config.style.blocks or format_preset_label(preset, config)
             style = (
                 f"bold white on {COLORS['accent_green']}"
                 if preset == selected
                 else f"white on {COLORS['border']}"
             )
-            lines.append(f"[{style}] {label} [/]")
+            hint = ""
+            if preset == selected:
+                hint = f" [{COLORS['dim']}][W] cycle[/]"
+            lines.append(f"[{style}] {label} [/]{hint}")
         return "\n".join(lines)
 
     def _render_content(self) -> Group:
@@ -951,7 +954,7 @@ class TuiOverlay:
         sparkline_table.add_column(ratio=1)
         sparkline_table.add_row(
             "Sparkline",
-            f"{self._render_sparkline_presets()}\n[{COLORS['dim']}][W] cycle[/]",
+            f"{self._render_sparkline_presets()}",
         )
 
         sparkline_card = make_card(
