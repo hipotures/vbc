@@ -917,7 +917,7 @@ class TuiOverlay:
         selected = self.sparkline_preset or DEFAULT_GPU_SPARKLINE_PRESET
         if selected not in presets:
             selected = presets[0]
-        lines = []
+        tokens = []
         for preset in presets:
             config = get_gpu_sparkline_config(preset)
             label = config.style.blocks or format_preset_label(preset, config)
@@ -929,8 +929,8 @@ class TuiOverlay:
             hint = ""
             if preset == selected:
                 hint = f" [{COLORS['dim']}][W] cycle[/]"
-            lines.append(f"[{style}] {label} [/]{hint}")
-        return "\n".join(lines)
+            tokens.append(f"[{style}] {label} [/]{hint}")
+        return " ".join(tokens)
 
     def _render_content(self) -> Group:
         """Returns content without outer Panel or footer (for tabbed overlay)."""
