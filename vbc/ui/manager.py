@@ -12,12 +12,14 @@ from vbc.config.input_dirs import STATUS_OK
 from vbc.ui.gpu_sparkline import (
     format_preset_label,
     get_gpu_sparkline_config,
+    get_gpu_sparkline_palette,
+    list_gpu_sparkline_palettes,
     list_gpu_sparkline_presets,
 )
 from vbc.ui.keyboard import (
     ThreadControlEvent, RequestShutdown, InterruptRequested,
     ToggleOverlayTab, CycleOverlayTab, CloseOverlay, CycleOverlayDim, RotateGpuMetric,
-    CycleSparklinePreset,
+    CycleSparklinePreset, CycleSparklinePalette,
 )
 
 class UIManager:
@@ -45,6 +47,7 @@ class UIManager:
         self.bus.subscribe(CycleOverlayDim, self.on_cycle_overlay_dim)
         self.bus.subscribe(RotateGpuMetric, self.on_rotate_gpu_metric)
         self.bus.subscribe(CycleSparklinePreset, self.on_cycle_sparkline_preset)
+        self.bus.subscribe(CycleSparklinePalette, self.on_cycle_sparkline_palette)
         self.bus.subscribe(QueueUpdated, self.on_queue_updated)
         self.bus.subscribe(ActionMessage, self.on_action_message)
         self.bus.subscribe(RefreshFinished, self.on_refresh_finished)
@@ -138,12 +141,16 @@ class UIManager:
             presets = list_gpu_sparkline_presets()
             if not presets:
                 return
-            try:
-                current_idx = presets.index(self.state.gpu_sparkline_preset)
-            except ValueError:
-                current_idx = 0
-            next_idx = (current_idx + event.direction) % len(presets)
-            next_preset = presets[next_idx]
+            if self.state.gpu_sparkline_mode != "sparkline":
+                next_preset = presets[0]
+                self.state.gpu_sparkline_mode = "sparkline"
+            else:
+                try:
+                    current_idx = presets.index(self.state.gpu_sparkline_preset)
+                except ValueError:
+                    current_idx = 0
+                next_idx = (current_idx + event.direction) % len(presets)
+                next_preset = presets[next_idx]
             self.state.gpu_sparkline_preset = next_preset
             spark_cfg = get_gpu_sparkline_config(next_preset)
             if spark_cfg.metrics:
@@ -152,6 +159,28 @@ class UIManager:
                 self.state.gpu_sparkline_metric_idx = 0
             preset_label = format_preset_label(next_preset, spark_cfg)
             self.state.set_last_action(f"Sparkline: {preset_label}")
+
+    def on_cycle_sparkline_palette(self, event: CycleSparklinePalette):
+        """Cycle GPU sparkline palette (TUI tab only)."""
+        with self.state._lock:
+            if not self.state.show_overlay or self.state.active_tab != "tui":
+                return
+            palettes = list_gpu_sparkline_palettes()
+            if not palettes:
+                return
+            if self.state.gpu_sparkline_mode != "palette":
+                next_palette = palettes[0]
+                self.state.gpu_sparkline_mode = "palette"
+            else:
+                try:
+                    current_idx = palettes.index(self.state.gpu_sparkline_palette)
+                except ValueError:
+                    current_idx = 0
+                next_idx = (current_idx + event.direction) % len(palettes)
+                next_palette = palettes[next_idx]
+            self.state.gpu_sparkline_palette = next_palette
+            palette = get_gpu_sparkline_palette(next_palette)
+            self.state.set_last_action(f"Palette: {palette.display_label}")
 
     def on_job_started(self, event: JobStarted):
         # Track when first job starts

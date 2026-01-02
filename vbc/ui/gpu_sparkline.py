@@ -46,6 +46,17 @@ class SparklineConfig:
     label: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class SparklinePalette:
+    name: str
+    colors: Sequence[str]
+    label: Optional[str] = None
+
+    @property
+    def display_label(self) -> str:
+        return self.label or self.name
+
+
 DEFAULT_GPU_SPARKLINE_STYLE = SparklineStyle(
     name="classic_8",
     blocks="▁▂▃▄▅▆▇█",
@@ -129,6 +140,96 @@ GPU_SPARKLINE_PRESETS = {
 
 DEFAULT_GPU_SPARKLINE_PRESET = "classic_8"
 
+GPU_SPARKLINE_PALETTES = {
+    "mocha": SparklinePalette(
+        name="mocha",
+        colors=[
+            "#4E3A2F",
+            "#5F4230",
+            "#6F4A32",
+            "#805233",
+            "#905A35",
+            "#9A6540",
+            "#A4704B",
+            "#AD7A55",
+            "#B78560",
+            "#C1916B",
+            "#CA9C76",
+            "#D3A881",
+            "#DCB38D",
+            "#E4BE99",
+            "#EDC8A6",
+            "#F5D3B2",
+        ],
+    ),
+    "viridis": SparklinePalette(
+        name="viridis",
+        colors=[
+            "#440154",
+            "#481A6C",
+            "#472F7D",
+            "#414487",
+            "#39568C",
+            "#31688E",
+            "#2A788E",
+            "#23888E",
+            "#1F988B",
+            "#22A884",
+            "#35B779",
+            "#54C568",
+            "#7AD151",
+            "#A5DB36",
+            "#D2E21B",
+            "#FDE725",
+        ],
+    ),
+    "plasma": SparklinePalette(
+        name="plasma",
+        colors=[
+            "#0D0887",
+            "#330597",
+            "#5002A2",
+            "#6A00A8",
+            "#8305A7",
+            "#9A179B",
+            "#AE2891",
+            "#C03A83",
+            "#CF4B76",
+            "#DD5E66",
+            "#E97158",
+            "#F1854B",
+            "#F99A3E",
+            "#FBBF2B",
+            "#F9DC24",
+            "#F0F921",
+        ],
+    ),
+    "cividis": SparklinePalette(
+        name="cividis",
+        colors=[
+            "#00224E",
+            "#002E6C",
+            "#1E3A6F",
+            "#3B496C",
+            "#525865",
+            "#666760",
+            "#7A765A",
+            "#8F8554",
+            "#A3944E",
+            "#B7A448",
+            "#CAB341",
+            "#DCC239",
+            "#EBD136",
+            "#F4E138",
+            "#FEE838",
+            "#FEE838",
+        ],
+    ),
+}
+
+DEFAULT_GPU_SPARKLINE_PALETTE = "mocha"
+PALETTE_GLYPH = "█"
+
 
 def get_gpu_sparkline_config(preset: Optional[str] = None) -> SparklineConfig:
     if preset and preset in GPU_SPARKLINE_PRESETS:
@@ -146,6 +247,16 @@ def format_preset_label(preset: str, config: SparklineConfig) -> str:
     if blocks:
         return f"{label} {blocks}"
     return label
+
+
+def get_gpu_sparkline_palette(name: Optional[str] = None) -> SparklinePalette:
+    if name and name in GPU_SPARKLINE_PALETTES:
+        return GPU_SPARKLINE_PALETTES[name]
+    return GPU_SPARKLINE_PALETTES[DEFAULT_GPU_SPARKLINE_PALETTE]
+
+
+def list_gpu_sparkline_palettes() -> List[str]:
+    return list(GPU_SPARKLINE_PALETTES.keys())
 
 
 def bin_value(val: Optional[float], min_val: float, max_val: float, num_bins: int) -> int:
@@ -168,25 +279,89 @@ def render_sparkline(
     min_val: float,
     max_val: float,
     style: SparklineStyle,
+    palette: Optional[Sequence[str]] = None,
+    glyph: Optional[str] = None,
 ) -> str:
     """Render sparkline with newest on right, missing as style.missing."""
     if spark_len <= 0:
         return ""
 
     samples = list(history)[-spark_len:]  # Last N samples (oldest -> newest)
-    chars = []
+    chars: List[str] = []
+    visible_len = 0
     for val in samples:
         bin_idx = bin_value(val, min_val, max_val, style.num_bins)
         if bin_idx < 0 or not style.blocks:
-            chars.append(style.missing)
+            char = style.missing
+            if palette:
+                chars.append(f"[dim]{char}[/]")
+            else:
+                chars.append(char)
         else:
-            chars.append(style.blocks[bin_idx])
+            char = glyph or style.blocks[bin_idx]
+            if palette:
+                color = _palette_color_for_value(val, min_val, max_val, palette)
+                chars.append(f"[{color}]{char}[/]")
+            else:
+                chars.append(char)
+        visible_len += 1
 
-    result = "".join(chars)
-    if len(result) < spark_len:
-        result = result + " " * (spark_len - len(result))
+    if visible_len < spark_len:
+        chars.append(" " * (spark_len - visible_len))
 
-    return result
+    return "".join(chars)
+
+
+def build_palette_preview(style: SparklineStyle, palette: Sequence[str]) -> str:
+    if not style.blocks:
+        return ""
+    if not palette:
+        return style.blocks
+    preview = []
+    for idx, char in enumerate(style.blocks):
+        color = _palette_color_for_bin(idx, style.num_bins, palette)
+        preview.append(f"[{color}]{char}[/]")
+    return "".join(preview)
+
+
+def build_palette_swatches(
+    palette: Sequence[str],
+    step: int = 2,
+    block: str = "█",
+    separator: str = "",
+) -> str:
+    if not palette:
+        return ""
+    colors = list(palette)[::step]
+    swatches = [f"[{color}]{block}[/]" for color in colors]
+    return separator.join(swatches)
+
+
+def _palette_color_for_bin(bin_idx: int, num_bins: int, palette: Sequence[str]) -> str:
+    if not palette:
+        return "white"
+    if len(palette) == 1 or num_bins <= 1:
+        return palette[0]
+    scaled = int((bin_idx * (len(palette) - 1)) / max(1, (num_bins - 1)))
+    scaled = max(0, min(scaled, len(palette) - 1))
+    return palette[scaled]
+
+
+def _palette_color_for_value(
+    value: float,
+    min_val: float,
+    max_val: float,
+    palette: Sequence[str],
+) -> str:
+    if not palette:
+        return "white"
+    if len(palette) == 1 or max_val <= min_val:
+        return palette[0]
+    clamped = min(max(value, min_val), max_val)
+    ratio = (clamped - min_val) / (max_val - min_val)
+    scaled = int(ratio * (len(palette) - 1))
+    scaled = max(0, min(scaled, len(palette) - 1))
+    return palette[scaled]
 
 
 def build_cycle_text(metrics: Sequence[SparklineMetricConfig]) -> str:

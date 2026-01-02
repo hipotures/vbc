@@ -19,7 +19,12 @@ from rich.box import ROUNDED, SIMPLE
 from rich.style import Style
 from vbc.ui.state import UIState
 from vbc.domain.models import JobStatus
-from vbc.ui.gpu_sparkline import get_gpu_sparkline_config, render_sparkline
+from vbc.ui.gpu_sparkline import (
+    PALETTE_GLYPH,
+    get_gpu_sparkline_config,
+    get_gpu_sparkline_palette,
+    render_sparkline,
+)
 from vbc.ui.modern_overlays import (
     render_settings_content,
     render_reference_content,
@@ -605,6 +610,8 @@ class Dashboard:
                 with self.state._lock:
                     metric_idx = self.state.gpu_sparkline_metric_idx
                     sparkline_preset = self.state.gpu_sparkline_preset
+                    sparkline_palette = self.state.gpu_sparkline_palette
+                    sparkline_mode = self.state.gpu_sparkline_mode
 
                 # Build GL2 with conditional reverse for active metric
                 # metric_idx follows the GPU sparkline metric order
@@ -629,6 +636,7 @@ class Dashboard:
                 gl2 = f"{temp_str} • {fan_str} • {pwr_str} • {gpu_str} • {mem_str}"
 
                 spark_cfg = get_gpu_sparkline_config(sparkline_preset)
+                palette = get_gpu_sparkline_palette(sparkline_palette)
                 if spark_cfg.metrics:
                     metric_idx = metric_idx % len(spark_cfg.metrics)
                 else:
@@ -650,15 +658,28 @@ class Dashboard:
 
                     if metric is None:
                         spark = " " * spark_len
+                        gl3 = spark
                     else:
-                        spark = render_sparkline(
-                            history,
-                            spark_len,
-                            metric.min_val,
-                            metric.max_val,
-                            spark_cfg.style,
-                        )
-                    gl3 = f"[dim cyan]{spark}[/]"  # Dim cyan like panel borders
+                        if sparkline_mode == "palette":
+                            spark = render_sparkline(
+                                history,
+                                spark_len,
+                                metric.min_val,
+                                metric.max_val,
+                                spark_cfg.style,
+                                palette=palette.colors,
+                                glyph=PALETTE_GLYPH,
+                            )
+                            gl3 = spark or " " * spark_len
+                        else:
+                            spark = render_sparkline(
+                                history,
+                                spark_len,
+                                metric.min_val,
+                                metric.max_val,
+                                spark_cfg.style,
+                            )
+                            gl3 = f"[dim cyan]{spark}[/]" if spark else " " * spark_len
 
                 gpu_content = f"{gl1}\n{gl2}\n{gl3}"
 
@@ -860,6 +881,8 @@ class Dashboard:
             log_path = self.state.log_path
             debug_enabled = self.state.debug_enabled
             sparkline_preset = self.state.gpu_sparkline_preset
+            sparkline_palette = self.state.gpu_sparkline_palette
+            sparkline_mode = self.state.gpu_sparkline_mode
 
         # Get console dimensions for responsive sizing
         w = self.console.size.width
@@ -936,9 +959,14 @@ class Dashboard:
                 queue_seed,
             )
         elif active_tab == "tui":
-            content = render_tui_content(dim_level, sparkline_preset)
+            content = render_tui_content(dim_level, sparkline_preset, sparkline_palette, sparkline_mode)
         else:  # reference
-            content = render_reference_content(self._spinner_frame, sparkline_preset)
+            content = render_reference_content(
+                self._spinner_frame,
+                sparkline_preset,
+                sparkline_palette,
+                sparkline_mode,
+            )
 
         # === FOOTER ===
         footer = Text.from_markup(

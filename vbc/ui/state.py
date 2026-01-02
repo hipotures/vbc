@@ -4,7 +4,10 @@ from pathlib import Path
 from collections import deque
 from typing import List, Optional, Dict, Any, ClassVar, Tuple
 from vbc.domain.models import CompressionJob
-from vbc.ui.gpu_sparkline import DEFAULT_GPU_SPARKLINE_PRESET
+from vbc.ui.gpu_sparkline import (
+    DEFAULT_GPU_SPARKLINE_PALETTE,
+    DEFAULT_GPU_SPARKLINE_PRESET,
+)
 
 class UIState:
     """Thread-safe state manager for the interactive UI."""
@@ -84,6 +87,8 @@ class UIState:
         # GPU Sparkline
         self.gpu_sparkline_metric_idx: int = 0  # Index into active GPU sparkline metric order
         self.gpu_sparkline_preset: str = DEFAULT_GPU_SPARKLINE_PRESET
+        self.gpu_sparkline_palette: str = DEFAULT_GPU_SPARKLINE_PALETTE
+        self.gpu_sparkline_mode: str = "sparkline"  # sparkline | palette
         self.gpu_history_temp: deque = deque(maxlen=60)
         self.gpu_history_pwr: deque = deque(maxlen=60)
         self.gpu_history_gpu: deque = deque(maxlen=60)
