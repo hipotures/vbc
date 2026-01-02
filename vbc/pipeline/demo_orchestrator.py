@@ -21,6 +21,7 @@ from vbc.domain.events import (
     ProcessingFinished,
     QueueUpdated,
     RefreshRequested,
+    RefreshFinished,
 )
 from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
 from vbc.infrastructure.event_bus import EventBus
@@ -421,6 +422,7 @@ class DemoOrchestrator:
                 with self._refresh_lock:
                     if self._refresh_requested:
                         self._refresh_requested = False
+                        self.event_bus.publish(RefreshFinished(added=0, removed=0))
                         self.event_bus.publish(ActionMessage(message="Refreshed: no changes (demo)"))
 
                 submit_batch()

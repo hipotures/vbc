@@ -711,11 +711,7 @@ class Dashboard:
     def _generate_progress(self, h_lines: int) -> Panel:
         """Progress bar + counters (size-based progress)."""
         with self.state._lock:
-            # Liczby plików (header - bez zmian)
-            total = self.state.files_to_process
-            done = self.state.completed_count
-            failed = self.state.failed_count
-            skipped = self.state.skipped_count
+            # Liczby plików (header: session/total/all)
 
             # Oblicz całkowity rozmiar i przetworzony rozmiar
             total_size_bytes = 0
@@ -745,10 +741,20 @@ class Dashboard:
                 elapsed_str = self.format_time(elapsed)
 
             # Header (liczby plików + source folders jeśli > 1)
+            session_done = max(0, self.state.completed_count - self.state.session_completed_base)
+            completed_since_discovery = max(
+                0, self.state.completed_count - self.state.completed_count_at_last_discovery
+            )
+            total_done = self.state.already_compressed_count + completed_since_discovery
+            if total_done < self.state.completed_count:
+                total_done = self.state.completed_count
+            total_files = self.state.total_files_found
+            if total_files > 0:
+                total_done = min(total_done, total_files)
             if self.state.source_folders_count > 1:
-                header = f"Done: {done}/{total} • Sources: {self.state.source_folders_count}"
+                header = f"Done: {session_done}/{total_done}/{total_files} • Sources: {self.state.source_folders_count}"
             else:
-                header = f"Done: {done}/{total}"
+                header = f"Done: {session_done}/{total_done}/{total_files}"
 
             # Progress bar (skalowany do 0-10000 aby uniknąć problemów z dużymi liczbami)
             if total_size_bytes > 0:

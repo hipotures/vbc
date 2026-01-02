@@ -23,6 +23,8 @@ class UIState:
         self.cam_skipped_count = 0
         self.min_ratio_skip_count = 0  # Files copied instead of compressed (ratio too low)
         self.interrupted_count = 0  # Files interrupted by Ctrl+C
+        self.completed_count_at_last_discovery = 0
+        self.session_completed_base = 0
 
         # Discovery counters (files skipped before processing)
         self.files_to_process = 0

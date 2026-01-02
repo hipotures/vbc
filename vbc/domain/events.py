@@ -47,6 +47,11 @@ class RefreshRequested(Event):
     """Event to trigger re-scanning for new files."""
     pass
 
+class RefreshFinished(Event):
+    """Event emitted after refresh completes (used for UI counters)."""
+    added: int = 0
+    removed: int = 0
+
 class ActionMessage(Event):
     """Event for user action feedback (displayed in UI for 60s)."""
     message: str

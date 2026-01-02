@@ -15,7 +15,7 @@ from vbc.infrastructure.exif_tool import ExifToolAdapter
 from vbc.infrastructure.ffprobe import FFprobeAdapter
 from vbc.infrastructure.ffmpeg import FFmpegAdapter
 from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
-from vbc.domain.events import DiscoveryStarted, DiscoveryFinished, JobStarted, JobCompleted, JobFailed, QueueUpdated, ProcessingFinished
+from vbc.domain.events import DiscoveryStarted, DiscoveryFinished, JobStarted, JobCompleted, JobFailed, QueueUpdated, ProcessingFinished, RefreshFinished
 from vbc.ui.keyboard import RequestShutdown, ThreadControlEvent, InterruptRequested
 from vbc.pipeline.queue_sorting import sort_files
 
@@ -854,6 +854,16 @@ class Orchestrator:
                             self._refresh_requested = False
                             # Perform new discovery on all folders
                             new_files, new_stats = self._perform_discovery(list(self._folder_mapping.keys()))
+                            new_paths = {vf.path for vf in new_files}
+                            removed = 0
+                            if pending:
+                                new_pending = deque()
+                                for vf in pending:
+                                    if vf.path in new_paths:
+                                        new_pending.append(vf)
+                                    else:
+                                        removed += 1
+                                pending = new_pending
                             # Track already submitted files to avoid duplicates
                             submitted_paths = {vf.path for vf in in_flight.values()}
                             submitted_paths.update(vf.path for vf in pending)
@@ -863,6 +873,7 @@ class Orchestrator:
                                 if vf.path not in submitted_paths:
                                     pending.append(vf)
                                     added += 1
+                            self.event_bus.publish(RefreshFinished(added=added, removed=removed))
                             # Update discovery stats (include ignored_small like old code)
                             self.event_bus.publish(DiscoveryFinished(
                                 files_found=new_stats['files_found'],
@@ -875,9 +886,15 @@ class Orchestrator:
                             ))
                             # Publish feedback message (like old vbc.py lines 1852-1860)
                             from vbc.domain.events import ActionMessage
-                            if added > 0:
+                            if added > 0 and removed > 0:
+                                self.event_bus.publish(ActionMessage(message=f"Refreshed: +{added} new, -{removed} removed"))
+                                self.logger.info(f"Refresh: +{added} new, -{removed} removed")
+                            elif added > 0:
                                 self.event_bus.publish(ActionMessage(message=f"Refreshed: +{added} new files"))
                                 self.logger.info(f"Refresh: added {added} new files to queue")
+                            elif removed > 0:
+                                self.event_bus.publish(ActionMessage(message=f"Refreshed: -{removed} removed"))
+                                self.logger.info(f"Refresh: removed {removed} files from queue")
                             else:
                                 self.event_bus.publish(ActionMessage(message="Refreshed: no changes"))
                                 self.logger.info("Refresh: no changes detected")

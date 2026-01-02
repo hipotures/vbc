@@ -6,7 +6,7 @@ from vbc.domain.events import (
     DiscoveryStarted, DiscoveryFinished,
     JobStarted, JobCompleted, JobFailed,
     JobProgressUpdated, HardwareCapabilityExceeded, QueueUpdated,
-    ActionMessage, ProcessingFinished
+    ActionMessage, ProcessingFinished, RefreshFinished
 )
 from vbc.config.input_dirs import STATUS_OK
 from vbc.ui.keyboard import (
@@ -40,6 +40,7 @@ class UIManager:
         self.bus.subscribe(RotateGpuMetric, self.on_rotate_gpu_metric)
         self.bus.subscribe(QueueUpdated, self.on_queue_updated)
         self.bus.subscribe(ActionMessage, self.on_action_message)
+        self.bus.subscribe(RefreshFinished, self.on_refresh_finished)
         self.bus.subscribe(ProcessingFinished, self.on_processing_finished)
 
     def on_discovery_started(self, event: DiscoveryStarted):
@@ -64,6 +65,13 @@ class UIManager:
         self.state.source_folders_count = event.source_folders_count
         self.state.discovery_finished = True
         self.state.discovery_finished_time = datetime.now()
+        self.state.completed_count_at_last_discovery = self.state.completed_count
+
+    def on_refresh_finished(self, event: RefreshFinished):
+        if event.added <= 0 and event.removed <= 0:
+            return
+        with self.state._lock:
+            self.state.session_completed_base = self.state.completed_count
 
     def on_thread_control(self, event: ThreadControlEvent):
         with self.state._lock:
