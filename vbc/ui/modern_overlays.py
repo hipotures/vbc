@@ -926,10 +926,7 @@ class TuiOverlay:
                 if preset == selected
                 else f"white on {COLORS['border']}"
             )
-            hint = ""
-            if preset == selected:
-                hint = f" [{COLORS['dim']}][W] cycle[/]"
-            tokens.append(f"[{style}] {label} [/]{hint}")
+            tokens.append(f"[{style}] {label} [/]")
         return " ".join(tokens)
 
     def _render_content(self) -> Group:
@@ -954,7 +951,7 @@ class TuiOverlay:
         sparkline_table.add_column(ratio=1)
         sparkline_table.add_row(
             "Sparkline",
-            f"{self._render_sparkline_presets()}",
+            f"{self._render_sparkline_presets()}  [{COLORS['dim']}][W] cycle[/]",
         )
 
         sparkline_card = make_card(
