@@ -52,56 +52,78 @@ DEFAULT_GPU_SPARKLINE_STYLE = SparklineStyle(
     missing="·",
 )
 
+_GPU_SPARKLINE_METRICS = (
+    # Order matches GL2 display: temp | fan | pwr | gpu | mem
+    SparklineMetricConfig(
+        label="Temp",
+        history_attr="gpu_history_temp",
+        min_val=35.0,
+        max_val=70.0,
+        unit="°C",
+        display_name="Temperature",
+    ),
+    SparklineMetricConfig(
+        label="Fan",
+        history_attr="gpu_history_fan",
+        min_val=0.0,
+        max_val=100.0,
+        unit="%",
+        display_name="Fan Speed",
+        legend_group="%",
+    ),
+    SparklineMetricConfig(
+        label="Pwr",
+        history_attr="gpu_history_pwr",
+        min_val=100.0,
+        max_val=400.0,
+        unit="W",
+        display_name="Power Draw",
+    ),
+    SparklineMetricConfig(
+        label="GPU",
+        history_attr="gpu_history_gpu",
+        min_val=0.0,
+        max_val=100.0,
+        unit="%",
+        display_name="GPU Utilization",
+        legend_group="%",
+    ),
+    SparklineMetricConfig(
+        label="Mem",
+        history_attr="gpu_history_mem",
+        min_val=0.0,
+        max_val=100.0,
+        unit="%",
+        display_name="Memory Utilization",
+        legend_group="%",
+    ),
+)
+
 GPU_SPARKLINE_PRESETS = {
     "classic_8": SparklineConfig(
         style=DEFAULT_GPU_SPARKLINE_STYLE,
-        label="Default",
-        metrics=[
-            # Order matches GL2 display: temp | fan | pwr | gpu | mem
-            SparklineMetricConfig(
-                label="Temp",
-                history_attr="gpu_history_temp",
-                min_val=35.0,
-                max_val=70.0,
-                unit="°C",
-                display_name="Temperature",
-            ),
-            SparklineMetricConfig(
-                label="Fan",
-                history_attr="gpu_history_fan",
-                min_val=0.0,
-                max_val=100.0,
-                unit="%",
-                display_name="Fan Speed",
-                legend_group="%",
-            ),
-            SparklineMetricConfig(
-                label="Pwr",
-                history_attr="gpu_history_pwr",
-                min_val=100.0,
-                max_val=400.0,
-                unit="W",
-                display_name="Power Draw",
-            ),
-            SparklineMetricConfig(
-                label="GPU",
-                history_attr="gpu_history_gpu",
-                min_val=0.0,
-                max_val=100.0,
-                unit="%",
-                display_name="GPU Utilization",
-                legend_group="%",
-            ),
-            SparklineMetricConfig(
-                label="Mem",
-                history_attr="gpu_history_mem",
-                min_val=0.0,
-                max_val=100.0,
-                unit="%",
-                display_name="Memory Utilization",
-                legend_group="%",
-            ),
-        ],
+        label="Classic",
+        metrics=_GPU_SPARKLINE_METRICS,
+    ),
+    "shade_4": SparklineConfig(
+        style=SparklineStyle(name="shade_4", blocks="░▒▓█"),
+        label="Shade",
+        metrics=_GPU_SPARKLINE_METRICS,
+    ),
+    "dots_5": SparklineConfig(
+        style=SparklineStyle(name="dots_5", blocks="○◔◑◕●"),
+        label="Dots",
+        metrics=_GPU_SPARKLINE_METRICS,
+    ),
+    "digits_10": SparklineConfig(
+        style=SparklineStyle(name="digits_10", blocks="0123456789"),
+        label="Digits",
+        metrics=_GPU_SPARKLINE_METRICS,
+    ),
+    "hex_16": SparklineConfig(
+        style=SparklineStyle(name="hex_16", blocks="0123456789ABCDEF"),
+        label="Hex",
+        metrics=_GPU_SPARKLINE_METRICS,
     ),
 }
 
