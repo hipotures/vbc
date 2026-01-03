@@ -523,7 +523,8 @@ class Orchestrator:
                 folder_files_to_process.append(vf)
 
             # Aggregate stats
-            total_stats['files_found'] += folder_total_files
+            # files_found = only files that could be processed (exclude ignored_small, ignored_err)
+            total_stats['files_found'] += (folder_total_files - folder_ignored_small - folder_ignored_err)
             total_stats['already_compressed'] += folder_already_compressed
             total_stats['ignored_small'] += folder_ignored_small
             total_stats['ignored_err'] += folder_ignored_err
