@@ -143,17 +143,17 @@ VBC follows **Clean Architecture** with strict layer separation and event-driven
 
 ```mermaid
 graph TB
-    subgraph UI["UI Layer (vbc/ui)"]
+    subgraph UI["UI Layer<br/>(vbc/ui)"]
         Dashboard[Dashboard]
         UIManager[UIManager]
         Keyboard[KeyboardListener]
     end
 
-    subgraph Pipeline["Pipeline Layer (vbc/pipeline)"]
+    subgraph Pipeline["Pipeline Layer<br/>(vbc/pipeline)"]
         Orchestrator[Orchestrator]
     end
 
-    subgraph Infrastructure["Infrastructure Layer (vbc/infrastructure)"]
+    subgraph Infrastructure["Infrastructure Layer<br/>(vbc/infrastructure)"]
         EventBus[EventBus]
         FFmpeg[FFmpegAdapter]
         ExifTool[ExifToolAdapter]
@@ -161,7 +161,7 @@ graph TB
         Scanner[FileScanner]
     end
 
-    subgraph Domain["Domain Layer (vbc/domain)"]
+    subgraph Domain["Domain Layer<br/>(vbc/domain)"]
         Models[Models]
         Events[Events]
     end
