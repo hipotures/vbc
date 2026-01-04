@@ -66,7 +66,7 @@ Modern video libraries grow fast. Raw 4K footage from cameras and drones consume
 
 ### Intelligence & Automation
 - ✅ **Auto-Rotation**: Regex-based filename pattern matching (GoPro, DJI, iPhone patterns)
-- ✅ **Deep Metadata**: EXIF/XMP/GPS preservation + custom VBC tags (original size, CQ, encoder)
+- ✅ **Deep Metadata**: EXIF/XMP/GPS preservation + custom VBC tags (original size, quality, encoder)
 - ✅ **Queue Refresh**: Re-scan directory mid-run to pick up new files
 - ✅ **Error Markers**: `.err` files track failures with optional cleanup/retry
 - ✅ **Resume Capability**: Automatically skip already-compressed files

@@ -263,7 +263,7 @@ general:
 - **Camera**: Model, lens, focal length, ISO, aperture
 - **XMP**: All XMP tags (Adobe, vendor-specific)
 - **QuickTime**: All QuickTime metadata
-- **Custom VBC tags**: Original filename, size, CQ, encoder, timestamp
+- **Custom VBC tags**: Original filename, size, quality, encoder, timestamp
 
 ### ExifTool Config
 
