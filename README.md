@@ -360,7 +360,7 @@ Default: `conf/vbc.yaml`
 Create configuration file for persistent settings:
 
 <details>
-<summary><b>📋 Full configuration example</b> (<code>conf/vbc.yaml.example</code>) - Click to expand</summary>
+<summary>📋 Full configuration example (<code>conf/vbc.yaml.example</code>) - Click to expand</summary>
 
 ```yaml
 # VBC Configuration Example
