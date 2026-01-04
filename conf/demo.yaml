@@ -14,7 +14,6 @@ input_folders:
     status: norw
 
 files:
-  count: 120
   extensions:
     - ext: .mp4
       weight: 0.55

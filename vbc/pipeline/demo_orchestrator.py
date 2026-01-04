@@ -9,7 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from vbc.config.models import AppConfig, DemoConfig
+from vbc.config.models import AppConfig, DemoConfig, DemoInputFolder
 from vbc.domain.events import (
     ActionMessage,
     DiscoveryFinished,
@@ -215,6 +215,39 @@ class DemoOrchestrator:
             return self._rng.uniform(10.0, 35.0)
         return None
 
+    def _parse_size_to_bytes(self, size_str: str) -> int:
+        """Parse size string like '12.5GB' to bytes."""
+        import re
+        size_str = size_str.strip().upper()
+        match = re.match(r'^([\d.]+)\s*(GB|MB|TB|KB|B)?$', size_str)
+        if not match:
+            return 0
+        value = float(match.group(1))
+        unit = match.group(2) or "B"
+        multipliers = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
+        return int(value * multipliers.get(unit, 1))
+
+    def _calculate_input_folders_totals(self) -> tuple[int, int]:
+        """Calculate total files and size from input_folders mockup data.
+
+        Returns:
+            (total_files, total_size_bytes) tuple
+        """
+        total_files = 0
+        total_size_bytes = 0
+
+        for folder_entry in self.demo_config.input_folders:
+            if isinstance(folder_entry, DemoInputFolder):
+                # Only count folders with status "ok" and valid data
+                if folder_entry.status in (None, "ok"):
+                    if folder_entry.files is not None:
+                        total_files += folder_entry.files
+                    if folder_entry.size:
+                        total_size_bytes += self._parse_size_to_bytes(folder_entry.size)
+            # Ignore old string format - no mockup data available
+
+        return total_files, total_size_bytes
+
     def _generate_files(self) -> List[VideoFile]:
         demo_files = self.demo_config.files
         name_gen = DemoNameGenerator(
@@ -226,7 +259,14 @@ class DemoOrchestrator:
         used_names: set = set()
         files: List[VideoFile] = []
 
-        for _ in range(demo_files.count):
+        # Use input_folders totals if available, otherwise fall back to files.count
+        total_files, _ = self._calculate_input_folders_totals()
+        file_count = total_files if total_files > 0 else (demo_files.count or 0)
+
+        if file_count == 0:
+            return []
+
+        for _ in range(file_count):
             base_name = name_gen.generate_unique(used_names)
             ext = self._weighted_choice(demo_files.extensions).ext
             if not ext.startswith("."):

@@ -260,7 +260,7 @@ class DemoExtension(BaseModel):
     weight: float = Field(default=1.0, gt=0)
 
 class DemoFilesConfig(BaseModel):
-    count: int = Field(default=120, ge=0)
+    count: Optional[int] = Field(default=None, ge=0)
     extensions: List[DemoExtension] = Field(default_factory=list)
     min_words: int = Field(default=1, ge=1)
     max_words: int = Field(default=3, ge=1)
