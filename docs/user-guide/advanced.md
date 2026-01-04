@@ -303,7 +303,7 @@ Output:
 ```
 VBC Original Name       : original_video.mp4
 VBC Original Size       : 125829120
-VBC CQ                  : 45
+VBC Quality             : 45
 VBC Encoder             : NVENC AV1 (GPU)
 VBC Finished At         : 2025-12-21T15:30:45+01:00
 ```
