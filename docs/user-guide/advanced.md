@@ -212,6 +212,31 @@ uv run vbc/main.py /videos --skip-av1
 
 **Use case:** Mixed library with some files already compressed to AV1.
 
+## Audio Consistency Check
+
+Verify that audio handling in the output matches VBC's rules.
+
+Behavior summary:
+- Lossless (`pcm_*`, `flac`, `alac`, `truehd`, `mlp`, `wavpack`, `ape`, `tta`) → AAC 256 kbps
+- AAC/MP3 → stream copy
+- Other/unknown → AAC 192 kbps
+- No audio → no audio
+
+### Usage
+
+```bash
+# Default output dir: <input_dir>_out
+python vbc/utils/check_audio_consistency.py /path/to/videos
+
+# Custom output dir
+python vbc/utils/check_audio_consistency.py /path/to/videos --output-dir /path/to/videos_out
+```
+
+### Output
+
+The script prints summary counts (including how many input files had no audio),
+lists missing outputs, and reports any codec/bitrate mismatches.
+
 ## Prefetch Factor
 
 Controls submit-on-demand queue size.
