@@ -1,3 +1,19 @@
+"""Pipeline orchestrator for video compression job lifecycle management.
+
+Coordinates file discovery, queue management, metadata extraction, compression jobs,
+and dynamic thread control. Uses event-driven architecture with EventBus for loose
+coupling between pipeline and UI layers.
+
+Key responsibilities:
+- Discover video files matching extensions and size filters
+- Extract and cache video metadata (codec, FPS, camera model, etc.)
+- Manage queue of pending jobs with configurable sort order
+- Submit jobs to thread pool respecting prefetch_factor (submit-on-demand pattern)
+- Handle job lifecycle: discovery → queuing → processing → completion/failure
+- Support dynamic thread count adjustment and graceful shutdown
+- Emit events for UI updates (JobStarted, JobCompleted, JobFailed, etc.)
+"""
+
 import re
 import threading
 import concurrent.futures
@@ -19,7 +35,33 @@ from vbc.domain.events import DiscoveryStarted, DiscoveryFinished, JobStarted, J
 from vbc.ui.keyboard import RequestShutdown, ThreadControlEvent, InterruptRequested
 from vbc.pipeline.queue_sorting import sort_files
 
+
 class Orchestrator:
+    """Video compression pipeline orchestrator.
+
+    Manages the full job lifecycle: discovery → queuing → compression.
+    Coordinates with infrastructure adapters (FFmpeg, ExifTool, FFprobe)
+    and publishes events to the UI via EventBus.
+
+    Uses thread-safe state management with Condition variables for:
+    - Dynamic thread pool sizing (Ctrl+< and Ctrl+>)
+    - Graceful shutdown coordination (Ctrl+S)
+    - Queue refresh signaling (Ctrl+R)
+
+    Implements "submit-on-demand" pattern: submits only prefetch_factor*threads
+    jobs to thread pool; submits new jobs as workers complete (avoids queueing
+    thousands of futures for large directories).
+
+    Args:
+        config: AppConfig with general, GPU, UI, autorotate, and input/output settings.
+        event_bus: EventBus for publishing job lifecycle events.
+        file_scanner: FileScanner for discovering video files.
+        exif_adapter: ExifToolAdapter for metadata extraction (camera, GPS, etc.).
+        ffprobe_adapter: FFprobeAdapter for codec, FPS, duration probing.
+        ffmpeg_adapter: FFmpegAdapter for AV1 compression execution.
+        output_dir_map: Optional override mapping input_dir → output_dir (else uses suffix).
+    """
+
     def __init__(
         self,
         config: AppConfig,
