@@ -81,10 +81,9 @@ Modern video libraries grow fast. Raw 4K footage from cameras and drones consume
 ---
 
 ## Demo & Screenshots
-
 ### Interactive Dashboard
 
-[SCREENSHOT: VBC dashboard showing main panels - menu, status, active jobs, recent completions, queue, and summary with GPU sparklines]
+![VBC Dashboard](assets/images/scr-dashboard.png)
 
 The dashboard provides real-time visibility into:
 - **Status Panel**: Files discovered, compression progress, thread count
@@ -96,7 +95,7 @@ The dashboard provides real-time visibility into:
 
 ### Configuration Overlay
 
-[SCREENSHOT: Configuration overlay showing all settings including I/O paths, encoder settings, quality presets, and dynamic CQ mappings]
+![Configuration Overlay](assets/images/scr-settings.png)
 
 Press `C` to toggle configuration view showing:
 - Input/output directory mappings
@@ -107,12 +106,32 @@ Press `C` to toggle configuration view showing:
 
 ### Runtime Controls
 
-[SCREENSHOT: Runtime controls in action - showing thread adjustment from 4 to 8 with UI feedback]
+![Runtime Controls - Thread Adjustment](assets/images/scr-threads_decr.png)
 
 Dynamic thread adjustment while processing:
 - Press `.` or `>` to increase threads (instant response)
 - Press `,` or `<` to decrease threads
 - UI shows immediate feedback: "Threads: 4 → 8"
+
+### Screenshot Gallery
+
+<table>
+  <tr>
+    <td width="33%"><img src="assets/images/scr-dashboard.png" alt="Dashboard"/><br/><b>Dashboard</b></td>
+    <td width="33%"><img src="assets/images/scr-settings.png" alt="Settings"/><br/><b>Settings [C]</b></td>
+    <td width="33%"><img src="assets/images/scr-shortcuts.png" alt="Shortcuts"/><br/><b>Shortcuts [M]</b></td>
+  </tr>
+  <tr>
+    <td><img src="assets/images/scr-folders.png" alt="I/O Folders"/><br/><b>I/O Folders [F]</b></td>
+    <td><img src="assets/images/scr-reference.png" alt="Reference"/><br/><b>Reference [L]</b></td>
+    <td><img src="assets/images/scr-tui.png" alt="TUI Settings"/><br/><b>TUI Settings [T]</b></td>
+  </tr>
+  <tr>
+    <td><img src="assets/images/scr-threads_decr.png" alt="Thread Control"/><br/><b>Thread Decrease</b></td>
+    <td><img src="assets/images/scr-shutdown.png" alt="Shutdown"/><br/><b>Graceful Shutdown [S]</b></td>
+    <td><img src="assets/images/scr-compact_mode.png" alt="Compact Mode"/><br/><b>Compact Mode</b></td>
+  </tr>
+</table>
 
 ---
 
@@ -214,8 +233,6 @@ uv run vbc /path/to/videos
 2. **Output Created**: Creates `/path/to/videos_out/` directory automatically
 3. **Compression**: Starts processing with defaults (1 thread, CQ 45, GPU mode)
 4. **Dashboard**: Shows real-time progress, active jobs, queue, and summary
-
-[SCREENSHOT: First run showing discovery phase, file scanning, and initial compression jobs]
 
 ### Check Results
 
@@ -342,63 +359,158 @@ Default: `conf/vbc.yaml`
 
 Create configuration file for persistent settings:
 
+**Full configuration example** (`conf/vbc.yaml.example`):
+
 ```yaml
+# VBC Configuration Example
+# All available parameters with descriptions
+
+# --- Input/Output Settings ---
+
+# List of directories to scan for videos.
+# CLI argument overrides this (no merge).
+input_dirs:
+  - /path/to/videos
+  - /another/path
+
+# Explicit output directories (one per input directory, in order).
+# Must have the same count as input_dirs.
+# Cannot be used if suffix_output_dirs is set.
+output_dirs: []
+
+# Suffix appended to each input directory name to create output directory.
+# Example: /videos -> /videos_out
+# Default: "_out"
+suffix_output_dirs: "_out"
+
+# Explicit directories for failed files (one per input directory, in order).
+# Cannot be used if suffix_errors_dirs is set.
+errors_dirs: []
+
+# Suffix appended to each input directory name for failed files.
+# After processing, failed source files and their .err markers are moved here.
+# Default: "_err"
+suffix_errors_dirs: "_err"
+
+# --- General Settings ---
+
 general:
-  threads: 8                    # Max concurrent compressions
-  cq: 45                        # Constant quality (0-63, lower=better)
-  gpu: true                     # Use GPU (NVENC) vs CPU (SVT-AV1)
-  prefetch_factor: 1            # Queue multiplier (jobs = threads × factor)
+  # Max concurrent compression threads (1-16).
+  # Can be adjusted at runtime with < and > keys.
+  threads: 4
 
-  # File filtering
-  extensions: [".mp4", ".mov", ".avi", ".flv", ".webm"]
-  min_size_bytes: 1048576       # 1 MiB minimum
-  skip_av1: false               # Skip already-AV1 files
+  # Default constant quality (0-63). Lower = better quality, larger files.
+  # Recommendations: 35-38 (Archival), 40-45 (High), 48-52 (Good).
+  cq: 45
 
-  # Quality control
-  dynamic_cq:                   # Camera-specific CQ overrides
-    "ILCE-7RM5": 38            # Sony A7R V - higher quality
-    "DC-GH7": 40               # Panasonic GH7
-    "DJI OsmoPocket3": 45      # DJI Pocket 3
+  # Submit-on-demand queue multiplier (1-5).
+  # Formula: max_queued = prefetch_factor * threads.
+  prefetch_factor: 1
 
-  min_compression_ratio: 0.1    # Require 10% savings (else keep original)
+  # Use GPU acceleration (NVENC AV1) if true, otherwise CPU (SVT-AV1).
+  gpu: true
 
-  # Metadata
-  copy_metadata: true           # Preserve EXIF/XMP/GPS
-  use_exif: true                # Enable deep metadata extraction
+  # GPU polling interval in updates per second (legacy, see gpu_config).
+  gpu_refresh_rate: 5
 
-  # Camera filtering (empty = all cameras)
+  # Processing order: name, rand, dir, size, size-asc, size-desc, ext.
+  queue_sort: "name"
+
+  # Optional seed for deterministic random queue sorting.
+  queue_seed: null
+
+  # Path to log file. Default: /tmp/vbc/compression.log
+  log_path: "/tmp/vbc/compression.log"
+
+  # Retry on CPU if NVENC hits hardware capability error.
+  cpu_fallback: false
+
+  # Max CPU threads per FFmpeg worker (null = auto).
+  ffmpeg_cpu_threads: null
+
+  # Copy EXIF/XMP/GPS tags from source to output.
+  copy_metadata: true
+
+  # Use ExifTool for deep metadata analysis (required for dynamic_cq/filtering).
+  use_exif: true
+
+  # Only process specific camera models (substring match, case-insensitive).
+  # Example: ["Sony", "DJI"]
   filter_cameras: []
-  # Example: ["Sony", "DJI", "ILCE-7RM5"]
 
-  # Error handling
-  clean_errors: false           # Remove .err markers on startup
+  # Camera-specific CQ values (First match wins).
+  # Example: {"ILCE-7RM5": 38, "Sony": 40}
+  dynamic_cq: {}
 
-  # Logging
-  log_path: /tmp/vbc/compression.log
+  # File extensions to scan and process.
+  extensions:
+    - ".mp4"
+    - ".mov"
+    - ".avi"
+    - ".flv"
+    - ".webm"
+
+  # Minimum input file size in bytes to process (Default: 1 MiB).
+  min_size_bytes: 1048576
+
+  # Remove existing .err markers on startup and retry those files.
+  clean_errors: false
+
+  # Skip files already encoded in AV1 codec.
+  skip_av1: false
+
+  # Replace non-ASCII characters with '?' in UI to prevent alignment issues.
+  strip_unicode_display: true
+
+  # Global rotation override (null, 0, 90, 180, 270).
+  manual_rotation: null
+
+  # Minimum compression savings required (0.0-1.0).
+  # If compression < 10%, keep original file instead of compressed version.
+  min_compression_ratio: 0.1
+
+  # Enable verbose debug logging.
   debug: false
 
-# Auto-rotation based on filename patterns
-autorotate:
-  patterns:
-    "DJI_.*\\.MP4": 0          # DJI drones - no rotation
-    "GOPR\\d+\\.MP4": 180      # GoPro - flip upside down
-    "IMG_\\d{4}\\.MOV": 90     # iPhone - rotate 90°
+# --- GPU Monitoring Settings ---
 
-# GPU monitoring
 gpu_config:
+  # Enable GPU monitoring panel and sparklines.
   enabled: true
-  sample_interval_s: 5.0       # Sample every 5 seconds
-  history_window_s: 300.0      # 5-minute history window
-  nvtop_device_index: 0        # Primary GPU
 
-# UI display
+  # How often to sample GPU metrics (seconds).
+  sample_interval_s: 5.0
+
+  # Total time window shown in sparklines (seconds).
+  history_window_s: 300.0
+
+  # Index of the GPU device to monitor.
+  nvtop_device_index: 0
+
+  # Optional: specific device name to monitor (overrides index).
+  nvtop_device_name: null
+
+# --- UI Settings ---
+
 ui:
+  # Max events shown in the activity feed panel (1-20).
   activity_feed_max_items: 5
-  active_jobs_max_display: 8
-  panel_height_scale: 0.7      # 30% height reduction
-```
 
-[SCREENSHOT: Configuration file structure with annotated sections showing input/output mappings, quality settings, and camera-specific overrides]
+  # Max concurrent jobs to display in the active panel (1-16).
+  active_jobs_max_display: 8
+
+  # Vertical scaling factor for dashboard panels (0.3-1.0).
+  panel_height_scale: 0.7
+
+# --- Auto-Rotation Settings ---
+
+autorotate:
+  # Regex pattern -> Rotation angle (0, 90, 180, 270).
+  # First match wins.
+  patterns:
+    "GOPR\d+\.MP4": 180
+    "IMG_\d{4}\.MOV": 90
+```
 
 ### Directory Mapping Modes
 
