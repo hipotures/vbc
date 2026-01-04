@@ -88,6 +88,26 @@ uv run vbc /videos --cpu
 - `--gpu`: Fast, good for 1080p/1440p, quality ceiling ~CQ35-38
 - `--cpu`: Slow, excellent quality at any resolution
 
+### Audio
+
+Audio handling is automatic:
+- Lossless audio (`pcm_*`, `flac`, `alac`, `truehd`, `mlp`, `wavpack`, `ape`, `tta`) is transcoded to AAC at 256 kbps.
+- AAC/MP3 are stream-copied.
+- Other/unknown codecs are transcoded to AAC at 192 kbps for MP4 compatibility.
+- Files without audio remain silent.
+
+Lossless codec detection (ffprobe `codec_name`) in practice:
+- FLAC → `flac`
+- ALAC → `alac`
+- TrueHD → `truehd`
+- PCM → `pcm_*` (e.g. `pcm_s16be`, `pcm_s16le`, `pcm_s24le`)
+- MLP → `mlp`
+- WavPack → `wavpack`
+- APE → `ape`
+- TTA → `tta`
+
+**Debug hint:** `--debug` logs show `AUDIO_MODE` with the detected codec and action.
+
 ### Queue
 
 #### `--queue-sort TEXT`

@@ -115,6 +115,47 @@ def test_audio_codec_detection_drives_audio_options():
     assert cmd[audio_index + 1] == "copy"
     assert "-b:a" not in cmd
 
+
+@pytest.mark.parametrize(
+    ("audio_codec", "expected_codec", "expected_bitrate"),
+    [
+        ("flac (24-bit)", "aac", "256k"),
+        ("alac", "aac", "256k"),
+        ("truehd", "aac", "256k"),
+        ("mlp", "aac", "256k"),
+        ("wavpack", "aac", "256k"),
+        ("ape", "aac", "256k"),
+        ("tta", "aac", "256k"),
+        ("aac", "copy", None),
+        ("mp3", "copy", None),
+        ("opus", "aac", "192k"),
+        ("no-audio", "aac", "192k"),
+        (None, "aac", "192k"),
+    ],
+)
+def test_audio_codec_selection_matrix(audio_codec, expected_codec, expected_bitrate):
+    config = GeneralConfig(threads=1, cq=45, gpu=True)
+    metadata = VideoMetadata(
+        width=1920,
+        height=1080,
+        codec="h264",
+        audio_codec=audio_codec,
+        fps=30.0,
+    )
+    vf = VideoFile(path=Path("input.mp4"), size_bytes=1000, metadata=metadata)
+    job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
+
+    adapter = FFmpegAdapter(event_bus=MagicMock())
+    cmd = adapter._build_command(job, config)
+
+    audio_index = cmd.index("-c:a")
+    assert cmd[audio_index + 1] == expected_codec
+    if expected_bitrate:
+        bitrate_index = cmd.index("-b:a")
+        assert cmd[bitrate_index + 1] == expected_bitrate
+    else:
+        assert "-b:a" not in cmd
+
 def test_ffmpeg_compress_success():
     config = GeneralConfig(threads=4, cq=45, gpu=True)
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)

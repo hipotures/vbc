@@ -31,12 +31,28 @@ class FFmpegAdapter:
         self.logger = logging.getLogger(__name__)
 
     def _select_audio_options(self, job: CompressionJob) -> tuple[List[str], str, str]:
-        audio_codec = ""
+        raw = ""
         if job.source_file.metadata and job.source_file.metadata.audio_codec:
-            audio_codec = str(job.source_file.metadata.audio_codec).lower()
-        if audio_codec.startswith("pcm_"):
+            raw = str(job.source_file.metadata.audio_codec).lower()
+
+        # Normalize to ffprobe-like codec_name (strip profile/extra text)
+        audio_codec = re.split(r"[,\s(]", raw, maxsplit=1)[0] if raw else ""
+
+        lossless_codecs = {"flac", "alac", "truehd", "mlp", "wavpack", "ape", "tta"}
+
+        # If no audio codec info, treat as unknown and re-encode (safer for MP4)
+        if not audio_codec:
+            return (["-c:a", "aac", "-b:a", "192k"], "aac 192k", "unknown")
+
+        if audio_codec.startswith("pcm_") or audio_codec in lossless_codecs:
             return (["-c:a", "aac", "-b:a", "256k"], "aac 256k", audio_codec)
-        return (["-c:a", "copy"], "copy", audio_codec or "unknown")
+
+        # Safe copies to MP4 (minimal set)
+        if audio_codec in {"aac", "mp3"}:
+            return (["-c:a", "copy"], "copy", audio_codec)
+
+        # Everything else: re-encode to AAC for container compatibility
+        return (["-c:a", "aac", "-b:a", "192k"], "aac 192k", audio_codec)
 
     def _build_command(self, job: CompressionJob, config: GeneralConfig, rotate: Optional[int] = None, input_path: Optional[Path] = None) -> List[str]:
         """Constructs the FFmpeg command line for AV1 compression.
