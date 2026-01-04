@@ -85,6 +85,9 @@ class Orchestrator:
         self._metadata_lock = threading.Lock()
         self._metadata_failure_counts: Dict[Path, int] = {}
         self._metadata_failure_limit = 3
+        self._metadata_failure_reasons: Dict[Path, str] = {}
+        self._metadata_failed_paths: set[Path] = set()
+        self._metadata_failed_reported: set[Path] = set()
 
         # Dynamic control state
         self._shutdown_requested = False
@@ -237,6 +240,8 @@ class Orchestrator:
                 self._metadata_failure_counts[file_path] = failures
                 failure_limit = self._metadata_failure_limit
             if failures >= failure_limit:
+                if base_metadata is None:
+                    self._register_metadata_failure(video_file, e)
                 self.logger.warning(
                     f"Failed to extract metadata for {file_path.name} "
                     f"(attempt {failures}/{failure_limit}); suppressing retries: {e}"
@@ -247,6 +252,83 @@ class Orchestrator:
                     f"(attempt {failures}/{failure_limit}): {e}"
                 )
             return None
+
+    def _register_metadata_failure(self, video_file: VideoFile, error: Exception) -> None:
+        file_path = video_file.path
+        if file_path in self._metadata_failed_paths:
+            return
+        err_msg = "File is corrupted (ffprobe failed to read). Skipped."
+        self._metadata_failed_paths.add(file_path)
+        self._metadata_failure_reasons[file_path] = err_msg
+
+        output_path = self._write_error_marker(video_file, err_msg)
+        if output_path:
+            self.logger.error(f"Corrupted file detected (ffprobe failed): {video_file.path.name} - {error}")
+        else:
+            self.logger.warning(
+                f"Failed to write error marker for {video_file.path.name} after ffprobe error: {error}"
+            )
+        self._publish_metadata_failed_job(video_file, err_msg, output_path)
+
+    def _publish_metadata_failed_job(
+        self,
+        video_file: VideoFile,
+        err_msg: str,
+        output_path: Optional[Path],
+    ) -> None:
+        file_path = video_file.path
+        if file_path in self._metadata_failed_reported:
+            return
+        self._metadata_failed_reported.add(file_path)
+        job = CompressionJob(
+            source_file=video_file,
+            status=JobStatus.FAILED,
+            output_path=output_path,
+            error_message=err_msg,
+        )
+        self.event_bus.publish(JobFailed(job=job, error_message=err_msg))
+
+    def _write_error_marker(self, video_file: VideoFile, err_msg: str) -> Optional[Path]:
+        input_dir = self._find_input_folder(video_file.path)
+        if not input_dir:
+            return None
+        output_dir = self._folder_mapping.get(input_dir)
+        if output_dir is None:
+            try:
+                output_dir = self._get_output_dir(input_dir)
+            except Exception:
+                return None
+            self._folder_mapping[input_dir] = output_dir
+        try:
+            rel_path = video_file.path.relative_to(input_dir)
+        except ValueError:
+            rel_path = Path(video_file.path.name)
+        output_path = output_dir / rel_path.with_suffix(".mp4")
+        err_path = output_path.with_suffix(".err")
+        try:
+            err_path.parent.mkdir(parents=True, exist_ok=True)
+            err_path.write_text(err_msg)
+        except Exception:
+            return None
+        return output_path
+
+    def _prune_failed_pending(self, pending) -> int:
+        if not self._metadata_failed_paths:
+            return 0
+        failed_paths = self._metadata_failed_paths
+        if not failed_paths:
+            return 0
+        from collections import deque
+        kept = deque()
+        removed = 0
+        while pending:
+            vf = pending.popleft()
+            if vf.path in failed_paths:
+                removed += 1
+                continue
+            kept.append(vf)
+        pending.extend(kept)
+        return removed
 
     def _build_metadata(self, video_file: VideoFile, stream_info: Dict[str, Any]) -> VideoMetadata:
         width = int(stream_info.get("width", 0) or 0)
@@ -881,6 +963,7 @@ class Orchestrator:
         for vf in list(pending)[:25]:
             if not vf.metadata:
                 vf.metadata = self._get_metadata(vf)
+        self._prune_failed_pending(pending)
 
         # Update UI with initial pending files (store VideoFile objects, not just paths)
         self.event_bus.publish(QueueUpdated(pending_files=[vf for vf in pending]))
@@ -891,6 +974,8 @@ class Orchestrator:
                 max_inflight = self.config.general.prefetch_factor * self._current_max_threads
                 while len(in_flight) < max_inflight and pending and not self._shutdown_requested:
                     vf = pending.popleft()
+                    if vf.path in self._metadata_failed_paths:
+                        continue
                     future = executor.submit(self._process_file, vf)
                     in_flight[future] = vf
 
@@ -898,6 +983,7 @@ class Orchestrator:
                 for vf in list(pending)[:25]:
                     if not vf.metadata:
                         vf.metadata = self._get_metadata(vf)
+                self._prune_failed_pending(pending)
 
                 # Update UI with current pending files (store VideoFile objects, not just paths)
                 self.event_bus.publish(QueueUpdated(pending_files=[vf for vf in pending]))
@@ -938,6 +1024,7 @@ class Orchestrator:
                                         new_pending.append(vf)
                                     else:
                                         removed += 1
+                                self._prune_failed_pending(new_pending)
                                 pending = new_pending
                             # Track already submitted files to avoid duplicates
                             submitted_paths = {vf.path for vf in in_flight.values()}
