@@ -141,50 +141,23 @@ Dynamic thread adjustment while processing:
 
 VBC follows **Clean Architecture** with strict layer separation and event-driven communication:
 
-```mermaid
-graph TB
-    subgraph UI["🎨 UI Layer (vbc/ui)"]
-        Dashboard[Dashboard<br/>Rich Live UI]
-        UIManager[UIManager<br/>Event Handler]
-        Keyboard[KeyboardListener<br/>Input Handler]
-    end
-
-    subgraph Pipeline["⚙️ Pipeline Layer (vbc/pipeline)"]
-        Orchestrator[Orchestrator<br/>• File Discovery<br/>• Queue Management<br/>• Job Lifecycle<br/>• Concurrency Control]
-    end
-
-    subgraph Infrastructure["🔧 Infrastructure Layer (vbc/infrastructure)"]
-        EventBus[EventBus<br/>Pub/Sub]
-        FFmpeg[FFmpegAdapter<br/>Compression]
-        ExifTool[ExifToolAdapter<br/>Metadata]
-        FFprobe[FFprobeAdapter<br/>Stream Info]
-        Scanner[FileScanner<br/>Discovery]
-    end
-
-    subgraph Domain["📦 Domain Layer (vbc/domain)"]
-        Models[Models<br/>VideoFile, CompressionJob]
-        Events[Events<br/>16 Event Types]
-    end
-
-    Dashboard -.->|subscribes| EventBus
-    UIManager -.->|subscribes| EventBus
-    Keyboard -.->|publishes| EventBus
-
-    EventBus -.->|events| Orchestrator
-    Orchestrator -->|uses| Scanner
-    Orchestrator -->|uses| FFmpeg
-    Orchestrator -->|uses| ExifTool
-    Orchestrator -->|uses| FFprobe
-    Orchestrator -.->|publishes| EventBus
-
-    Orchestrator -->|creates| Models
-    EventBus -->|transmits| Events
-
-    style UI fill:#e1f5ff
-    style Pipeline fill:#fff9c4
-    style Infrastructure fill:#f3e5f5
-    style Domain fill:#c8e6c9
-    style EventBus fill:#ffccbc
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     UI Layer (vbc/ui)                       │
+│  Dashboard, KeyboardListener, UIState                       │
+│  (Rich library, terminal rendering)                         │
+└────────────────────┬────────────────────────────────────────┘
+                     │ Events (Pub/Sub via EventBus)
+┌────────────────────┴────────────────────────────────────────┐
+│                  Pipeline Layer (vbc/pipeline)              │
+│  Orchestrator (job lifecycle, queue, threads)               │
+└────────────────────┬────────────────────────────────────────┘
+                     │ Domain Models (VideoFile, Job)
+┌────────────────────┴────────────────────────────────────────┐
+│              Infrastructure Layer (vbc/infrastructure)      │
+│  FFmpeg, ExifTool, FFprobe, FileScanner                     │
+│  (External tool adapters)                                   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### Core Concepts
