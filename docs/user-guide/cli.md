@@ -42,9 +42,9 @@ uv run vbc /videos --config custom.yaml
 
 #### `--threads INT`, `-t INT`
 
-Number of concurrent compression threads (1-16).
+Number of concurrent compression threads.
 
-**Default:** From config (usually 4)
+**Default:** From config (default: 1)
 
 ```bash
 uv run vbc /videos --threads 8

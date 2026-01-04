@@ -127,38 +127,6 @@ class QueueUpdated(Event):
 **Subscribers:** UIManager
 **Purpose:** Update "Next in Queue" panel
 
-### Control Events
-
-#### ThreadControlEvent
-```python
-class ThreadControlEvent(Event):
-    change: int  # +1 or -1
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** Orchestrator, UIManager
-**Purpose:** Adjust max concurrent threads
-
-#### RequestShutdown
-```python
-class RequestShutdown(Event):
-    pass
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** Orchestrator, UIManager
-**Purpose:** Graceful shutdown (finish active jobs)
-
-#### InterruptRequested
-```python
-class InterruptRequested(Event):
-    pass
-```
-
-**Publisher:** KeyboardListener, Orchestrator
-**Subscribers:** UIManager
-**Purpose:** Immediate interrupt (Ctrl+C)
-
 #### RefreshRequested
 ```python
 class RefreshRequested(Event):
@@ -169,9 +137,83 @@ class RefreshRequested(Event):
 **Subscribers:** Orchestrator
 **Purpose:** Re-scan directory for new files
 
+#### RefreshFinished
+```python
+class RefreshFinished(Event):
+    added: int = 0
+    removed: int = 0
+```
+
+**Publisher:** Orchestrator
+**Subscribers:** UIManager
+**Purpose:** Report results after refresh completes (used for UI counters)
+
+### Control Events
+
+!!! note "UI/Keyboard Events Location"
+    The control events below are defined in `vbc/ui/keyboard.py` rather than `vbc/domain/events.py` because they are UI-layer concerns. They still use the EventBus for communication.
+
+#### ThreadControlEvent
+```python
+class ThreadControlEvent(Event):
+    change: int  # +1 or -1
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** Orchestrator, UIManager
+**Purpose:** Adjust max concurrent threads
+**Location:** `vbc/ui/keyboard.py`
+
+#### RequestShutdown
+```python
+class RequestShutdown(Event):
+    pass
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** Orchestrator, UIManager
+**Purpose:** Graceful shutdown (finish active jobs)
+**Location:** `vbc/ui/keyboard.py`
+
+#### InterruptRequested
+```python
+class InterruptRequested(Event):
+    pass
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** Orchestrator, UIManager
+**Purpose:** Immediate interrupt (Ctrl+C)
+**Location:** `vbc/ui/keyboard.py`
+
 ### UI Events
 
-#### ToggleConfig
+!!! warning "Deprecated UI Events"
+    `ToggleConfig` and `HideConfig` are deprecated and replaced by the new tabbed overlay system. They remain in the codebase for backwards compatibility but will be removed in a future version.
+
+#### ToggleOverlayTab
+```python
+class ToggleOverlayTab(Event):
+    tab: Optional[str] = None  # "settings" | "io" | "reference" | "shortcuts" | "tui" | None
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** UIManager
+**Purpose:** Toggle overlay with optional tab selection
+**Location:** `vbc/ui/keyboard.py`
+
+#### CloseOverlay
+```python
+class CloseOverlay(Event):
+    pass
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** UIManager
+**Purpose:** Close the overlay (Esc key)
+**Location:** `vbc/ui/keyboard.py`
+
+#### ToggleConfig (Deprecated)
 ```python
 class ToggleConfig(Event):
     pass
@@ -179,9 +221,10 @@ class ToggleConfig(Event):
 
 **Publisher:** KeyboardListener
 **Subscribers:** UIManager
-**Purpose:** Show/hide configuration overlay
+**Purpose:** ~~Show/hide configuration overlay~~ (replaced by `ToggleOverlayTab`)
+**Location:** `vbc/ui/keyboard.py`
 
-#### HideConfig
+#### HideConfig (Deprecated)
 ```python
 class HideConfig(Event):
     pass
@@ -189,7 +232,8 @@ class HideConfig(Event):
 
 **Publisher:** KeyboardListener
 **Subscribers:** UIManager
-**Purpose:** Close configuration overlay
+**Purpose:** ~~Close configuration overlay~~ (replaced by `CloseOverlay`)
+**Location:** `vbc/ui/keyboard.py`
 
 #### ActionMessage
 ```python

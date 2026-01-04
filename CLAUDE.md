@@ -13,11 +13,11 @@ Project uses `uv` for dependency management (Python 3.12+). All commands use `uv
 ### Run VBC
 ```bash
 # Main application
-uv run vbc/main.py /path/to/videos --gpu --threads 8
-uv run vbc/main.py /path/to/videos --cpu --cq 35
+uv run vbc /path/to/videos --gpu --threads 8
+uv run vbc /path/to/videos --cpu --cq 35
 
 # Test with a small dataset
-uv run vbc/main.py /path/to/test/videos --threads 2 --cq 45
+uv run vbc /path/to/test/videos --threads 2 --cq 45
 ```
 
 ### Documentation

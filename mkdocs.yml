@@ -96,4 +96,3 @@ nav:
   - Development:
       - Contributing: development/contributing.md
       - Testing: development/testing.md
-      - Migration from Legacy: development/migration.md

@@ -532,4 +532,3 @@ def test_scanner_skips_output_directories(tmp_path, scanner):
 ## Next Steps
 
 - [Contributing](contributing.md) - Contribution guidelines
-- [Migration](migration.md) - Migrate from legacy VBC

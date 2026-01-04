@@ -62,16 +62,16 @@ All components communicate via **EventBus** for loose coupling and testability.
 
 ```bash
 # Basic usage
-uv run vbc/main.py /path/to/videos
+uv run vbc /path/to/videos
 
 # With custom configuration
-uv run vbc/main.py /path/to/videos --config conf/vbc.yaml --threads 8 --cq 40
+uv run vbc /path/to/videos --config conf/vbc.yaml --threads 8 --cq 40
 
 # GPU acceleration with camera filtering
-uv run vbc/main.py /path/to/videos --gpu --camera "Sony,DJI"
+uv run vbc /path/to/videos --gpu --camera "Sony,DJI"
 
 # CPU mode with rotation and debug logging
-uv run vbc/main.py /path/to/videos --cpu --rotate-180 --debug
+uv run vbc /path/to/videos --cpu --rotate-180 --debug
 ```
 
 ## Runtime Controls

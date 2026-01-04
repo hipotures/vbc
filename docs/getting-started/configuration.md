@@ -11,7 +11,7 @@ Default location: `conf/vbc.yaml`
 Demo mode uses a separate simulation file: `conf/demo.yaml`.
 
 ```bash
-uv run vbc/main.py --demo --demo-config conf/demo.yaml
+uv run vbc --demo --demo-config conf/demo.yaml
 ```
 
 This file controls simulated file counts, size distribution, processing speed, and error mix.
@@ -108,8 +108,8 @@ autorotate:
 ### General Settings
 
 #### `threads`
-- **Type**: Integer (1-16)
-- **Default**: 4
+- **Type**: Integer (>0)
+- **Default**: 1
 - **Description**: Maximum number of concurrent compression threads
 - **Note**: Can be adjusted at runtime with `<` and `>` keys
 
@@ -174,6 +174,12 @@ autorotate:
   - Pros: Excellent quality, no session limits
   - Cons: Much slower
 
+#### `gpu_refresh_rate`
+- **Type**: Integer
+- **Default**: `5`
+- **Description**: **(Deprecated)** Use `gpu_config.sample_interval_s` instead. Kept for backwards compatibility.
+- **Note**: See deprecation notice in [GPU Monitoring](#gpu-monitoring-gpu_config) section
+
 ### GPU Monitoring (`gpu_config`)
 
 Advanced settings for GPU monitoring sparklines.
@@ -197,7 +203,24 @@ Advanced settings for GPU monitoring sparklines.
 #### `nvtop_device_index`
 - **Type**: Integer
 - **Default**: `0`
-- **Description**: Index of the GPU to monitor.
+- **Description**: Index of the GPU to monitor when multiple GPUs are present.
+
+#### `nvtop_device_name`
+- **Type**: String or null
+- **Default**: `null`
+- **Description**: Override device selection by name instead of index (e.g., "NVIDIA GeForce RTX 4090").
+- **Note**: When set, takes precedence over `nvtop_device_index`.
+
+#### `refresh_rate`
+- **Type**: Integer
+- **Default**: `5`
+- **Description**: **(Deprecated)** Use `sample_interval_s` instead. Kept for backwards compatibility.
+
+!!! note "Deprecated Fields"
+    - `gpu_config.refresh_rate` is **deprecated** in favor of `sample_interval_s`
+    - `general.gpu_refresh_rate` is **deprecated** in favor of `gpu_config.sample_interval_s`
+
+    For backwards compatibility, VBC still accepts both old fields, but new configurations should use `gpu_config.sample_interval_s`.
 
 ### UI Configuration (`ui`)
 
@@ -386,16 +409,16 @@ All config settings can be overridden via CLI:
 
 ```bash
 # Override threads and CQ
-uv run vbc/main.py /videos --threads 16 --cq 38
+uv run vbc /videos --threads 16 --cq 38
 
 # Override GPU setting
-uv run vbc/main.py /videos --cpu  # Force CPU mode
+uv run vbc /videos --cpu  # Force CPU mode
 
 # Override camera filtering
-uv run vbc/main.py /videos --camera "Sony,DJI"
+uv run vbc /videos --camera "Sony,DJI"
 
 # Override multiple settings
-uv run vbc/main.py /videos \
+uv run vbc /videos \
   --config custom.yaml \
   --threads 8 \
   --cq 40 \
@@ -413,13 +436,13 @@ You can maintain multiple config files:
 
 ```bash
 # Production (high quality, slow)
-uv run vbc/main.py /videos --config conf/production.yaml
+uv run vbc /videos --config conf/production.yaml
 
 # Fast preview (low quality, fast)
-uv run vbc/main.py /videos --config conf/preview.yaml
+uv run vbc /videos --config conf/preview.yaml
 
 # Archival (maximum quality)
-uv run vbc/main.py /videos --config conf/archive.yaml
+uv run vbc /videos --config conf/archive.yaml
 ```
 
 **Example `conf/archive.yaml`:**
