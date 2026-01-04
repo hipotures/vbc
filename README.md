@@ -359,7 +359,8 @@ Default: `conf/vbc.yaml`
 
 Create configuration file for persistent settings:
 
-**Full configuration example** (`conf/vbc.yaml.example`):
+<details>
+<summary><b>📋 Full configuration example</b> (<code>conf/vbc.yaml.example</code>) - Click to expand</summary>
 
 ```yaml
 # VBC Configuration Example
@@ -511,6 +512,8 @@ autorotate:
     "GOPR\d+\.MP4": 180
     "IMG_\d{4}\.MOV": 90
 ```
+
+</details>
 
 ### Directory Mapping Modes
 
