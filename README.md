@@ -632,18 +632,18 @@ Full runtime controls guide: [docs/user-guide/runtime-controls.md](docs/user-gui
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                  UI Layer                        │
+│                  UI Layer                       │
 │  Dashboard, KeyboardListener, UIState           │
 │  (Rich library, terminal rendering)             │
 └────────────────┬────────────────────────────────┘
                  │ Events (Pub/Sub via EventBus)
 ┌────────────────┴────────────────────────────────┐
-│              Pipeline Layer                      │
+│              Pipeline Layer                     │
 │  Orchestrator (job lifecycle, queue, threads)   │
 └────────────────┬────────────────────────────────┘
                  │ Domain Models (VideoFile, Job)
 ┌────────────────┴────────────────────────────────┐
-│          Infrastructure Layer                    │
+│          Infrastructure Layer                   │
 │  FFmpeg, ExifTool, FFprobe, FileScanner         │
 │  (External tool adapters)                       │
 └─────────────────────────────────────────────────┘
