@@ -287,7 +287,7 @@ VBC uses `conf/exiftool.conf` to define custom VBC tags:
     WRITABLE => 'string',
     VBCOriginalName => { },
     VBCOriginalSize => { },
-    VBCCQ => { },
+    VBCQuality => { },
     VBCEncoder => { },
     VBCFinishedAt => { },
 );

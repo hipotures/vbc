@@ -371,6 +371,6 @@ def test_build_vbc_tag_args(orchestrator_basic, tmp_path):
 
     assert "-XMP:VBCOriginalName=source.mp4" in args
     assert "-XMP:VBCOriginalSize=1000000" in args
-    assert "-XMP:VBCCQ=45" in args
+    assert "-XMP:VBCQuality=45" in args
     assert "-XMP:VBCEncoder=NVENC AV1 (GPU)" in args
     assert "-XMP:VBCFinishedAt=2025-01-01T12:00:00" in args

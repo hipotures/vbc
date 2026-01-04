@@ -227,7 +227,7 @@ def test_vbc_custom_tags_written(tmp_path):
                 # Should have original filename
                 assert "original_file.mp4" in args_str or "VBCOriginalName" in args_str
                 # Should have CQ value
-                assert "42" in args_str or "VBCCQ" in args_str
+                assert "42" in args_str or "VBCQuality" in args_str
                 break
 
         # VBC tags only written if exiftool.conf exists

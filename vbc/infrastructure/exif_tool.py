@@ -101,10 +101,12 @@ class ExifToolAdapter:
 
         camera_model = None
         custom_cq = None
+        matched_pattern = None
         for pattern, cq_value in dynamic_cq.items():
             if pattern in full_metadata_text:
                 camera_model = pattern
                 custom_cq = cq_value
+                matched_pattern = pattern
                 break
 
         if not camera_model and camera_raw:
@@ -118,6 +120,7 @@ class ExifToolAdapter:
             "camera_raw": camera_raw,
             "custom_cq": custom_cq,
             "bitrate_kbps": bitrate_kbps,
+            "matched_pattern": matched_pattern,
         }
 
     def copy_metadata(self, source: Path, target: Path):

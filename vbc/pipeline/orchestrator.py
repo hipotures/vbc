@@ -245,6 +245,13 @@ class Orchestrator:
                 metadata.camera_raw = exif_info.get("camera_raw")
                 metadata.custom_cq = exif_info.get("custom_cq")
                 metadata.bitrate_kbps = exif_info.get("bitrate_kbps")
+                matched_pattern = exif_info.get("matched_pattern")
+                if self.config.general.debug and matched_pattern and metadata.custom_cq is not None:
+                    raw_model = metadata.camera_raw or "None"
+                    self.logger.debug(
+                        f"DYNAMIC_CQ_MATCH: {video_file.path.name} "
+                        f"pattern=\"{matched_pattern}\" raw=\"{raw_model}\" cq={metadata.custom_cq}"
+                    )
             except Exception as e:
                 if self.config.general.debug:
                     self.logger.debug(f"ExifTool analysis failed for {video_file.path.name}: {e}")
@@ -342,7 +349,7 @@ class Orchestrator:
         return [
             f"-XMP:VBCOriginalName={source_path.name}",
             f"-XMP:VBCOriginalSize={original_size}",
-            f"-XMP:VBCCQ={cq}",
+            f"-XMP:VBCQuality={cq}",
             f"-XMP:VBCEncoder={encoder}",
             f"-XMP:VBCFinishedAt={finished_at}",
         ]
