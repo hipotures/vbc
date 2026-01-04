@@ -221,9 +221,17 @@ class Dashboard:
 
     # --- Render Logic ---
 
-    def _render_list(self, items: List[Any], available_lines: int, 
-                     levels: List[Tuple[str, int]], render_func) -> Table:
-        """Generic list renderer with density degradation."""
+    def _render_list(self, items: List[Any], available_lines: int,
+                     levels: List[Tuple[str, int]], render_func, show_more: bool = True) -> Table:
+        """Generic list renderer with density degradation.
+
+        Args:
+            items: Items to render
+            available_lines: Available content lines (without borders)
+            levels: List of (level_name, lines_per_item) tuples
+            render_func: Function to render each item
+            show_more: If False, never show "...+N more" line (default True)
+        """
         table = Table(show_header=False, box=None, padding=(0, 0), expand=True)
         table.add_column("Content", ratio=1)
         
@@ -249,7 +257,7 @@ class Dashboard:
                 if len(items) <= max_items:
                     items_to_show = items
                     has_more = False
-                elif available_lines >= lines_per_item + 1: # Reserve 1 line for "... +N more"
+                elif show_more and available_lines >= lines_per_item + 1: # Reserve 1 line for "... +N more"
                      max_items_res = (available_lines - 1) // lines_per_item
                      if max_items_res >= 1:
                          items_to_show = items[:max_items_res]
@@ -260,9 +268,10 @@ class Dashboard:
                          items_to_show = items[:max_items]
                          has_more = False # Or just implicit cut
                 else:
+                    # show_more=False or not enough space: just show what fits
                     items_to_show = items[:max_items]
-                    has_more = True # Implicit
-                    more_count = len(items) - max_items
+                    has_more = False
+                    more_count = 0
                 break
         
         # Render items
@@ -768,7 +777,8 @@ class Dashboard:
 
     def _generate_active_jobs_panel(self, h_lines: int) -> Panel:
         with self.state._lock:
-            jobs = self.state.active_jobs
+            # Limit jobs to max_active_jobs to avoid "...+N more" when at exactly the limit
+            jobs = self.state.active_jobs[:self.max_active_jobs]
             # Dynamic layout: reserve space based on terminal width
             term_w = self.console.size.width
             if term_w >= MIN_2COL_W:
@@ -777,7 +787,8 @@ class Dashboard:
             else:
                 # Narrow mode: always 2 lines per job (max 8 jobs)
                 levels = [("dynamic", 2)]
-            table = self._render_list(jobs, h_lines, levels, self._render_active_job)
+            # Never show "...+N more" for active jobs panel
+            table = self._render_list(jobs, h_lines, levels, self._render_active_job, show_more=False)
             return Panel(table, title="ACTIVE JOBS", border_style="cyan")
 
     def _generate_activity_panel(self, h_lines: int) -> Panel:
