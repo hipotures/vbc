@@ -70,3 +70,38 @@ python vbc/utils/copy_failed_videos.py /path/to/SR /path/to/SR_out /path/to/SR_n
   - Number of files copied
   - Number of source files not found
   - Total `.err` files processed
+
+---
+
+## check_audio_consistency.py
+
+Verify audio handling between input and output directories.
+
+### Features
+
+- Compares input audio codecs to expected output behavior
+- Detects lossless codecs (PCM, FLAC, ALAC, TrueHD, MLP, WavPack, APE, TTA)
+- Flags mismatches in codec choice or AAC bitrate
+- Reports how many input files had no audio
+
+### Requirements
+
+- Python 3.9+
+- `ffprobe` available in PATH
+
+### Usage
+
+```bash
+# Default output dir: <input_dir>_out
+python vbc/utils/check_audio_consistency.py /path/to/videos
+
+# Custom output dir
+python vbc/utils/check_audio_consistency.py /path/to/videos --output-dir /path/to/videos_out
+```
+
+### Output
+
+- Summary counts (including number of inputs without audio)
+- Missing output files
+- ffprobe errors
+- Detailed mismatches
