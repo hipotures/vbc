@@ -374,6 +374,7 @@ class DemoOrchestrator:
         self._job_plans = self._build_job_plans(files)
 
         stats = self._build_discovery_stats(len(files))
+        folder_count = len(self.demo_config.input_folders) if self.demo_config.input_folders else 1
         self.event_bus.publish(DiscoveryFinished(
             files_found=stats["files_found"],
             files_to_process=stats["files_to_process"],
@@ -381,7 +382,7 @@ class DemoOrchestrator:
             ignored_small=stats["ignored_small"],
             ignored_err=stats["ignored_err"],
             ignored_av1=0,
-            source_folders_count=max(1, len(self.demo_config.input_folders)),
+            source_folders_count=max(1, folder_count),
         ))
 
         if not files:

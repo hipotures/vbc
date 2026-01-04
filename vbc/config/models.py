@@ -13,7 +13,7 @@ Key models:
 Configuration precedence: CLI args > YAML > defaults
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 QUEUE_SORT_CHOICES = ("name", "rand", "dir", "size", "size-asc", "size-desc", "ext")
@@ -406,9 +406,33 @@ def _demo_default_error_types() -> List[DemoErrorType]:
         DemoErrorType(type="hw_cap", weight=0.30),
     ]
 
+class DemoInputFolder(BaseModel):
+    """Demo input folder with mockup status and stats.
+
+    Attributes:
+        name: Folder path/name (e.g., "DEMO/Studio_A").
+        status: Folder status - "ok", "nonexist", "norw" (None defaults to "ok").
+        files: Number of files in folder (mockup data for demo display).
+        size: Folder size as string (e.g., "10MB", "1.5GB") for demo display.
+    """
+    name: str
+    status: Optional[str] = None
+    files: Optional[int] = None
+    size: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        allowed = {"ok", "nonexist", "norw"}
+        if v not in allowed:
+            raise ValueError(f"Invalid folder status '{v}'. Use one of: {', '.join(sorted(allowed))}")
+        return v
+
 class DemoConfig(BaseModel):
     seed: Optional[int] = None
-    input_folders: List[str] = Field(default_factory=lambda: ["DEMO/Studio_A", "DEMO/Studio_B"])
+    input_folders: List[Union[str, DemoInputFolder]] = Field(default_factory=lambda: ["DEMO/Studio_A", "DEMO/Studio_B"])
     files: DemoFilesConfig = Field(default_factory=DemoFilesConfig)
     sizes: DemoSizeConfig = Field(default_factory=DemoSizeConfig)
     bitrate_mbps: DemoBitrateConfig = Field(default_factory=DemoBitrateConfig)

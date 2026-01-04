@@ -1,7 +1,17 @@
 seed: 1337
 input_folders:
-  - DEMO/Studio_A
-  - DEMO/Studio_B
+  - name: DEMO/Studio_A
+    status: ok
+    files: 3278
+    size: 1.25TB
+  - name: DEMO/Studio_B
+    status: ok
+    files: 42
+    size: 8.2GB
+  - name: DEMO/nonexist
+    status: nonexist
+  - name: DEMO/norwaccess
+    status: norw
 
 files:
   count: 120

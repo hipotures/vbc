@@ -24,10 +24,11 @@ from vbc.ui.keyboard import (
 
 class UIManager:
     """Subscribes to EventBus and updates UIState."""
-    
-    def __init__(self, bus: EventBus, state: UIState):
+
+    def __init__(self, bus: EventBus, state: UIState, demo_mode: bool = False):
         self.bus = bus
         self.state = state
+        self.demo_mode = demo_mode
         self._setup_subscriptions()
 
     def _setup_subscriptions(self):
@@ -263,6 +264,10 @@ class UIManager:
             dir_stats = list(self.state.io_input_dir_stats)
 
         if not dir_stats:
+            return
+
+        # In demo mode, keep mockup data instead of recalculating from actual files
+        if self.demo_mode:
             return
 
         dir_paths = []

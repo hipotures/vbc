@@ -35,9 +35,10 @@ from vbc.config.input_dirs import (
     build_input_dir_lines,
     STATUS_OK,
     STATUS_NO_ACCESS,
+    STATUS_MISSING,
     can_write_output_dir_path,
 )
-from vbc.config.models import validate_queue_sort
+from vbc.config.models import validate_queue_sort, DemoInputFolder
 from vbc.domain.events import (
     HardwareCapabilityExceeded, JobStarted, JobCompleted, JobFailed, DiscoveryFinished
 )
@@ -359,11 +360,68 @@ def compress(
             queue_sort_info = f"rand (seed {config.general.queue_seed})"
         else:
             queue_sort_info = config.general.queue_sort
+
+        def parse_demo_size_to_bytes(size_str: Optional[str]) -> Optional[int]:
+            """Parse demo size string (e.g., '12.5GB', '100MB') to bytes."""
+            if not size_str:
+                return None
+            size_str = size_str.strip().upper()
+            import re
+            match = re.match(r'^([\d.]+)\s*(GB|MB|TB|KB)?$', size_str)
+            if not match:
+                return None
+            value = float(match.group(1))
+            unit = match.group(2) or "B"
+            multipliers = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
+            return int(value * multipliers.get(unit, 1))
+
+        def build_demo_input_dir_stats() -> Tuple[List[Tuple[str, str, Optional[int], Optional[int]]], List[str]]:
+            """Build demo input_dir_stats and input_dir_lines from demo_config.input_folders."""
+            stats: List[Tuple[str, str, Optional[int], Optional[int]]] = []
+            lines: List[str] = []
+
+            for idx, folder_entry in enumerate(demo_config.input_folders):
+                if isinstance(folder_entry, str):
+                    # Old format: simple string
+                    folder_name = folder_entry
+                    status = STATUS_OK
+                    files_count = None
+                    size_bytes = None
+                elif isinstance(folder_entry, DemoInputFolder):
+                    # New format: DemoInputFolder with mockup data
+                    folder_name = folder_entry.name
+                    status_str = folder_entry.status or "ok"
+                    if status_str == "ok":
+                        status = STATUS_OK
+                    elif status_str == "nonexist":
+                        status = STATUS_MISSING
+                    elif status_str == "norw":
+                        status = STATUS_NO_ACCESS
+                    else:
+                        status = STATUS_OK
+                    files_count = folder_entry.files
+                    size_bytes = parse_demo_size_to_bytes(folder_entry.size)
+                else:
+                    # Fallback
+                    folder_name = str(folder_entry)
+                    status = STATUS_OK
+                    files_count = None
+                    size_bytes = None
+
+                stats.append((status, folder_name, files_count, size_bytes))
+
+                # Build display line with status icon
+                from vbc.config.input_dirs import render_status_icon
+                icon = render_status_icon(status)
+                lines.append(f"  {icon}{idx + 1}. {folder_name}")
+
+            return stats, lines
+
         if demo and demo_config:
             demo_extensions = [entry.ext for entry in demo_config.files.extensions]
-            input_dirs_display = [Path(p) for p in demo_config.input_folders] if demo_config.input_folders else [Path("DEMO")]
-            input_dir_count = len(input_dirs_display)
-            input_dir_lines = [f"  {i+1}. {d}" for i, d in enumerate(input_dirs_display)]
+            demo_dir_stats, demo_dir_lines = build_demo_input_dir_stats()
+            input_dir_count = len(demo_dir_stats)
+            input_dir_lines = demo_dir_lines
         else:
             demo_extensions = config.general.extensions
             input_dir_count = len(input_dir_status_entries)
@@ -381,7 +439,7 @@ def compress(
         ui_suffix_errors_dirs = None if errors_dirs_entries else suffix_errors_dirs
         extensions = [ext if ext.startswith(".") else f".{ext}" for ext in demo_extensions]
         if demo and demo_config:
-            input_dir_stats = [(STATUS_OK, str(path), None, None) for path in input_dirs_display]
+            input_dir_stats = demo_dir_stats
         else:
             input_dir_stats = scan_input_dir_stats(
                 input_dir_status_entries,
@@ -455,8 +513,8 @@ def compress(
         if config.general.filter_cameras and not config.general.use_exif:
             logger.warning("Camera filtering requires EXIF analysis. Enabling use_exif automatically.")
             config.general.use_exif = True
-        
-        ui_manager = UIManager(bus, ui_state)
+
+        ui_manager = UIManager(bus, ui_state, demo_mode=demo)
 
         exif = None
         if demo and demo_config:
