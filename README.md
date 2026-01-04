@@ -141,23 +141,50 @@ Dynamic thread adjustment while processing:
 
 VBC follows **Clean Architecture** with strict layer separation and event-driven communication:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     UI Layer (vbc/ui)                       │
-│  Dashboard, KeyboardListener, UIState                       │
-│  (Rich library, terminal rendering)                         │
-└────────────────────┬────────────────────────────────────────┘
-                     │ Events (Pub/Sub via EventBus)
-┌────────────────────┴────────────────────────────────────────┐
-│                  Pipeline Layer (vbc/pipeline)              │
-│  Orchestrator (job lifecycle, queue, threads)               │
-└────────────────────┬────────────────────────────────────────┘
-                     │ Domain Models (VideoFile, Job)
-┌────────────────────┴────────────────────────────────────────┐
-│              Infrastructure Layer (vbc/infrastructure)      │
-│  FFmpeg, ExifTool, FFprobe, FileScanner                     │
-│  (External tool adapters)                                   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph UI["UI Layer (vbc/ui)"]
+        Dashboard[Dashboard]
+        UIManager[UIManager]
+        Keyboard[KeyboardListener]
+    end
+
+    subgraph Pipeline["Pipeline Layer (vbc/pipeline)"]
+        Orchestrator[Orchestrator]
+    end
+
+    subgraph Infrastructure["Infrastructure Layer (vbc/infrastructure)"]
+        EventBus[EventBus]
+        FFmpeg[FFmpegAdapter]
+        ExifTool[ExifToolAdapter]
+        FFprobe[FFprobeAdapter]
+        Scanner[FileScanner]
+    end
+
+    subgraph Domain["Domain Layer (vbc/domain)"]
+        Models[Models]
+        Events[Events]
+    end
+
+    Dashboard -.->|subscribes| EventBus
+    UIManager -.->|subscribes| EventBus
+    Keyboard -.->|publishes| EventBus
+
+    EventBus -.->|events| Orchestrator
+    Orchestrator -->|uses| Scanner
+    Orchestrator -->|uses| FFmpeg
+    Orchestrator -->|uses| ExifTool
+    Orchestrator -->|uses| FFprobe
+    Orchestrator -.->|publishes| EventBus
+
+    Orchestrator -->|creates| Models
+    EventBus -->|transmits| Events
+
+    style UI fill:#e1f5ff
+    style Pipeline fill:#fff9c4
+    style Infrastructure fill:#f3e5f5
+    style Domain fill:#c8e6c9
+    style EventBus fill:#ffccbc
 ```
 
 ### Core Concepts
