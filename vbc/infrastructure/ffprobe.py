@@ -60,7 +60,7 @@ class FFprobeAdapter:
         """Executes ffprobe and parses JSON output."""
         cmd = [
             "ffprobe",
-            "-v", "quiet",
+            "-v", "error",
             "-print_format", "json",
             "-show_streams",
             "-show_format",
@@ -69,7 +69,9 @@ class FFprobeAdapter:
         
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
-            raise RuntimeError(f"ffprobe failed for {file_path}: {result.stderr}")
+            err = (result.stderr or "").strip()
+            detail = err if err else "unknown error (no stderr)"
+            raise RuntimeError(f"ffprobe failed for {file_path}: {detail}")
             
         data = json.loads(result.stdout)
         

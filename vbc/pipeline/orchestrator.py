@@ -83,6 +83,8 @@ class Orchestrator:
         # Metadata cache (thread-safe)
         self._metadata_cache = {}  # Path -> VideoMetadata
         self._metadata_lock = threading.Lock()
+        self._metadata_failure_counts: Dict[Path, int] = {}
+        self._metadata_failure_limit = 3
 
         # Dynamic control state
         self._shutdown_requested = False
@@ -201,27 +203,49 @@ class Orchestrator:
 
     def _get_metadata(self, video_file: VideoFile, base_metadata: Optional[Dict[str, Any]] = None) -> Optional[VideoMetadata]:
         """Get metadata with thread-safe caching (ffprobe + ExifTool like legacy)."""
+        file_path = video_file.path
         # Check if already cached
         with self._metadata_lock:
-            cached = self._metadata_cache.get(video_file.path)
+            cached = self._metadata_cache.get(file_path)
             if cached is not None:
                 return cached
+            failures = self._metadata_failure_counts.get(file_path, 0)
+            if base_metadata is None and failures >= self._metadata_failure_limit:
+                return None
+            attempt = failures + 1
 
         # Not in cache, extract it
         try:
             if self.config.general.debug:
-                self.logger.debug(f"Metadata cache miss: {video_file.path.name}")
+                self.logger.debug(
+                    f"Metadata cache miss: {file_path.name} "
+                    f"(attempt {attempt}/{self._metadata_failure_limit})"
+                )
 
-            stream_info = base_metadata or self.ffprobe_adapter.get_stream_info(video_file.path)
+            stream_info = base_metadata or self.ffprobe_adapter.get_stream_info(file_path)
             metadata = self._build_metadata(video_file, stream_info)
 
             # Cache it
             with self._metadata_lock:
-                self._metadata_cache[video_file.path] = metadata
+                self._metadata_cache[file_path] = metadata
+                self._metadata_failure_counts.pop(file_path, None)
 
             return metadata
         except Exception as e:
-            self.logger.warning(f"Failed to extract metadata for {video_file.path.name}: {e}")
+            with self._metadata_lock:
+                failures = self._metadata_failure_counts.get(file_path, 0) + 1
+                self._metadata_failure_counts[file_path] = failures
+                failure_limit = self._metadata_failure_limit
+            if failures >= failure_limit:
+                self.logger.warning(
+                    f"Failed to extract metadata for {file_path.name} "
+                    f"(attempt {failures}/{failure_limit}); suppressing retries: {e}"
+                )
+            else:
+                self.logger.warning(
+                    f"Failed to extract metadata for {file_path.name} "
+                    f"(attempt {failures}/{failure_limit}): {e}"
+                )
             return None
 
     def _build_metadata(self, video_file: VideoFile, stream_info: Dict[str, Any]) -> VideoMetadata:
