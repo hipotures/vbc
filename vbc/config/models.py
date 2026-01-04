@@ -1,3 +1,18 @@
+"""Configuration models for VBC application.
+
+Pydantic models defining the YAML configuration schema with validation rules.
+All fields have defaults; empty YAML files are valid (use all defaults).
+
+Key models:
+- AppConfig: Top-level configuration container
+- GeneralConfig: Core compression settings (threads, CQ, GPU, filters)
+- GpuConfig: GPU monitoring and sparkline display settings
+- UiConfig: Dashboard layout and display preferences
+- AutoRotateConfig: Filename pattern-based rotation rules
+
+Configuration precedence: CLI args > YAML > defaults
+"""
+
 from typing import List, Dict, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -6,6 +21,17 @@ QUEUE_SORT_ALIASES = {"size": "size-asc"}
 
 
 def normalize_queue_sort(value: Optional[str]) -> str:
+    """Normalize and validate queue sorting mode.
+
+    Args:
+        value: Raw queue_sort value from config or CLI.
+
+    Returns:
+        Normalized queue_sort mode ("name", "rand", "dir", "size-asc", "size-desc", "ext").
+
+    Raises:
+        ValueError: If value is not a valid queue_sort choice.
+    """
     if value is None:
         return "name"
     normalized = str(value).strip().lower()
@@ -19,21 +45,77 @@ def normalize_queue_sort(value: Optional[str]) -> str:
 
 
 def validate_queue_sort(value: Optional[str], extensions: List[str]) -> str:
+    """Validate queue_sort mode with extension dependency check.
+
+    Args:
+        value: Queue sort mode to validate.
+        extensions: List of file extensions (required for 'ext' mode).
+
+    Returns:
+        Validated queue_sort mode.
+
+    Raises:
+        ValueError: If 'ext' mode is used without extensions list.
+    """
     normalized = normalize_queue_sort(value)
     if normalized == "ext" and not extensions:
         raise ValueError("queue_sort 'ext' requires a non-empty extensions list.")
     return normalized
 
+
 class GpuConfig(BaseModel):
-    """GPU monitoring and sparkline configuration."""
+    """GPU monitoring and dashboard sparkline configuration.
+
+    Controls GPU metrics sampling and visualization. Metrics include:
+    utilization, memory usage, temperature, and power draw.
+
+    Attributes:
+        enabled: Enable GPU monitoring and sparkline display.
+        refresh_rate: [DEPRECATED] Use sample_interval_s instead.
+        sample_interval_s: Seconds between GPU metric samples (min 0.1s).
+        history_window_s: Total time window shown in sparklines (min 10s, default 5min).
+        nvtop_device_index: GPU index to monitor (default 0 for primary GPU).
+        nvtop_device_name: Override device selection by name instead of index.
+    """
+
     enabled: bool = True
     refresh_rate: int = Field(default=5, ge=1)
     sample_interval_s: float = Field(default=5.0, ge=0.1)
-    history_window_s: float = Field(default=300.0, ge=10.0)  # 5 min
+    history_window_s: float = Field(default=300.0, ge=10.0)
     nvtop_device_index: int = Field(default=0, ge=0)
-    nvtop_device_name: Optional[str] = None  # Override index
+    nvtop_device_name: Optional[str] = None
 
 class GeneralConfig(BaseModel):
+    """Core compression and processing configuration.
+
+    Controls compression quality, threading, GPU/CPU selection, file filtering,
+    and metadata handling.
+
+    Attributes:
+        threads: Max concurrent compression jobs (default 1, min 1).
+        cq: Constant Quality factor for AV1 (0-63; lower=higher quality; default 45).
+        prefetch_factor: Submit-on-demand multiplier (jobs = threads * prefetch_factor).
+        gpu: Use GPU (NVENC) instead of CPU (SVT-AV1) encoder.
+        gpu_refresh_rate: [DEPRECATED] Use gpu_config.sample_interval_s.
+        queue_sort: Queue sorting mode (name, rand, dir, size-asc, size-desc, ext).
+        queue_seed: Random seed for deterministic 'rand' sorting (None = random).
+        log_path: Path to FFmpeg log file (None = no logging).
+        cpu_fallback: Retry with CPU if GPU hardware capability exceeded.
+        ffmpeg_cpu_threads: Limit threads per FFmpeg worker (None = FFmpeg decides).
+        copy_metadata: Preserve EXIF/XMP metadata from source video.
+        use_exif: Extract camera model from EXIF for dynamic_cq matching.
+        filter_cameras: Only process videos from these camera models (empty = all).
+        dynamic_cq: Override CQ per camera model (e.g., {"ILCE-7RM5": 38}).
+        extensions: Video file extensions to process.
+        min_size_bytes: Skip files smaller than this (default 1MiB).
+        clean_errors: Remove .err markers and retry failed jobs.
+        skip_av1: Skip files already encoded in AV1 codec.
+        strip_unicode_display: Remove unicode chars from displayed filenames (UI safety).
+        manual_rotation: Force rotation angle (0, 90, 180, 270) for all videos (None = auto).
+        min_compression_ratio: Minimum savings required (0.1 = 10%; keep original if below).
+        debug: Enable verbose logging and timing information.
+    """
+
     threads: int = Field(default=1, gt=0)
     cq: Optional[int] = Field(default=45, ge=0, le=63)
     prefetch_factor: int = Field(default=1, ge=1)
@@ -76,23 +158,65 @@ class GeneralConfig(BaseModel):
         return self
 
 class AutoRotateConfig(BaseModel):
+    """Filename pattern-based automatic rotation configuration.
+
+    Maps regex patterns to rotation angles. If a filename matches a pattern,
+    that rotation is applied automatically (overrides manual_rotation).
+
+    Attributes:
+        patterns: Dict mapping regex patterns to angles (0, 90, 180, 270).
+                  Example: {"DJI_.*\\.MP4": 0, "GOPR.*\\.MP4": 180}
+    """
+
     patterns: Dict[str, int] = Field(default_factory=dict)
 
     @field_validator('patterns')
     @classmethod
     def validate_angles(cls, v: Dict[str, int]) -> Dict[str, int]:
+        """Validate that all rotation angles are 0, 90, 180, or 270 degrees."""
         for pattern, angle in v.items():
             if angle not in {0, 90, 180, 270}:
                 raise ValueError(f"Invalid rotation angle {angle} for pattern {pattern}. Must be 0, 90, 180, or 270.")
         return v
 
+
 class UiConfig(BaseModel):
-    """UI display configuration."""
+    """Dashboard UI display configuration.
+
+    Controls Rich dashboard layout, panel sizing, and display limits.
+
+    Attributes:
+        activity_feed_max_items: Max items in activity feed panel (1-20, default 5).
+        active_jobs_max_display: Max concurrent jobs to show in panel (1-16, default 8).
+        panel_height_scale: Dashboard height fraction (0.3-1.0, default 0.7 = 30% reduction).
+    """
+
     activity_feed_max_items: int = Field(default=5, ge=1, le=20)
-    active_jobs_max_display: int = Field(default=8, ge=1, le=16)  # Max threads to reserve space for
-    panel_height_scale: float = Field(default=0.7, ge=0.3, le=1.0)  # 0.7 = 30% reduction
+    active_jobs_max_display: int = Field(default=8, ge=1, le=16)
+    panel_height_scale: float = Field(default=0.7, ge=0.3, le=1.0)
+
 
 class AppConfig(BaseModel):
+    """Top-level VBC application configuration.
+
+    Combines all configuration sections: general, GPU, UI, autorotate, and directory mappings.
+
+    Directory mapping modes:
+    1. Suffix mode: input_dirs + suffix_output_dirs (e.g., /videos -> /videos_out)
+    2. Explicit mode: input_dirs[i] -> output_dirs[i] (1:1 pairing required)
+
+    Attributes:
+        general: Core compression settings.
+        input_dirs: List of input directories to scan (empty = must provide via CLI).
+        output_dirs: List of output directories (empty = use suffix mode).
+        suffix_output_dirs: Suffix for auto-generated output dirs (default "_out").
+        errors_dirs: List of .err marker directories (empty = use suffix mode).
+        suffix_errors_dirs: Suffix for auto-generated error dirs (default "_err").
+        autorotate: Filename pattern-based rotation rules.
+        gpu_config: GPU monitoring configuration.
+        ui: Dashboard UI configuration.
+    """
+
     general: GeneralConfig
     input_dirs: List[str] = Field(default_factory=list)
     output_dirs: List[str] = Field(default_factory=list)
