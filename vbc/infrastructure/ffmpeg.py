@@ -1,3 +1,9 @@
+"""FFmpeg process wrapper for AV1 video compression.
+
+Handles subprocess lifecycle, progress monitoring, error detection, and recovery.
+Detects hardware capability errors and color space issues, publishing events on failures.
+"""
+
 import subprocess
 import re
 import logging
@@ -11,15 +17,31 @@ from vbc.config.models import GeneralConfig
 from vbc.infrastructure.event_bus import EventBus
 from vbc.domain.events import JobProgressUpdated, JobFailed, HardwareCapabilityExceeded
 
+
 class FFmpegAdapter:
-    """Wrapper around ffmpeg for video compression."""
+    """Subprocess adapter for FFmpeg video compression.
+
+    Manages FFmpeg execution with real-time progress monitoring via stdout parsing.
+    Detects GPU hardware capability exhaustion (exit code 187) and color space bugs
+    in FFmpeg 7.x, triggering automatic recovery via remuxing + retry.
+    """
 
     def __init__(self, event_bus: EventBus):
         self.event_bus = event_bus
         self.logger = logging.getLogger(__name__)
 
     def _build_command(self, job: CompressionJob, config: GeneralConfig, rotate: Optional[int] = None, input_path: Optional[Path] = None) -> List[str]:
-        """Constructs the ffmpeg command line arguments."""
+        """Constructs the FFmpeg command line for AV1 compression.
+
+        Args:
+            job: Compression job with source and output paths.
+            config: Config with GPU/CPU choice, CQ, thread counts.
+            rotate: Optional rotation angle (90, 180, 270 degrees).
+            input_path: Override input (used by color fix recovery).
+
+        Returns:
+            Complete FFmpeg command as list of strings.
+        """
         cmd = [
             "ffmpeg",
             "-y", # Overwrite output files
@@ -78,7 +100,29 @@ class FFmpegAdapter:
         return cmd
 
     def compress(self, job: CompressionJob, config: GeneralConfig, rotate: Optional[int] = None, shutdown_event=None, input_path: Optional[Path] = None):
-        """Executes the compression process."""
+        """Execute AV1 compression via FFmpeg subprocess.
+
+        Spawns FFmpeg, monitors stdout for progress updates, detects errors including:
+        - Hardware capability exhaustion (HW_CAP_LIMIT status)
+        - FFmpeg 7.x color space bugs (triggers _apply_color_fix)
+        - Exit code failures
+
+        Publishes JobProgressUpdated, JobFailed, and HardwareCapabilityExceeded events.
+        Handles graceful shutdown via shutdown_event (Ctrl+C integration).
+
+        Args:
+            job: Compression job to process.
+            config: Config with GPU/CPU, CQ, debug flag.
+            rotate: Optional rotation angle (degrees).
+            shutdown_event: Threading.Event to signal interruption.
+            input_path: Override input path (used for color fix retry).
+
+        Side Effects:
+            - Updates job.status, job.error_message, job.duration_seconds
+            - Writes .tmp file during processing; renames to .mp4 on success
+            - Publishes events to EventBus
+            - Cleans up .tmp file on error/interruption
+        """
         filename = job.source_file.path.name
         start_time = time.monotonic() if config.debug else None
 
@@ -232,12 +276,31 @@ class FFmpegAdapter:
                 self.logger.info(f"FFMPEG_END: {filename} status=completed elapsed={elapsed:.2f}s")
 
     def _apply_color_fix(self, job: CompressionJob, config: GeneralConfig, rotate: Optional[int], shutdown_event=None):
-        """Special handling for FFmpeg 7.x 'reserved' color space bug."""
-        # 1. Create a remuxed file with metadata filters
+        """Recovery for FFmpeg 7.x color space metadata bug.
+
+        FFmpeg 7.x rejects "reserved" color_primaries/color_trc/colorspace values.
+        Solution: remux input with explicit color metadata values, then re-compress.
+
+        1. Create intermediate .mp4 with bitstream filter (hevc_metadata or h264_metadata)
+        2. Run compress() using remuxed file (recursive call)
+        3. Clean up intermediate file
+
+        This is a workaround for upstream FFmpeg issue; remove if FFmpeg < 7.x no longer used.
+
+        Args:
+            job: Compression job (source_file.path modified and restored).
+            config: Compression configuration.
+            rotate: Rotation angle.
+            shutdown_event: Shutdown signal from orchestrator.
+
+        Side Effects:
+            - Modifies job.source_file.path temporarily
+            - Creates and deletes _colorfix.mp4 intermediate file
+            - Sets job.status and job.error_message on remux failure
+        """
         color_fix_path = job.output_path.with_name(f"{job.output_path.stem}_colorfix.mp4")
 
-        # Check if source is HEVC or H264 to apply correct bitstream filter
-        # For simplicity we try to apply hevc_metadata then fallback
+        # Try HEVC metadata filter first, fall back to H.264 if needed
         remux_cmd = [
             "ffmpeg", "-y", "-i", str(job.source_file.path),
             "-c", "copy",
