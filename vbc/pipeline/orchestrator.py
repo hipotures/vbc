@@ -84,7 +84,7 @@ class Orchestrator:
         self._metadata_cache = {}  # Path -> VideoMetadata
         self._metadata_lock = threading.Lock()
         self._metadata_failure_counts: Dict[Path, int] = {}
-        self._metadata_failure_limit = 3
+        self._metadata_failure_limit = 1
         self._metadata_failure_reasons: Dict[Path, str] = {}
         self._metadata_failed_paths: set[Path] = set()
         self._metadata_failed_reported: set[Path] = set()
