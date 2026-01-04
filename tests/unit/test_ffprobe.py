@@ -101,3 +101,62 @@ def test_ffprobe_duration_fallback_from_time_base():
         info = adapter.get_stream_info(Path("test.flv"))
 
         assert info["duration"] == pytest.approx(5.0)
+
+
+def test_ffprobe_no_audio_stream_sets_no_audio_codec():
+    mock_output = {
+        "streams": [
+            {
+                "index": 0,
+                "codec_name": "av1",
+                "codec_type": "video",
+                "width": 1920,
+                "height": 1080,
+                "avg_frame_rate": "30/1",
+            },
+        ],
+        "format": {
+            "duration": "10.0"
+        }
+    }
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value.stdout = json.dumps(mock_output)
+        mock_run.return_value.returncode = 0
+
+        adapter = FFprobeAdapter()
+        info = adapter.get_stream_info(Path("test.mp4"))
+
+    assert info["audio_codec"] == "no-audio"
+
+
+def test_ffprobe_audio_codec_detected():
+    mock_output = {
+        "streams": [
+            {
+                "index": 0,
+                "codec_name": "h264",
+                "codec_type": "video",
+                "width": 1920,
+                "height": 1080,
+                "avg_frame_rate": "30/1",
+            },
+            {
+                "index": 1,
+                "codec_name": "aac",
+                "codec_type": "audio",
+            },
+        ],
+        "format": {
+            "duration": "10.0"
+        }
+    }
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value.stdout = json.dumps(mock_output)
+        mock_run.return_value.returncode = 0
+
+        adapter = FFprobeAdapter()
+        info = adapter.get_stream_info(Path("test.mp4"))
+
+    assert info["audio_codec"] == "aac"

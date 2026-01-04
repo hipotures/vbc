@@ -319,7 +319,7 @@ Toggle with `C` key:
 │ Output: /videos_out                           │
 │ Threads: 8 (Prefetch: 1x)                    │
 │ Encoder: NVENC AV1 | Preset: p7 (Slow/HQ)    │
-│ Audio: Copy (stream copy)                     │
+│ Audio: Copy (PCM->AAC 256k)                   │
 │ Quality: CQ45 (Global Default)                │
 │ Dynamic CQ: ILCE-7RM5:38, DC-GH7:40           │
 │ Camera Filter: None                           │

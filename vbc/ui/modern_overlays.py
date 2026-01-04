@@ -209,7 +209,7 @@ class SettingsOverlay:
             ("Encoder", self._get("encoder", "").split(" | ")[0] if "encoder" in self._parsed else "—"),
             ("Preset", self._get("encoder", "").split("Preset: ")[-1] if "Preset:" in self._get("encoder", "") else "—"),
             ("Quality", f"CQ{self._get('quality', '').replace('CQ', '').split()[0]}" if "quality" in self._parsed else "—"),
-            ("Audio", self._get("audio", "Copy")),
+            ("Audio", self._get("audio", "Copy (PCM->AAC 256k)")),
             ("CPU Fallback", self._get("cpu_fallback", "").split(" | ")[0] if "cpu_fallback" in self._parsed else "False"),
         ]
         encoding_card = make_card(
@@ -1222,7 +1222,7 @@ if __name__ == "__main__":
         "  ✓ 1. /run/media/xai/26685cd8-5a05-46bb-b70e-2bc86d5d5c43/tt",
         "Threads: 1 (Prefetch: 1x)",
         "Encoder: NVENC AV1 (GPU) | Preset: p7 (Slow/HQ)",
-        "Audio: Copy (stream copy)",
+        "Audio: Copy (PCM->AAC 256k)",
         "Quality: CQ44 (Global Default)",
         "Dynamic CQ: DJI OsmoPocket3:40, DC-GH7:35, ILCE-7RM5:35",
         "Camera Filter: None",

@@ -1,9 +1,13 @@
+import json
 import threading
-import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+
+import pytest
 from vbc.infrastructure.ffmpeg import FFmpegAdapter
+from vbc.infrastructure.ffprobe import FFprobeAdapter
 from vbc.domain.models import VideoFile, CompressionJob, JobStatus
+from vbc.domain.models import VideoMetadata
 from vbc.config.models import GeneralConfig
 
 def test_ffmpeg_command_generation_gpu():
@@ -54,6 +58,62 @@ def test_ffmpeg_rotation():
     # 180 degree rotation
     cmd = adapter._build_command(job, config, rotate=180)
     assert "transpose=2,transpose=2" in cmd
+
+def test_audio_codec_detection_drives_audio_options():
+    mock_output = {
+        "streams": [
+            {
+                "index": 0,
+                "codec_name": "h264",
+                "codec_type": "video",
+                "width": 1920,
+                "height": 1080,
+                "avg_frame_rate": "30/1",
+            },
+            {
+                "index": 1,
+                "codec_name": "pcm_s16le",
+                "codec_type": "audio",
+            },
+        ],
+        "format": {
+            "duration": "10.0"
+        }
+    }
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value.stdout = json.dumps(mock_output)
+        mock_run.return_value.returncode = 0
+
+        ffprobe = FFprobeAdapter()
+        info = ffprobe.get_stream_info(Path("test.mp4"))
+
+    assert info["audio_codec"] == "pcm_s16le"
+
+    metadata = VideoMetadata(
+        width=1920,
+        height=1080,
+        codec="h264",
+        audio_codec=info["audio_codec"],
+        fps=30.0,
+    )
+    vf = VideoFile(path=Path("input.mp4"), size_bytes=1000, metadata=metadata)
+    job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
+    adapter = FFmpegAdapter(event_bus=MagicMock())
+    config = GeneralConfig(threads=1, cq=45, gpu=True)
+
+    cmd = adapter._build_command(job, config)
+    audio_index = cmd.index("-c:a")
+    assert cmd[audio_index + 1] == "aac"
+    assert "-b:a" in cmd
+    bitrate_index = cmd.index("-b:a")
+    assert cmd[bitrate_index + 1] == "256k"
+
+    job.source_file.metadata.audio_codec = "aac"
+    cmd = adapter._build_command(job, config)
+    audio_index = cmd.index("-c:a")
+    assert cmd[audio_index + 1] == "copy"
+    assert "-b:a" not in cmd
 
 def test_ffmpeg_compress_success():
     config = GeneralConfig(threads=4, cq=45, gpu=True)

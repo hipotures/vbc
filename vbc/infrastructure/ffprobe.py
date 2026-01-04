@@ -73,10 +73,16 @@ class FFprobeAdapter:
             
         data = json.loads(result.stdout)
         
-        # Find video stream
-        video_stream = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), None)
+        # Find streams
+        streams = data.get("streams", [])
+        video_stream = next((s for s in streams if s.get("codec_type") == "video"), None)
         if not video_stream:
             raise ValueError(f"No video stream found in {file_path}")
+        audio_stream = next((s for s in streams if s.get("codec_type") == "audio"), None)
+        if audio_stream is None:
+            audio_codec = "no-audio"
+        else:
+            audio_codec = audio_stream.get("codec_name") or "unknown"
             
         # Parse FPS (prefer avg_frame_rate; r_frame_rate is often timebase)
         fps = 0.0
@@ -121,6 +127,7 @@ class FFprobeAdapter:
             "width": int(video_stream.get("width", 0)),
             "height": int(video_stream.get("height", 0)),
             "codec": video_stream.get("codec_name", "unknown"),
+            "audio_codec": audio_codec,
             "fps": fps,
             "duration": duration,
             "color_space": video_stream.get("color_space"),

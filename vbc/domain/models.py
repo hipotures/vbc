@@ -37,6 +37,7 @@ class VideoMetadata(BaseModel):
     Attributes:
         width, height: Dimensions in pixels.
         codec: Primary video codec name (h264, hevc, av1, etc.).
+        audio_codec: Primary audio codec name (pcm_s16le, aac, etc.).
         fps: Frames per second.
         camera_model: Inferred camera model from EXIF (for dynamic_cq matching).
         camera_raw: Raw EXIF camera string before normalization.
@@ -50,6 +51,7 @@ class VideoMetadata(BaseModel):
     width: int
     height: int
     codec: str
+    audio_codec: Optional[str] = None
     fps: float
     camera_model: Optional[str] = None
     camera_raw: Optional[str] = None

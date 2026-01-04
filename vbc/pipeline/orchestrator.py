@@ -232,6 +232,7 @@ class Orchestrator:
             width=width,
             height=height,
             codec=str(stream_info.get("codec", "unknown") or "unknown"),
+            audio_codec=stream_info.get("audio_codec"),
             fps=float(stream_info.get("fps") or 0.0),
             megapixels=megapixels,
             color_space=stream_info.get("color_space"),

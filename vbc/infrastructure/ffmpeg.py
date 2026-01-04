@@ -30,6 +30,14 @@ class FFmpegAdapter:
         self.event_bus = event_bus
         self.logger = logging.getLogger(__name__)
 
+    def _select_audio_options(self, job: CompressionJob) -> tuple[List[str], str, str]:
+        audio_codec = ""
+        if job.source_file.metadata and job.source_file.metadata.audio_codec:
+            audio_codec = str(job.source_file.metadata.audio_codec).lower()
+        if audio_codec.startswith("pcm_"):
+            return (["-c:a", "aac", "-b:a", "256k"], "aac 256k", audio_codec)
+        return (["-c:a", "copy"], "copy", audio_codec or "unknown")
+
     def _build_command(self, job: CompressionJob, config: GeneralConfig, rotate: Optional[int] = None, input_path: Optional[Path] = None) -> List[str]:
         """Constructs the FFmpeg command line for AV1 compression.
 
@@ -77,9 +85,8 @@ class FFmpegAdapter:
                 cmd.extend(["-threads", str(config.ffmpeg_cpu_threads)])
             
         # Audio/Metadata settings
-        cmd.extend([
-            "-c:a", "copy",
-        ])
+        audio_opts, _, _ = self._select_audio_options(job)
+        cmd.extend(audio_opts)
         if config.copy_metadata:
             cmd.extend(["-map_metadata", "0", "-movflags", "use_metadata_tags"])
         else:
@@ -128,6 +135,10 @@ class FFmpegAdapter:
 
         if config.debug:
             self.logger.info(f"FFMPEG_START: {filename} (gpu={config.gpu}, cq={config.cq})")
+
+        if config.debug:
+            _, audio_mode, audio_codec = self._select_audio_options(job)
+            self.logger.info(f"AUDIO_MODE: {filename} mode={audio_mode} codec={audio_codec}")
 
         cmd = self._build_command(job, config, rotate, input_path=input_path)
 
