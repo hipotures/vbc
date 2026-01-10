@@ -5,8 +5,8 @@ from vbc.ui.keyboard import (
     KeyboardListener,
     RequestShutdown,
     ThreadControlEvent,
-    ToggleConfig,
-    HideConfig,
+    ToggleOverlayTab,
+    CloseOverlay,
 )
 from vbc.infrastructure.event_bus import EventBus
 
@@ -78,8 +78,8 @@ def test_keyboard_listener_run_handles_keys(monkeypatch):
     assert any(isinstance(e, RequestShutdown) for e in published)
     assert any(isinstance(e, RefreshRequested) for e in published)
     assert any(isinstance(e, ActionMessage) and e.message == "REFRESH requested" for e in published)
-    assert any(isinstance(e, ToggleConfig) for e in published)
-    assert any(isinstance(e, HideConfig) for e in published)
+    assert any(isinstance(e, ToggleOverlayTab) and e.tab == "settings" for e in published)
+    assert any(isinstance(e, CloseOverlay) for e in published)
     assert tcset.called
 
 

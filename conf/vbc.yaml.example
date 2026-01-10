@@ -35,10 +35,6 @@ general:
   # Can be adjusted at runtime with < and > keys.
   threads: 4
 
-  # Default constant quality (0-63). Lower = better quality, larger files.
-  # Recommendations: 35-38 (Archival), 40-45 (High), 48-52 (Good).
-  cq: 45
-
   # Submit-on-demand queue multiplier (1-5).
   # Formula: max_queued = prefetch_factor * threads.
   prefetch_factor: 1
@@ -125,6 +121,67 @@ gpu_config:
 
   # Optional: specific device name to monitor (overrides index).
   nvtop_device_name: null
+
+# --- GPU Encoder Settings ---
+
+gpu_encoder:
+  # Use advanced_args instead of common_args when true.
+  advanced: false
+
+  # Base NVENC args (used when advanced=false).
+  common_args:
+    - "-c:v av1_nvenc"
+    - "-preset p7"
+    - "-tune hq"
+    - "-b:v 0"
+    - "-cq 45"
+    - "-f mp4"
+
+  # Full NVENC args (used when advanced=true).
+  advanced_args:
+    - "-c:v av1_nvenc"
+    - "-preset p7"
+    - "-tune hq"
+    - "-b:v 0"
+    - "-cq 45"
+    - "-rc vbr"
+    - "-multipass fullres"
+    - "-rc-lookahead 32"
+    - "-spatial-aq 1"
+    - "-temporal-aq 1"
+    - "-aq-strength 8"
+    - "-b_ref_mode middle"
+    - "-f mp4"
+
+# --- CPU Encoder Settings ---
+
+cpu_encoder:
+  # Use advanced_args instead of common_args when true.
+  advanced: false
+
+  # Base SVT-AV1 args (used when advanced=false).
+  common_args:
+    - "-c:v libsvtav1"
+    - "-preset 6"
+    - "-crf 32"
+    - "-svtav1-params tune=0:enable-overlays=1"
+    - "-f mp4"
+
+  # Enforce input pix_fmt when advanced=true (adds -pix_fmt from ffprobe).
+  advanced_enforce_input_pix_fmt: true
+
+  # Full CPU args (used when advanced=true).
+  advanced_args:
+    - "-c:v libaom-av1"
+    - "-crf 30"
+    - "-b:v 0"
+    - "-cpu-used 0"
+    - "-tune ssim"
+    - "-lag-in-frames 35"
+    - "-aq-mode 1"
+    - "-row-mt 1"
+    - "-threads 0"
+    - "-f matroska"
 
 # --- UI Settings ---
 

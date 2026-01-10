@@ -133,4 +133,5 @@ class FFprobeAdapter:
             "fps": fps,
             "duration": duration,
             "color_space": video_stream.get("color_space"),
+            "pix_fmt": video_stream.get("pix_fmt"),
         }

@@ -22,7 +22,7 @@ Complete documentation audit performed following Diátaxis principles. All criti
 
 ### 1. Canonical Invocation (Critical)
 
-**Problem**: Mixed usage of `uv run vbc` vs `uv run vbc/main.py`
+**Problem**: Mixed usage of `uv run vbc` vs `uv run vbc`
 **Solution**: Standardized to `uv run vbc` (matches pyproject.toml entry point)
 
 **Files Modified**:

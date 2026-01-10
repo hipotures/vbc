@@ -52,14 +52,14 @@ uv run vbc /videos --threads 8
 
 **Note:** Can be adjusted at runtime with `<`/`>` keys.
 
-#### `--cq INT`
+#### `--quality INT`
 
-Constant quality value (0-63). Lower = better quality.
+Quality value (0-63). Lower = better quality.
 
-**Default:** From config (usually 45)
+**Default:** From encoder args (`gpu_encoder`/`cpu_encoder`, via `-cq` or `-crf`)
 
 ```bash
-uv run vbc /videos --cq 38
+uv run vbc /videos --quality 38
 ```
 
 **Recommendations:**
@@ -284,14 +284,14 @@ uv run vbc /videos
 
 ```bash
 # CPU mode, low CQ, 4 threads
-uv run vbc /videos --cpu --cq 35 --threads 4
+uv run vbc /videos --cpu --quality 35 --threads 4
 ```
 
 ### Fast GPU Compression
 
 ```bash
 # GPU mode, 8 threads, standard quality
-uv run vbc /videos --gpu --threads 8 --cq 45
+uv run vbc /videos --gpu --threads 8 --quality 45
 ```
 
 ### Camera-Specific Processing
@@ -300,7 +300,7 @@ uv run vbc /videos --gpu --threads 8 --cq 45
 # Only Sony cameras, high quality
 uv run vbc /videos \
   --camera "Sony" \
-  --cq 38 \
+  --quality 38 \
   --threads 6
 ```
 
@@ -324,7 +324,7 @@ uv run vbc /videos --threads 2 --debug
 uv run vbc /videos \
   --config conf/production.yaml \
   --threads 12 \
-  --cq 40 \
+  --quality 40 \
   --gpu \
   --camera "ILCE-7RM5,DC-GH7" \
   --skip-av1 \
@@ -344,17 +344,24 @@ CLI arguments **override** config file settings.
 ```yaml
 general:
   threads: 4
-  cq: 45
   gpu: true
+
+gpu_encoder:
+  common_args:
+    - "-cq 45"
+
+cpu_encoder:
+  common_args:
+    - "-crf 32"
 ```
 
 ```bash
-uv run vbc /videos --threads 8 --cq 38 --cpu
+uv run vbc /videos --threads 8 --quality 38 --cpu
 ```
 
 **Result:**
 - `threads`: 8 (CLI override)
-- `cq`: 38 (CLI override)
+- `quality`: 38 (overrides `-cq`/`-crf` in encoder args)
 - `gpu`: false (CLI override: `--cpu`)
 
 ## Environment Variables
@@ -374,10 +381,10 @@ VBC does not use environment variables. All configuration via YAML or CLI.
 ### Compressed Videos
 
 ```
-{INPUT_DIR}_out/{relative_path}.mp4
+{INPUT_DIR}_out/{relative_path}{ext}
 ```
 
-All output files are `.mp4` regardless of input extension.
+By default, output files are `.mp4`. If encoder args include a format flag (e.g. `-f matroska` or `-f mov`), VBC uses the matching file extension (e.g. `.mkv` or `.mov`).
 Default output directory uses `suffix_output_dirs` (default `_out`); you can override per-input with `output_dirs`.
 
 **Example:**

@@ -172,8 +172,8 @@ print(f"Duration: {info['duration']} seconds")
 ```python
 from vbc.infrastructure.ffmpeg import FFmpegAdapter
 from vbc.infrastructure.event_bus import EventBus
-from vbc.domain.models import CompressionJob, VideoFile
-from vbc.config.models import GeneralConfig
+from vbc.domain.models import CompressionJob, VideoFile, JobStatus
+from vbc.config.models import AppConfig, GeneralConfig
 from pathlib import Path
 import threading
 
@@ -192,11 +192,8 @@ job = CompressionJob(
 )
 
 # Create config
-config = GeneralConfig(
-    threads=4,
-    cq=45,
-    gpu=True,
-    copy_metadata=True
+config = AppConfig(
+    general=GeneralConfig(threads=4, gpu=True, copy_metadata=True)
 )
 
 # Compress
@@ -204,6 +201,7 @@ shutdown_event = threading.Event()
 ffmpeg.compress(
     job=job,
     config=config,
+    use_gpu=config.general.gpu,
     rotate=180,
     shutdown_event=shutdown_event
 )

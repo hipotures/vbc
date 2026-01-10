@@ -43,7 +43,7 @@ def test_metadata_copy_with_exiftool(tmp_path):
 
     mock_ffmpeg = MagicMock()
 
-    def compress_create_output(job, config, **kwargs):
+    def compress_create_output(job, config, use_gpu=False, **kwargs):
         job.status = JobStatus.COMPLETED
         job.output_path.parent.mkdir(parents=True, exist_ok=True)
         job.output_path.write_text("compressed output")
@@ -117,7 +117,7 @@ def test_metadata_copy_disabled(tmp_path):
 
     mock_ffmpeg = MagicMock()
 
-    def compress_create_output(job, config, **kwargs):
+    def compress_create_output(job, config, use_gpu=False, **kwargs):
         job.status = JobStatus.COMPLETED
         job.output_path.parent.mkdir(parents=True, exist_ok=True)
         job.output_path.write_text("compressed output")
@@ -166,7 +166,6 @@ def test_vbc_custom_tags_written(tmp_path):
     config = AppConfig(general=GeneralConfig(
         threads=1,
         copy_metadata=True,
-        cq=42,  # Specific CQ for testing
         gpu=False,
         debug=False
     ))
@@ -186,7 +185,7 @@ def test_vbc_custom_tags_written(tmp_path):
 
     mock_ffmpeg = MagicMock()
 
-    def compress_create_output(job, config, **kwargs):
+    def compress_create_output(job, config, use_gpu=False, **kwargs):
         job.status = JobStatus.COMPLETED
         job.output_path.parent.mkdir(parents=True, exist_ok=True)
         job.output_path.write_text("compressed")
@@ -226,8 +225,8 @@ def test_vbc_custom_tags_written(tmp_path):
                 found_vbc_tags = True
                 # Should have original filename
                 assert "original_file.mp4" in args_str or "VBCOriginalName" in args_str
-                # Should have CQ value
-                assert "42" in args_str or "VBCQuality" in args_str
+                # Should have quality tag
+                assert "VBCQuality" in args_str
                 break
 
         # VBC tags only written if exiftool.conf exists
@@ -265,7 +264,7 @@ def test_gps_preservation_via_metadata_copy(tmp_path):
 
     mock_ffmpeg = MagicMock()
 
-    def compress_create_output(job, config, **kwargs):
+    def compress_create_output(job, config, use_gpu=False, **kwargs):
         job.status = JobStatus.COMPLETED
         job.output_path.parent.mkdir(parents=True, exist_ok=True)
         job.output_path.write_text("compressed")
@@ -335,7 +334,7 @@ def test_metadata_copy_retries_on_timeout(tmp_path):
 
     mock_ffmpeg = MagicMock()
 
-    def compress_create_output(job, config, **kwargs):
+    def compress_create_output(job, config, use_gpu=False, **kwargs):
         job.status = JobStatus.COMPLETED
         job.output_path.parent.mkdir(parents=True, exist_ok=True)
         job.output_path.write_text("compressed")

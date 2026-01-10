@@ -16,7 +16,6 @@ def sample_config():
     return AppConfig(
         general={
             "threads": 4,
-            "cq": 45,
             "gpu": True,
             "copy_metadata": True,
             "use_exif": True,
@@ -43,7 +42,6 @@ def config_with_dynamic_cq():
     return AppConfig(
         general={
             "threads": 2,
-            "cq": 45,
             "gpu": False,
             "copy_metadata": True,
             "use_exif": True,
@@ -80,7 +78,6 @@ def config_yaml_path(tmp_path):
     content = {
         'general': {
             'threads': 2,
-            'cq': 45,
             'gpu': False,
             'copy_metadata': True,
             'use_exif': True,
@@ -221,6 +218,19 @@ def real_test_videos(tmp_path):
         copied_files.append(qvr_file)
 
     return input_dir, copied_files
+
+
+def pytest_collection_modifyitems(config, items):
+    real_file_prefix = "tests/integration/test_real_files"
+    real_items = []
+    other_items = []
+    for item in items:
+        item_path = str(getattr(item, "fspath", getattr(item, "path", "")))
+        if real_file_prefix in item_path:
+            real_items.append(item)
+        else:
+            other_items.append(item)
+    items[:] = other_items + real_items
 
 # ============================================================================
 # Marker for slow tests (integration tests with real files)

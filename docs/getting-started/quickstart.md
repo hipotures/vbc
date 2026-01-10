@@ -83,10 +83,10 @@ uv run vbc ~/Videos/raw --gpu --threads 8
 For maximum quality (slower):
 
 ```bash
-uv run vbc ~/Videos/raw --cpu --cq 35 --threads 4
+uv run vbc ~/Videos/raw --cpu --quality 35 --threads 4
 ```
 
-Lower CQ = higher quality (range: 0-63)
+Lower quality value (CQ/CRF) = higher quality (range: 0-63)
 
 ### Camera-Specific Settings
 
@@ -117,12 +117,15 @@ Create `conf/vbc.yaml` for persistent settings:
 ```yaml
 general:
   threads: 8
-  cq: 42
   gpu: true
   copy_metadata: true
   use_exif: true
   extensions: [".mp4", ".mov", ".avi", ".flv"]
   min_size_bytes: 1048576  # 1 MiB
+
+gpu_encoder:
+  common_args:
+    - "-cq 42"
 
   # Camera-specific quality
   dynamic_cq:
@@ -158,13 +161,15 @@ CLI arguments override config file settings.
 
 ~/Videos/raw_out/          # Output directory (created automatically)
 ├── video1.mp4             # Compressed
-├── video2.mp4             # Compressed (converted to .mp4)
+├── video2.mp4             # Compressed (converted to output format; mp4 by default)
 ├── subfolder/
 │   └── video3.mp4         # Compressed
 └── video_error.err        # Error marker (if compression failed)
 
 /tmp/vbc/compression.log    # Detailed log
 ```
+
+By default, outputs are `.mp4`. If encoder args include `-f matroska` or `-f mov`, output extensions follow the selected format.
 
 ## Next Steps
 

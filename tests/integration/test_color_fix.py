@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from vbc.infrastructure.ffmpeg import FFmpegAdapter
 from vbc.domain.models import VideoFile, CompressionJob, JobStatus
-from vbc.config.models import GeneralConfig
+from vbc.config.models import AppConfig, GeneralConfig
 from pathlib import Path
 
 def test_ffmpeg_detects_color_error():
@@ -11,7 +11,7 @@ def test_ffmpeg_detects_color_error():
     
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)
     job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
-    config = GeneralConfig(threads=1, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=1, gpu=True))
     
     # Error message that triggers color fix
     color_error_msg = "Error: is not a valid value for color_primaries"
@@ -25,5 +25,5 @@ def test_ffmpeg_detects_color_error():
         # We need to mock build_command to check what was called during retry
         # but for now let's just see if it attempts a second Popen call
         with patch.object(adapter, '_apply_color_fix') as mock_fix:
-            adapter.compress(job, config)
+            adapter.compress(job, config, use_gpu=True)
             assert mock_fix.called

@@ -40,7 +40,6 @@ suffix_errors_dirs: null
 general:
   # === Core Settings ===
   threads: 8                    # Max concurrent compression threads (1-16)
-  cq: 45                        # Default constant quality (0-63, lower=better)
   prefetch_factor: 1            # Submit-on-demand multiplier (1-5)
   gpu: true                     # Use GPU (NVENC) vs CPU (SVT-AV1)
   queue_sort: name              # Queue order: name, rand, dir, size, size-asc, size-desc, ext
@@ -92,6 +91,51 @@ gpu_config:
   history_window_s: 300.0
   nvtop_device_index: 0
 
+gpu_encoder:
+  advanced: false
+  common_args:
+    - "-c:v av1_nvenc"
+    - "-preset p7"
+    - "-tune hq"
+    - "-b:v 0"
+    - "-cq 45"
+    - "-f mp4"
+  advanced_args:
+    - "-c:v av1_nvenc"
+    - "-preset p7"
+    - "-tune hq"
+    - "-b:v 0"
+    - "-cq 45"
+    - "-rc vbr"
+    - "-multipass fullres"
+    - "-rc-lookahead 32"
+    - "-spatial-aq 1"
+    - "-temporal-aq 1"
+    - "-aq-strength 8"
+    - "-b_ref_mode middle"
+    - "-f mp4"
+
+cpu_encoder:
+  advanced: false
+  common_args:
+    - "-c:v libsvtav1"
+    - "-preset 6"
+    - "-crf 32"
+    - "-svtav1-params tune=0:enable-overlays=1"
+    - "-f mp4"
+  advanced_enforce_input_pix_fmt: true
+  advanced_args:
+    - "-c:v libaom-av1"
+    - "-crf 30"
+    - "-b:v 0"
+    - "-cpu-used 0"
+    - "-tune ssim"
+    - "-lag-in-frames 35"
+    - "-aq-mode 1"
+    - "-row-mt 1"
+    - "-threads 0"
+    - "-f matroska"
+
 ui:
   activity_feed_max_items: 5
   panel_height_scale: 0.7
@@ -113,11 +157,10 @@ autorotate:
 - **Description**: Maximum number of concurrent compression threads
 - **Note**: Can be adjusted at runtime with `<` and `>` keys
 
-#### `cq`
-- **Type**: Integer (0-63)
-- **Default**: 45
-- **Description**: Default constant quality value. Lower = better quality, larger files.
-- **Recommendations**:
+#### Quality Defaults
+- **Source**: Encoder args (`gpu_encoder`/`cpu_encoder`) via `-cq` (GPU) or `-crf` (CPU)
+- **Override**: `--quality` CLI flag or `general.dynamic_cq` mappings
+- **Recommendation ranges** (0-63, lower = better quality):
   - 35-38: Archival quality
   - 40-45: High quality daily use
   - 48-52: Good quality, smaller files
@@ -221,6 +264,48 @@ Advanced settings for GPU monitoring sparklines.
     - `general.gpu_refresh_rate` is **deprecated** in favor of `gpu_config.sample_interval_s`
 
     For backwards compatibility, VBC still accepts both old fields, but new configurations should use `gpu_config.sample_interval_s`.
+
+### GPU Encoder (`gpu_encoder`)
+
+Encoder args are **full FFmpeg argument lists**. VBC uses **one list**:
+`common_args` when `advanced=false`, otherwise `advanced_args`. Lists are not merged.
+
+#### `advanced`
+- **Type**: Boolean
+- **Default**: false
+- **Description**: Use `advanced_args` instead of `common_args`.
+
+#### `common_args`
+- **Type**: List of strings
+- **Default**: NVENC baseline (`-c:v av1_nvenc`, `-preset p7`, `-tune hq`, `-b:v 0`, `-cq 45`, `-f mp4`)
+- **Description**: Full FFmpeg arg list for standard GPU encoding.
+
+#### `advanced_args`
+- **Type**: List of strings
+- **Default**: NVENC HQ set (adds `-rc vbr`, `-multipass fullres`, AQ, lookahead, etc.)
+- **Description**: Full FFmpeg arg list for advanced GPU encoding.
+
+### CPU Encoder (`cpu_encoder`)
+
+#### `advanced`
+- **Type**: Boolean
+- **Default**: false
+- **Description**: Use `advanced_args` instead of `common_args`.
+
+#### `common_args`
+- **Type**: List of strings
+- **Default**: SVT-AV1 baseline (`-c:v libsvtav1`, `-preset 6`, `-crf 32`, `-f mp4`)
+- **Description**: Full FFmpeg arg list for standard CPU encoding.
+
+#### `advanced_enforce_input_pix_fmt`
+- **Type**: Boolean
+- **Default**: true
+- **Description**: When `advanced=true`, force output `-pix_fmt` to match the input (from ffprobe).
+
+#### `advanced_args`
+- **Type**: List of strings
+- **Default**: AOM AV1 HQ set (`-c:v libaom-av1`, `-crf 30`, `-cpu-used 0`, `-tune ssim`, etc.)
+- **Description**: Full FFmpeg arg list for advanced CPU encoding (often outputs `-f matroska`, so `.mkv`).
 
 ### UI Configuration (`ui`)
 
@@ -339,7 +424,7 @@ Dashboard display settings.
 #### `dynamic_cq`
 - **Type**: Dictionary (string -> integer)
 - **Default**: `{}` (empty)
-- **Description**: Camera model -> CQ value mapping
+- **Description**: Camera model -> quality value mapping (applies to `-cq`/`-crf`)
 - **Matching**: Full-text search in all EXIF metadata
 - **Example**:
   ```yaml
@@ -408,8 +493,8 @@ Dashboard display settings.
 All config settings can be overridden via CLI:
 
 ```bash
-# Override threads and CQ
-uv run vbc /videos --threads 16 --cq 38
+# Override threads and quality
+uv run vbc /videos --threads 16 --quality 38
 
 # Override GPU setting
 uv run vbc /videos --cpu  # Force CPU mode
@@ -421,7 +506,7 @@ uv run vbc /videos --camera "Sony,DJI"
 uv run vbc /videos \
   --config custom.yaml \
   --threads 8 \
-  --cq 40 \
+  --quality 40 \
   --gpu \
   --skip-av1 \
   --clean-errors \
@@ -450,11 +535,14 @@ uv run vbc /videos --config conf/archive.yaml
 ```yaml
 general:
   threads: 4
-  cq: 35           # Very high quality
   gpu: false       # CPU for best quality
   copy_metadata: true
   use_exif: true
   min_compression_ratio: 0.05  # Must save at least 5%
+
+cpu_encoder:
+  common_args:
+    - "-crf 30"    # Very high quality
 ```
 
 ## Validation
@@ -462,9 +550,6 @@ general:
 VBC uses **Pydantic** for config validation. Invalid settings will raise errors on startup:
 
 ```bash
-# Invalid CQ (must be 0-63)
-Error: cq must be between 0 and 63
-
 # Invalid threads (must be > 0)
 Error: threads must be greater than 0
 

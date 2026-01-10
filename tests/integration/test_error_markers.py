@@ -35,7 +35,7 @@ def test_orchestrator_creates_err_file_on_failure(tmp_path):
     mock_ffmpeg = MagicMock()
 
     # Simulate failure
-    def compress_side_effect(job, config, **kwargs):
+    def compress_side_effect(job, config, use_gpu=False, **kwargs):
         job.status = JobStatus.FAILED
         job.error_message = "MOCK ERROR"
     mock_ffmpeg.compress.side_effect = compress_side_effect

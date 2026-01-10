@@ -10,7 +10,6 @@ def test_dynamic_cq_selection():
     config = AppConfig(
         general=GeneralConfig(
             threads=1,
-            cq=45,
             dynamic_cq={"Sony": 35, "DJI": 30}
         )
     )

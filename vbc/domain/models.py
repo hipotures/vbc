@@ -45,6 +45,7 @@ class VideoMetadata(BaseModel):
         bitrate_kbps: Input stream bitrate.
         megapixels: Estimated megapixel value (for reference).
         color_space: FFmpeg color space (e.g., "bt709", "yuv420p").
+        pix_fmt: Pixel format from ffprobe (e.g., "yuv420p10le").
         duration: Total duration in seconds.
     """
 
@@ -59,6 +60,7 @@ class VideoMetadata(BaseModel):
     bitrate_kbps: Optional[float] = None
     megapixels: Optional[int] = None
     color_space: Optional[str] = None
+    pix_fmt: Optional[str] = None
     duration: Optional[float] = None
 
 class VideoFile(BaseModel):

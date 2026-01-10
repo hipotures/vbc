@@ -12,7 +12,8 @@ from vbc.pipeline.orchestrator import Orchestrator
 
 def _make_config(**kwargs):
     kwargs.setdefault("min_size_bytes", 0)
-    general = GeneralConfig(threads=1, cq=45, gpu=False, **kwargs)
+    gpu = kwargs.pop("gpu", False)
+    general = GeneralConfig(threads=1, gpu=gpu, **kwargs)
     return AppConfig(general=general, autorotate=AutoRotateConfig(patterns={}))
 
 
@@ -53,7 +54,7 @@ def test_perform_discovery_counts_and_skips(tmp_path):
 
     files, stats = orchestrator._perform_discovery(input_dir)
 
-    assert stats["files_found"] == 5
+    assert stats["files_found"] == 3
     assert stats["ignored_small"] == 1
     assert stats["already_compressed"] == 1
     assert stats["ignored_err"] == 1
@@ -232,9 +233,9 @@ def test_process_file_cpu_fallback_on_hw_cap(tmp_path):
         def __init__(self):
             self.calls = []
 
-        def compress(self, job, config, rotate=None, shutdown_event=None, input_path=None):
-            self.calls.append(config.gpu)
-            if config.gpu:
+        def compress(self, job, config, use_gpu=False, rotate=None, shutdown_event=None, input_path=None, **kwargs):
+            self.calls.append(use_gpu)
+            if use_gpu:
                 job.status = JobStatus.HW_CAP_LIMIT
                 job.error_message = "Hardware is lacking required capabilities"
             else:
@@ -349,7 +350,7 @@ def test_process_file_success_ratio_keeps_original(tmp_path):
 
     ffmpeg = MagicMock()
 
-    def fake_compress(job, job_config, rotate=None, shutdown_event=None, input_path=None):
+    def fake_compress(job, job_config, use_gpu=False, rotate=None, shutdown_event=None, input_path=None, **kwargs):
         job.status = JobStatus.COMPLETED
         job.output_path.write_bytes(b"b" * 950)
 

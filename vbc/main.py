@@ -13,7 +13,16 @@ from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
 from vbc.infrastructure.exif_tool import ExifToolAdapter
 from vbc.infrastructure.ffprobe import FFprobeAdapter
-from vbc.infrastructure.ffmpeg import FFmpegAdapter
+from vbc.infrastructure.ffmpeg import (
+    FFmpegAdapter,
+    select_encoder_args,
+    extract_quality_value,
+    extract_quality_flag,
+    extract_preset,
+    output_extension_for_args,
+    infer_encoder_label,
+    replace_quality_value,
+)
 from vbc.infrastructure.housekeeping import HousekeepingService
 from vbc.pipeline.orchestrator import Orchestrator
 from vbc.pipeline.demo_orchestrator import DemoOrchestrator
@@ -55,7 +64,7 @@ def compress(
     demo: bool = typer.Option(False, "--demo", help="Run in demo mode (simulate processing, no file IO)"),
     demo_config_path: Optional[Path] = typer.Option(Path("conf/demo.yaml"), "--demo-config", help="Path to demo YAML config"),
     threads: Optional[int] = typer.Option(None, "--threads", "-t", help="Override number of threads"),
-    cq: Optional[int] = typer.Option(None, "--cq", help="Override constant quality (0-63)"),
+    quality: Optional[int] = typer.Option(None, "--quality", help="Override quality (GPU CQ / CPU CRF, 0-63)"),
     gpu: Optional[bool] = typer.Option(None, "--gpu/--cpu", help="Enable/disable GPU acceleration"),
     queue_sort: Optional[str] = typer.Option(
         None,
@@ -87,7 +96,11 @@ def compress(
         config = load_config(config_path)
         # Apply CLI overrides
         if threads: config.general.threads = threads
-        if cq: config.general.cq = cq
+        if quality is not None:
+            config.gpu_encoder.common_args = replace_quality_value(config.gpu_encoder.common_args, quality)
+            config.gpu_encoder.advanced_args = replace_quality_value(config.gpu_encoder.advanced_args, quality)
+            config.cpu_encoder.common_args = replace_quality_value(config.cpu_encoder.common_args, quality)
+            config.cpu_encoder.advanced_args = replace_quality_value(config.cpu_encoder.advanced_args, quality)
         if gpu is not None: config.general.gpu = gpu
         if queue_sort is not None:
             try:
@@ -244,7 +257,15 @@ def compress(
             )
         else:
             logger.info(f"VBC started: input_folders={len(input_dirs)}, folders={input_dirs}")
-        logger.info(f"Config: threads={config.general.threads}, cq={config.general.cq}, gpu={config.general.gpu}, debug={config.general.debug}")
+        encoder_args = select_encoder_args(config, config.general.gpu)
+        quality_value = extract_quality_value(encoder_args)
+        quality_flag = extract_quality_flag(encoder_args)
+        quality_label = "CQ" if quality_flag == "-cq" else "CRF" if quality_flag == "-crf" else "Q"
+        quality_display = f"{quality_label}{quality_value}" if quality_value is not None else "unknown"
+        logger.info(
+            f"Config: threads={config.general.threads}, quality={quality_display}, "
+            f"gpu={config.general.gpu}, debug={config.general.debug}"
+        )
 
         bus = EventBus()
 
@@ -281,6 +302,7 @@ def compress(
             min_size_bytes: int,
             clean_errors: bool,
             cpu_fallback: bool,
+            output_suffix: str,
         ) -> List[Tuple[str, str, Optional[int], Optional[int]]]:
             stats: List[Tuple[str, str, Optional[int], Optional[int]]] = []
             scanner = FileScanner(extensions=extensions, min_size_bytes=min_size_bytes)
@@ -304,7 +326,7 @@ def compress(
                         rel_path = vf.path.relative_to(input_dir)
                     except ValueError:
                         rel_path = Path(vf.path.name)
-                    output_path = output_dir / rel_path.with_suffix(".mp4")
+                    output_path = output_dir / rel_path.with_suffix(output_suffix)
                     err_path = output_path.with_suffix(".err")
 
                     if err_path.exists():
@@ -344,8 +366,9 @@ def compress(
             return stats
 
 
-        encoder_name = "NVENC AV1 (GPU)" if config.general.gpu else "SVT-AV1 (CPU)"
-        preset = "p7 (Slow/HQ)" if config.general.gpu else "6"
+        preset_value = extract_preset(encoder_args) or "—"
+        encoder_name = infer_encoder_label(encoder_args, config.general.gpu)
+        output_suffix = output_extension_for_args(encoder_args)
         metadata_method = (
             "Deep (ExifTool + XMP)" if (config.general.use_exif and config.general.copy_metadata)
             else ("Basic (FFmpeg)" if config.general.copy_metadata else "None")
@@ -449,6 +472,7 @@ def compress(
                 config.general.min_size_bytes,
                 config.general.clean_errors,
                 config.general.cpu_fallback,
+                output_suffix,
             )
         ext_list = ", ".join(extensions)
 
@@ -459,15 +483,15 @@ def compress(
                 f"Input folders: {input_dir_count}",
                 *input_dir_lines,
                 f"Threads: {config.general.threads} (Prefetch: {config.general.prefetch_factor}x)",
-                f"Encoder: {encoder_name} | Preset: {preset}",
+                f"Encoder: {encoder_name} | Preset: {preset_value}",
                 "Audio: Auto (lossless->AAC 256k, AAC/MP3 copy, other->AAC 192k)",
-                f"Quality: CQ{config.general.cq} (Global Default)",
+                f"Quality: {quality_display} (Default)",
                 f"Dynamic CQ: {dynamic_cq_info}",
                 f"Camera Filter: {camera_filter_info}",
                 f"Metadata: {metadata_method} (Analysis: {config.general.use_exif})",
                 f"Autorotate: {len(config.autorotate.patterns)} rules loaded",
                 f"Manual Rotation: {manual_rotation}",
-                f"Extensions: {ext_list} → .mp4",
+                f"Extensions: {ext_list} → {output_suffix}",
                 f"Queue sort: {queue_sort_info}",
                 f"CPU fallback: {config.general.cpu_fallback} | CPU threads per worker: {config.general.ffmpeg_cpu_threads or 'auto'}",
                 f"Min size: {format_size(config.general.min_size_bytes)} | Skip AV1: {config.general.skip_av1}",
@@ -484,15 +508,15 @@ def compress(
                 f"Input folders: {input_dir_count}",
                 *input_dir_lines,
                 f"Threads: {config.general.threads} (Prefetch: {config.general.prefetch_factor}x)",
-                f"Encoder: {encoder_name} | Preset: {preset}",
+                f"Encoder: {encoder_name} | Preset: {preset_value}",
                 "Audio: Auto (lossless->AAC 256k, AAC/MP3 copy, other->AAC 192k)",
-                f"Quality: CQ{config.general.cq} (Global Default)",
+                f"Quality: {quality_display} (Default)",
                 f"Dynamic CQ: {dynamic_cq_info}",
                 f"Camera Filter: {camera_filter_info}",
                 f"Metadata: {metadata_method} (Analysis: {config.general.use_exif})",
                 f"Autorotate: {len(config.autorotate.patterns)} rules loaded",
                 f"Manual Rotation: {manual_rotation}",
-                f"Extensions: {ext_list} → .mp4",
+                f"Extensions: {ext_list} → {output_suffix}",
                 f"Queue sort: {queue_sort_info}",
                 f"CPU fallback: {config.general.cpu_fallback} | CPU threads per worker: {config.general.ffmpeg_cpu_threads or 'auto'}",
                 f"Min size: {format_size(config.general.min_size_bytes)} | Skip AV1: {config.general.skip_av1}",

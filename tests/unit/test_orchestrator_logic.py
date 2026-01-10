@@ -12,7 +12,7 @@ from vbc.infrastructure.event_bus import EventBus
 def orchestrator_basic(tmp_path):
     """Create orchestrator with basic config."""
     config = AppConfig(
-        general=GeneralConfig(threads=2, cq=45, gpu=False),
+        general=GeneralConfig(threads=2, gpu=False),
         autorotate=AutoRotateConfig(patterns={})
     )
 
@@ -43,7 +43,7 @@ def test_determine_cq_default(orchestrator_basic):
     )
 
     cq = orchestrator_basic._determine_cq(vf)
-    assert cq == 45  # Default from config
+    assert cq == 32  # Default from CPU encoder args
 
 
 def test_determine_cq_custom_from_metadata(orchestrator_basic):
@@ -66,7 +66,7 @@ def test_determine_cq_dynamic_match():
     """Test CQ determination with dynamic_cq config."""
     config = AppConfig(
         general=GeneralConfig(
-            threads=2, cq=45, gpu=False,
+            threads=2, gpu=False,
             dynamic_cq={"DC-GH7": 30, "ILCE-7RM5": 35}
         ),
         autorotate=AutoRotateConfig(patterns={})
@@ -99,13 +99,13 @@ def test_determine_cq_no_metadata(orchestrator_basic):
     vf = VideoFile(path=Path("test.mp4"), size_bytes=1000, metadata=None)
 
     cq = orchestrator_basic._determine_cq(vf)
-    assert cq == 45  # Fallback to default
+    assert cq == 32  # Fallback to default
 
 
 def test_determine_rotation_manual():
     """Test rotation determination with manual override."""
     config = AppConfig(
-        general=GeneralConfig(threads=2, cq=45, gpu=False, manual_rotation=180),
+        general=GeneralConfig(threads=2, gpu=False, manual_rotation=180),
         autorotate=AutoRotateConfig(patterns={})
     )
 
@@ -126,7 +126,7 @@ def test_determine_rotation_manual():
 def test_determine_rotation_pattern_match():
     """Test rotation determination with pattern matching."""
     config = AppConfig(
-        general=GeneralConfig(threads=2, cq=45, gpu=False),
+        general=GeneralConfig(threads=2, gpu=False),
         autorotate=AutoRotateConfig(patterns={
             r"QVR_\d{8}_\d{6}\.mp4": 180,
             r"ROT90_.*": 90

@@ -10,13 +10,204 @@ import logging
 import time
 import threading
 import queue
+import shlex
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from vbc.domain.models import CompressionJob, JobStatus
-from vbc.config.models import GeneralConfig
+from vbc.config.models import AppConfig
 from vbc.infrastructure.event_bus import EventBus
 from vbc.domain.events import JobProgressUpdated, JobFailed, HardwareCapabilityExceeded
 
+FORMAT_EXTENSION_MAP = {
+    "mp4": ".mp4",
+    "mov": ".mov",
+    "matroska": ".mkv",
+    "mkv": ".mkv",
+}
+
+
+def _split_args(args: List[str]) -> List[str]:
+    tokens: List[str] = []
+    for arg in args:
+        tokens.extend(shlex.split(arg))
+    return tokens
+
+
+def _extract_flag_value(args: List[str], flag: str) -> Optional[str]:
+    for idx, arg in enumerate(args):
+        if arg.strip() == flag and idx + 1 < len(args):
+            return str(args[idx + 1]).strip()
+        if arg.startswith(f"{flag} "):
+            return arg.split(None, 1)[1].strip()
+    return None
+
+
+def extract_quality_value(args: List[str]) -> Optional[int]:
+    value = _extract_flag_value(args, "-cq")
+    if value is None:
+        value = _extract_flag_value(args, "-crf")
+    if value is None:
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def extract_quality_flag(args: List[str]) -> Optional[str]:
+    if _extract_flag_value(args, "-cq") is not None:
+        return "-cq"
+    if _extract_flag_value(args, "-crf") is not None:
+        return "-crf"
+    return None
+
+
+def replace_quality_value(args: List[str], quality: int) -> List[str]:
+    updated: List[str] = []
+    skip_next = False
+    for idx, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+        stripped = arg.strip()
+        if stripped in ("-cq", "-crf"):
+            if idx + 1 < len(args):
+                updated.append(stripped)
+                updated.append(str(quality))
+                skip_next = True
+                continue
+        if arg.startswith("-cq "):
+            updated.append(f"-cq {quality}")
+            continue
+        if arg.startswith("-crf "):
+            updated.append(f"-crf {quality}")
+            continue
+        updated.append(arg)
+    return updated
+
+
+def extract_output_format(args: List[str]) -> Optional[str]:
+    fmt = _extract_flag_value(args, "-f")
+    if not fmt:
+        return None
+    return fmt.strip().lower().lstrip(".")
+
+
+def output_extension_for_args(args: List[str]) -> str:
+    fmt = extract_output_format(args)
+    if not fmt:
+        return ".mp4"
+    return FORMAT_EXTENSION_MAP.get(fmt, ".mp4")
+
+
+def has_format_arg(args: List[str]) -> bool:
+    return extract_output_format(args) is not None
+
+
+def apply_pix_fmt_arg(args: List[str], pix_fmt: Optional[str]) -> List[str]:
+    if not pix_fmt:
+        return args
+    updated: List[str] = []
+    skip_next = False
+    replaced = False
+    for idx, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg.strip() == "-pix_fmt":
+            if idx + 1 < len(args):
+                updated.append("-pix_fmt")
+                updated.append(pix_fmt)
+                skip_next = True
+                replaced = True
+                continue
+        if arg.startswith("-pix_fmt "):
+            updated.append(f"-pix_fmt {pix_fmt}")
+            replaced = True
+            continue
+        updated.append(arg)
+    if not replaced:
+        updated.append(f"-pix_fmt {pix_fmt}")
+    return updated
+
+
+def _update_svt_params(value: str, threads: int) -> str:
+    parts = value.split(":") if value else []
+    updated = []
+    lp_set = False
+    for part in parts:
+        if part.startswith("lp="):
+            updated.append(f"lp={threads}")
+            lp_set = True
+        else:
+            updated.append(part)
+    if not lp_set:
+        updated.append(f"lp={threads}")
+    return ":".join(p for p in updated if p)
+
+
+def apply_cpu_thread_overrides(args: List[str], threads: Optional[int]) -> List[str]:
+    if not threads:
+        return args
+    updated: List[str] = []
+    skip_next = False
+    threads_set = False
+    for idx, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg.strip() == "-threads":
+            if idx + 1 < len(args):
+                updated.append("-threads")
+                updated.append(str(threads))
+                skip_next = True
+                threads_set = True
+                continue
+        if arg.startswith("-threads "):
+            updated.append(f"-threads {threads}")
+            threads_set = True
+            continue
+        if arg.strip() == "-svtav1-params":
+            if idx + 1 < len(args):
+                params = str(args[idx + 1])
+                updated.append("-svtav1-params")
+                updated.append(_update_svt_params(params, threads))
+                skip_next = True
+                continue
+        if arg.startswith("-svtav1-params "):
+            params = arg.split(None, 1)[1]
+            updated.append(f"-svtav1-params {_update_svt_params(params, threads)}")
+            continue
+        updated.append(arg)
+    if not threads_set:
+        updated.append(f"-threads {threads}")
+    return updated
+
+
+def select_encoder_args(config: AppConfig, use_gpu: bool) -> List[str]:
+    if use_gpu:
+        encoder_cfg = config.gpu_encoder
+    else:
+        encoder_cfg = config.cpu_encoder
+    args = encoder_cfg.advanced_args if encoder_cfg.advanced else encoder_cfg.common_args
+    return list(args)
+
+
+def infer_encoder_label(args: List[str], use_gpu: bool) -> str:
+    if use_gpu:
+        return "NVENC AV1 (GPU)"
+    codec = _extract_flag_value(args, "-c:v")
+    codec = (codec or "").lower()
+    if "libaom" in codec:
+        return "AOM AV1 (CPU)"
+    if "libsvtav1" in codec:
+        return "SVT-AV1 (CPU)"
+    return "CPU AV1"
+
+
+def extract_preset(args: List[str]) -> Optional[str]:
+    value = _extract_flag_value(args, "-preset")
+    return value if value else None
 
 class FFmpegAdapter:
     """Subprocess adapter for FFmpeg video compression.
@@ -54,12 +245,22 @@ class FFmpegAdapter:
         # Everything else: re-encode to AAC for container compatibility
         return (["-c:a", "aac", "-b:a", "192k"], "aac 192k", audio_codec)
 
-    def _build_command(self, job: CompressionJob, config: GeneralConfig, rotate: Optional[int] = None, input_path: Optional[Path] = None) -> List[str]:
+    def _build_command(
+        self,
+        job: CompressionJob,
+        config: AppConfig,
+        encoder_args: List[str],
+        use_gpu: bool,
+        rotate: Optional[int] = None,
+        input_path: Optional[Path] = None,
+    ) -> List[str]:
         """Constructs the FFmpeg command line for AV1 compression.
 
         Args:
             job: Compression job with source and output paths.
-            config: Config with GPU/CPU choice, CQ, thread counts.
+            config: AppConfig with encoder and metadata settings.
+            encoder_args: Encoder args selected for this job.
+            use_gpu: Whether the GPU encoder is active.
             rotate: Optional rotation angle (90, 180, 270 degrees).
             input_path: Override input (used by color fix recovery).
 
@@ -70,41 +271,25 @@ class FFmpegAdapter:
             "ffmpeg",
             "-y", # Overwrite output files
         ]
-        if config.gpu:
+        if use_gpu:
             cmd.extend(["-vsync", "0"])
         cmd.extend([
             "-fflags", "+genpts+igndts",
             "-avoid_negative_ts", "make_zero",
             "-i", str(input_path or job.source_file.path),
         ])
-        
-        # Video encoding settings
-        if config.gpu:
-            cmd.extend([
-                "-c:v", "av1_nvenc",
-                "-cq", str(config.cq),
-                "-preset", "p7",
-                "-tune", "hq",
-                "-b:v", "0"
-            ])
-        else:
-            svt_params = "tune=0:enable-overlays=1"
-            if config.ffmpeg_cpu_threads:
-                svt_params = f"{svt_params}:lp={config.ffmpeg_cpu_threads}"
-            cmd.extend([
-                "-c:v", "libsvtav1",
-                "-preset", "6",
-                "-crf", str(config.cq),
-                "-svtav1-params", svt_params
-            ])
-            if config.ffmpeg_cpu_threads:
-                cmd.extend(["-threads", str(config.ffmpeg_cpu_threads)])
-            
+
+        encoder_tokens = _split_args(encoder_args)
+        cmd.extend(encoder_tokens)
+
         # Audio/Metadata settings
         audio_opts, _, _ = self._select_audio_options(job)
         cmd.extend(audio_opts)
-        if config.copy_metadata:
-            cmd.extend(["-map_metadata", "0", "-movflags", "use_metadata_tags"])
+        if config.general.copy_metadata:
+            cmd.extend(["-map_metadata", "0"])
+            output_fmt = extract_output_format(encoder_args) or "mp4"
+            if output_fmt in ("mp4", "mov"):
+                cmd.extend(["-movflags", "use_metadata_tags"])
         else:
             cmd.extend(["-map_metadata", "-1"])
         
@@ -116,13 +301,23 @@ class FFmpegAdapter:
         elif rotate == 270:
             cmd.extend(["-vf", "transpose=2"])
 
-        # Write to .tmp file during compression (renamed to .mp4 on success)
-        # Force mp4 format since .tmp extension doesn't indicate format
+        # Write to .tmp file during compression (renamed on success)
         tmp_path = job.output_path.with_suffix('.tmp')
-        cmd.extend(["-f", "mp4", str(tmp_path)])
+        if "-f" not in encoder_tokens:
+            cmd.extend(["-f", "mp4"])
+        cmd.append(str(tmp_path))
         return cmd
 
-    def compress(self, job: CompressionJob, config: GeneralConfig, rotate: Optional[int] = None, shutdown_event=None, input_path: Optional[Path] = None):
+    def compress(
+        self,
+        job: CompressionJob,
+        config: AppConfig,
+        use_gpu: bool,
+        quality: Optional[int] = None,
+        rotate: Optional[int] = None,
+        shutdown_event=None,
+        input_path: Optional[Path] = None,
+    ):
         """Execute AV1 compression via FFmpeg subprocess.
 
         Spawns FFmpeg, monitors stdout for progress updates, detects errors including:
@@ -135,30 +330,47 @@ class FFmpegAdapter:
 
         Args:
             job: Compression job to process.
-            config: Config with GPU/CPU, CQ, debug flag.
+            config: AppConfig with encoder settings and flags.
+            use_gpu: Whether the GPU encoder is active.
+            quality: Optional quality override (CQ/CRF) for this job.
             rotate: Optional rotation angle (degrees).
             shutdown_event: Threading.Event to signal interruption.
             input_path: Override input path (used for color fix retry).
 
         Side Effects:
             - Updates job.status, job.error_message, job.duration_seconds
-            - Writes .tmp file during processing; renames to .mp4 on success
+            - Writes .tmp file during processing; renames to output on success
             - Publishes events to EventBus
             - Cleans up .tmp file on error/interruption
         """
         filename = job.source_file.path.name
-        start_time = time.monotonic() if config.debug else None
+        start_time = time.monotonic() if config.general.debug else None
 
-        if config.debug:
-            self.logger.info(f"FFMPEG_START: {filename} (gpu={config.gpu}, cq={config.cq})")
+        encoder_args = select_encoder_args(config, use_gpu)
+        if quality is not None:
+            encoder_args = replace_quality_value(encoder_args, quality)
+        if not use_gpu:
+            encoder_args = apply_cpu_thread_overrides(encoder_args, config.general.ffmpeg_cpu_threads)
+            if config.cpu_encoder.advanced and config.cpu_encoder.advanced_enforce_input_pix_fmt:
+                pix_fmt = None
+                if job.source_file.metadata:
+                    pix_fmt = job.source_file.metadata.pix_fmt
+                encoder_args = apply_pix_fmt_arg(encoder_args, pix_fmt)
 
-        if config.debug:
+        if config.general.debug:
+            quality_value = extract_quality_value(encoder_args)
+            quality_flag = extract_quality_flag(encoder_args)
+            quality_label = "CQ" if quality_flag == "-cq" else "CRF" if quality_flag == "-crf" else "Q"
+            quality_text = f"{quality_label}={quality_value}" if quality_value is not None else "quality=unknown"
+            self.logger.info(f"FFMPEG_START: {filename} (gpu={use_gpu}, {quality_text})")
+
+        if config.general.debug:
             _, audio_mode, audio_codec = self._select_audio_options(job)
             self.logger.info(f"AUDIO_MODE: {filename} mode={audio_mode} codec={audio_codec}")
 
-        cmd = self._build_command(job, config, rotate, input_path=input_path)
+        cmd = self._build_command(job, config, encoder_args, use_gpu, rotate, input_path=input_path)
 
-        if config.debug:
+        if config.general.debug:
             self.logger.debug(f"FFMPEG_CMD: {' '.join(cmd)}")
 
         # Use duration for progress calculation
@@ -271,16 +483,16 @@ class FFmpegAdapter:
             if tmp_path.exists():
                 tmp_path.unlink()
             self.event_bus.publish(HardwareCapabilityExceeded(job=job))
-            if config.debug and start_time:
+            if config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
                 self.logger.info(f"FFMPEG_END: {filename} status=hw_cap_limit elapsed={elapsed:.2f}s")
         elif color_error:
             # Re-run with color fix remux (recursive call sets final status)
-            if config.debug:
+            if config.general.debug:
                 self.logger.info(f"FFMPEG_COLORFIX: {filename} (applying color space fix)")
-            self._apply_color_fix(job, config, rotate, shutdown_event=shutdown_event)
+            self._apply_color_fix(job, config, use_gpu, quality, rotate, shutdown_event=shutdown_event)
             # Status is now set by recursive compress() call, don't override
-            if config.debug and start_time:
+            if config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
                 self.logger.info(f"FFMPEG_END: {filename} status={job.status.value} elapsed={elapsed:.2f}s (with colorfix)")
         elif process.returncode != 0:
@@ -290,19 +502,27 @@ class FFmpegAdapter:
             if tmp_path.exists():
                 tmp_path.unlink()
             self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
-            if config.debug and start_time:
+            if config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
                 self.logger.info(f"FFMPEG_END: {filename} status=failed code={process.returncode} elapsed={elapsed:.2f}s")
         else:
-            # Success - rename .tmp to final .mp4
+            # Success - rename .tmp to final output
             if tmp_path.exists():
                 tmp_path.rename(job.output_path)
             job.status = JobStatus.COMPLETED
-            if config.debug and start_time:
+            if config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
                 self.logger.info(f"FFMPEG_END: {filename} status=completed elapsed={elapsed:.2f}s")
 
-    def _apply_color_fix(self, job: CompressionJob, config: GeneralConfig, rotate: Optional[int], shutdown_event=None):
+    def _apply_color_fix(
+        self,
+        job: CompressionJob,
+        config: AppConfig,
+        use_gpu: bool,
+        quality: Optional[int],
+        rotate: Optional[int],
+        shutdown_event=None,
+    ):
         """Recovery for FFmpeg 7.x color space metadata bug.
 
         FFmpeg 7.x rejects "reserved" color_primaries/color_trc/colorspace values.
@@ -346,7 +566,14 @@ class FFmpegAdapter:
             original_path = job.source_file.path
             job.source_file.path = color_fix_path
             try:
-                self.compress(job, config, rotate, shutdown_event=shutdown_event)
+                self.compress(
+                    job,
+                    config,
+                    use_gpu,
+                    quality=quality,
+                    rotate=rotate,
+                    shutdown_event=shutdown_event,
+                )
             finally:
                 # Cleanup and restore
                 job.source_file.path = original_path

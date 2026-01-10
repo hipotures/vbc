@@ -80,7 +80,7 @@ def test_hardware_error_creates_hw_cap_marker(tmp_path):
     mock_ffmpeg = MagicMock()
 
     # Simulate hardware capability error
-    def compress_hw_cap(job, config, **kwargs):
+    def compress_hw_cap(job, config, use_gpu=False, **kwargs):
         job.status = JobStatus.HW_CAP_LIMIT
         job.error_message = "Hardware is lacking required capabilities"
 
@@ -127,7 +127,7 @@ def test_ffmpeg_interrupt_handling():
     """Test that FFmpeg adapter handles interrupts gracefully."""
     import threading
 
-    config = GeneralConfig(threads=1, cq=45, gpu=False)
+    config = AppConfig(general=GeneralConfig(threads=1, gpu=False))
     vf = VideoFile(path=Path("test.mp4"), size_bytes=1000)
 
     from vbc.domain.models import CompressionJob
@@ -148,7 +148,7 @@ def test_ffmpeg_interrupt_handling():
         process_instance.poll.return_value = None  # Still running
         process_instance.returncode = -15  # SIGTERM
 
-        adapter.compress(job, config, shutdown_event=shutdown_event)
+        adapter.compress(job, config, use_gpu=False, shutdown_event=shutdown_event)
 
         # Job should be INTERRUPTED
         assert job.status == JobStatus.INTERRUPTED
@@ -227,7 +227,7 @@ def test_exiftool_timeout_handling(tmp_path):
 
     mock_ffmpeg = MagicMock()
 
-    def compress_create_output(job, config, **kwargs):
+    def compress_create_output(job, config, use_gpu=False, **kwargs):
         job.status = JobStatus.COMPLETED
         job.output_path.parent.mkdir(parents=True, exist_ok=True)
         job.output_path.write_text("compressed")

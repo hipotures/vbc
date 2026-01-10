@@ -21,6 +21,7 @@ This page documents the configuration models and loader.
 ```python
 from pathlib import Path
 from vbc.config.loader import load_config
+from vbc.infrastructure.ffmpeg import extract_quality_value
 
 # Load from default location
 config = load_config()
@@ -30,7 +31,7 @@ config = load_config(Path("custom.yaml"))
 
 # Access settings
 print(f"Threads: {config.general.threads}")
-print(f"CQ: {config.general.cq}")
+print(f"GPU quality: {extract_quality_value(config.gpu_encoder.common_args)}")
 print(f"GPU: {config.general.gpu}")
 
 # Validate at runtime
@@ -50,21 +51,21 @@ from vbc.config.models import GeneralConfig
 from pydantic import ValidationError
 
 # Valid config
-config = GeneralConfig(threads=8, cq=45)
+config = GeneralConfig(threads=8)
 
 # Invalid: threads must be > 0
 try:
-    config = GeneralConfig(threads=0, cq=45)
+    config = GeneralConfig(threads=0)
 except ValidationError as e:
     print(e)
     # Field required to be greater than 0
 
-# Invalid: cq must be 0-63
+# Invalid: min_compression_ratio must be 0.0-1.0
 try:
-    config = GeneralConfig(threads=8, cq=70)
+    config = GeneralConfig(min_compression_ratio=1.5)
 except ValidationError as e:
     print(e)
-    # Field required to be between 0 and 63
+    # Field required to be less than or equal to 1.0
 ```
 
 ## Auto-Rotation Validation

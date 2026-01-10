@@ -10,9 +10,11 @@ Different cameras produce different quality levels. VBC can apply custom CQ valu
 
 ```yaml
 # conf/vbc.yaml
-general:
-  cq: 45  # Default for unknown cameras
+gpu_encoder:
+  common_args:
+    - "-cq 45"  # Default for unknown cameras
 
+general:
   dynamic_cq:
     "ILCE-7RM5": 38      # Sony A7R V - very high quality
     "DC-GH7": 40         # Panasonic GH7 - high quality
@@ -23,7 +25,7 @@ general:
 
 1. **ExifTool analysis**: VBC extracts full EXIF metadata
 2. **Pattern matching**: Searches all metadata for camera model strings
-3. **CQ override**: If match found, uses custom CQ instead of default
+3. **Quality override**: If match found, uses custom value instead of default
 4. **First match wins**: Patterns are checked in config file order
 
 ### Example
@@ -42,20 +44,20 @@ dynamic_cq:
 
 ```bash
 # Override all CQ (disables dynamic CQ)
-uv run vbc/main.py /videos --cq 40
+uv run vbc /videos --quality 40
 
 # Dynamic CQ still active (from config)
-uv run vbc/main.py /videos --config conf/vbc.yaml
+uv run vbc /videos --config conf/vbc.yaml
 ```
 
-**Note:** `--cq` flag disables dynamic CQ entirely.
+**Note:** `--quality` flag disables dynamic CQ entirely.
 
 ### Debugging
 
 Enable debug logging to see CQ decisions:
 
 ```bash
-uv run vbc/main.py /videos --debug
+uv run vbc /videos --debug
 ```
 
 Look for:
@@ -99,7 +101,7 @@ autorotate:
 
 ```bash
 # Rotate all videos 180° (overrides config patterns)
-uv run vbc/main.py /videos --rotate-180
+uv run vbc /videos --rotate-180
 ```
 
 ## Camera Filtering
@@ -120,7 +122,7 @@ general:
 Or via CLI:
 
 ```bash
-uv run vbc/main.py /videos --camera "Sony,DJI"
+uv run vbc /videos --camera "Sony,DJI"
 ```
 
 ### How It Works
@@ -157,7 +159,7 @@ general:
 Or via CLI:
 
 ```bash
-uv run vbc/main.py /videos --min-ratio 0.2  # 20% minimum
+uv run vbc /videos --min-ratio 0.2  # 20% minimum
 ```
 
 ### How It Works
@@ -201,7 +203,7 @@ general:
 Or via CLI:
 
 ```bash
-uv run vbc/main.py /videos --skip-av1
+uv run vbc /videos --skip-av1
 ```
 
 ### How It Works
@@ -380,20 +382,20 @@ VBC:
 **Option 1:** Reduce thread count to GPU session limit
 ```bash
 # RTX 30-series
-uv run vbc/main.py /videos --threads 5
+uv run vbc /videos --threads 5
 
 # RTX 4090
-uv run vbc/main.py /videos --threads 12
+uv run vbc /videos --threads 12
 ```
 
 **Option 2:** Use CPU mode (no hardware limitations)
 ```bash
-uv run vbc/main.py /videos --cpu
+uv run vbc /videos --cpu
 ```
 
 **Option 3:** Reduce quality for 10-bit issues
 ```bash
-uv run vbc/main.py /videos --cq 38
+uv run vbc /videos --quality 38
 ```
 
 **Option 4:** Upgrade GPU (RTX 40-series has full 10-bit AV1 support and higher session limits)
@@ -431,7 +433,7 @@ color_space=reserved
 ### Debug Logging
 
 ```bash
-uv run vbc/main.py /videos --debug
+uv run vbc /videos --debug
 ```
 
 Look for:

@@ -106,14 +106,15 @@ def test_dashboard_panels_with_state(tmp_path):
 
 def test_dashboard_create_display_overlay():
     state = UIState()
-    state.show_config = True
+    state.show_overlay = True
+    state.active_tab = "settings"
     state.config_lines = ["Threads: 2", "Encoder: SVT-AV1 (CPU)"]
     dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
 
     display = dashboard.create_display()
     assert isinstance(display, dashboard_module._Overlay)
 
-    state.show_config = False
+    state.show_overlay = False
     display = dashboard.create_display()
     assert isinstance(display, Layout)
 

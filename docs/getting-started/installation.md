@@ -127,7 +127,7 @@ uv run vbc
 
 # You should see the help message without errors
 # Test with a small video file
-uv run vbc/main.py /path/to/test/video --threads 1 --cq 45
+uv run vbc /path/to/test/video --threads 1 --quality 45
 ```
 
 ## GPU Support (NVIDIA)
@@ -147,7 +147,7 @@ For GPU-accelerated compression with NVENC:
 
 3. **Test GPU encoding**:
    ```bash
-   uv run vbc/main.py /path/to/video --gpu --threads 2
+   uv run vbc /path/to/video --gpu --threads 2
    ```
 
 !!! warning "Hardware Limitations"

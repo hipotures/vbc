@@ -4,19 +4,24 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
-from vbc.infrastructure.ffmpeg import FFmpegAdapter
+from vbc.infrastructure.ffmpeg import (
+    FFmpegAdapter,
+    select_encoder_args,
+    apply_cpu_thread_overrides,
+)
 from vbc.infrastructure.ffprobe import FFprobeAdapter
 from vbc.domain.models import VideoFile, CompressionJob, JobStatus
 from vbc.domain.models import VideoMetadata
-from vbc.config.models import GeneralConfig
+from vbc.config.models import AppConfig, GeneralConfig
 
 def test_ffmpeg_command_generation_gpu():
-    config = GeneralConfig(threads=4, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)
     job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
 
     adapter = FFmpegAdapter(event_bus=MagicMock())
-    cmd = adapter._build_command(job, config)
+    encoder_args = select_encoder_args(config, use_gpu=True)
+    cmd = adapter._build_command(job, config, encoder_args, use_gpu=True)
 
     assert "ffmpeg" in cmd
     assert "-c:v" in cmd
@@ -26,23 +31,26 @@ def test_ffmpeg_command_generation_gpu():
     assert "output.tmp" in cmd or any(".tmp" in str(c) for c in cmd)
 
 def test_ffmpeg_command_generation_cpu():
-    config = GeneralConfig(threads=4, cq=45, gpu=False)
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=False))
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)
     job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
     
     adapter = FFmpegAdapter(event_bus=MagicMock())
-    cmd = adapter._build_command(job, config)
+    encoder_args = select_encoder_args(config, use_gpu=False)
+    cmd = adapter._build_command(job, config, encoder_args, use_gpu=False)
     
     assert "libsvtav1" in cmd
 
 
 def test_ffmpeg_command_generation_cpu_threads_limit():
-    config = GeneralConfig(threads=4, cq=45, gpu=False, ffmpeg_cpu_threads=4)
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=False, ffmpeg_cpu_threads=4))
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)
     job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
 
     adapter = FFmpegAdapter(event_bus=MagicMock())
-    cmd = adapter._build_command(job, config)
+    encoder_args = select_encoder_args(config, use_gpu=False)
+    encoder_args = apply_cpu_thread_overrides(encoder_args, config.general.ffmpeg_cpu_threads)
+    cmd = adapter._build_command(job, config, encoder_args, use_gpu=False)
 
     threads_index = cmd.index("-threads")
     assert cmd[threads_index + 1] == "4"
@@ -50,13 +58,14 @@ def test_ffmpeg_command_generation_cpu_threads_limit():
     assert "lp=4" in cmd[svt_index + 1]
 
 def test_ffmpeg_rotation():
-    config = GeneralConfig(threads=4, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)
     job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
     
     adapter = FFmpegAdapter(event_bus=MagicMock())
     # 180 degree rotation
-    cmd = adapter._build_command(job, config, rotate=180)
+    encoder_args = select_encoder_args(config, use_gpu=True)
+    cmd = adapter._build_command(job, config, encoder_args, use_gpu=True, rotate=180)
     assert "transpose=2,transpose=2" in cmd
 
 def test_audio_codec_detection_drives_audio_options():
@@ -100,9 +109,10 @@ def test_audio_codec_detection_drives_audio_options():
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000, metadata=metadata)
     job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
     adapter = FFmpegAdapter(event_bus=MagicMock())
-    config = GeneralConfig(threads=1, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=1, gpu=True))
 
-    cmd = adapter._build_command(job, config)
+    encoder_args = select_encoder_args(config, use_gpu=True)
+    cmd = adapter._build_command(job, config, encoder_args, use_gpu=True)
     audio_index = cmd.index("-c:a")
     assert cmd[audio_index + 1] == "aac"
     assert "-b:a" in cmd
@@ -110,7 +120,8 @@ def test_audio_codec_detection_drives_audio_options():
     assert cmd[bitrate_index + 1] == "256k"
 
     job.source_file.metadata.audio_codec = "aac"
-    cmd = adapter._build_command(job, config)
+    encoder_args = select_encoder_args(config, use_gpu=True)
+    cmd = adapter._build_command(job, config, encoder_args, use_gpu=True)
     audio_index = cmd.index("-c:a")
     assert cmd[audio_index + 1] == "copy"
     assert "-b:a" not in cmd
@@ -134,7 +145,7 @@ def test_audio_codec_detection_drives_audio_options():
     ],
 )
 def test_audio_codec_selection_matrix(audio_codec, expected_codec, expected_bitrate):
-    config = GeneralConfig(threads=1, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=1, gpu=True))
     metadata = VideoMetadata(
         width=1920,
         height=1080,
@@ -146,7 +157,8 @@ def test_audio_codec_selection_matrix(audio_codec, expected_codec, expected_bitr
     job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
 
     adapter = FFmpegAdapter(event_bus=MagicMock())
-    cmd = adapter._build_command(job, config)
+    encoder_args = select_encoder_args(config, use_gpu=True)
+    cmd = adapter._build_command(job, config, encoder_args, use_gpu=True)
 
     audio_index = cmd.index("-c:a")
     assert cmd[audio_index + 1] == expected_codec
@@ -157,7 +169,7 @@ def test_audio_codec_selection_matrix(audio_codec, expected_codec, expected_bitr
         assert "-b:a" not in cmd
 
 def test_ffmpeg_compress_success():
-    config = GeneralConfig(threads=4, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)
     job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
     
@@ -168,13 +180,13 @@ def test_ffmpeg_compress_success():
         process_instance.returncode = 0
         
         adapter = FFmpegAdapter(event_bus=MagicMock())
-        adapter.compress(job, config)
+        adapter.compress(job, config, use_gpu=True)
         
         assert job.status == JobStatus.COMPLETED
         assert mock_popen.called
 
 def test_ffmpeg_compress_failure():
-    config = GeneralConfig(threads=4, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)
     job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
     
@@ -186,7 +198,7 @@ def test_ffmpeg_compress_failure():
         
         bus = MagicMock()
         adapter = FFmpegAdapter(event_bus=bus)
-        adapter.compress(job, config)
+        adapter.compress(job, config, use_gpu=True)
         
         assert job.status == JobStatus.FAILED
         assert "ffmpeg exited with code 1" in job.error_message
@@ -194,7 +206,7 @@ def test_ffmpeg_compress_failure():
 
 
 def test_ffmpeg_compress_shutdown_event_interrupts(tmp_path):
-    config = GeneralConfig(threads=4, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
     vf = VideoFile(path=tmp_path / "input.mp4", size_bytes=1000)
     vf.path.write_bytes(b"x" * 10)
     job = CompressionJob(source_file=vf, output_path=tmp_path / "output.mp4")
@@ -212,7 +224,7 @@ def test_ffmpeg_compress_shutdown_event_interrupts(tmp_path):
 
     with patch("subprocess.Popen", return_value=process_instance):
         adapter = FFmpegAdapter(event_bus=MagicMock())
-        adapter.compress(job, config, shutdown_event=shutdown_event)
+        adapter.compress(job, config, use_gpu=True, shutdown_event=shutdown_event)
 
     assert job.status == JobStatus.INTERRUPTED
     assert not tmp_output.exists()
@@ -220,7 +232,7 @@ def test_ffmpeg_compress_shutdown_event_interrupts(tmp_path):
 
 
 def test_ffmpeg_compress_hw_cap_error(tmp_path):
-    config = GeneralConfig(threads=4, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
     vf = VideoFile(path=tmp_path / "input.mp4", size_bytes=1000)
     vf.path.write_bytes(b"x" * 10)
     job = CompressionJob(source_file=vf, output_path=tmp_path / "output.mp4")
@@ -237,7 +249,7 @@ def test_ffmpeg_compress_hw_cap_error(tmp_path):
     bus = MagicMock()
     with patch("subprocess.Popen", return_value=process_instance):
         adapter = FFmpegAdapter(event_bus=bus)
-        adapter.compress(job, config)
+        adapter.compress(job, config, use_gpu=True)
 
     assert job.status == JobStatus.HW_CAP_LIMIT
     assert not tmp_output.exists()
@@ -245,7 +257,7 @@ def test_ffmpeg_compress_hw_cap_error(tmp_path):
 
 
 def test_ffmpeg_compress_color_error_triggers_fix(tmp_path):
-    config = GeneralConfig(threads=4, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
     vf = VideoFile(path=tmp_path / "input.mp4", size_bytes=1000)
     vf.path.write_bytes(b"x" * 10)
     job = CompressionJob(source_file=vf, output_path=tmp_path / "output.mp4")
@@ -259,15 +271,15 @@ def test_ffmpeg_compress_color_error_triggers_fix(tmp_path):
     with patch("subprocess.Popen", return_value=process_instance):
         adapter = FFmpegAdapter(event_bus=MagicMock())
         adapter._apply_color_fix = MagicMock()
-        adapter._apply_color_fix.side_effect = lambda job, config, rotate, shutdown_event=None: setattr(job, "status", JobStatus.COMPLETED)
-        adapter.compress(job, config)
+        adapter._apply_color_fix.side_effect = lambda job, config, use_gpu, quality, rotate, shutdown_event=None: setattr(job, "status", JobStatus.COMPLETED)
+        adapter.compress(job, config, use_gpu=True)
 
     adapter._apply_color_fix.assert_called_once()
     assert job.status == JobStatus.COMPLETED
 
 
 def test_apply_color_fix_remux_fallback(tmp_path):
-    config = GeneralConfig(threads=4, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
     vf = VideoFile(path=tmp_path / "input.mp4", size_bytes=1000)
     vf.path.write_bytes(b"x" * 10)
     job = CompressionJob(source_file=vf, output_path=tmp_path / "output.mp4")
@@ -286,7 +298,7 @@ def test_apply_color_fix_remux_fallback(tmp_path):
             colorfix_path.write_bytes(b"fixed")
         return result
 
-    def fake_compress(job, _config, _rotate=None, shutdown_event=None):
+    def fake_compress(job, _config, _use_gpu, quality=None, rotate=None, shutdown_event=None):
         recorded_path["value"] = job.source_file.path
         job.status = JobStatus.COMPLETED
 
@@ -294,7 +306,7 @@ def test_apply_color_fix_remux_fallback(tmp_path):
     adapter.compress = MagicMock(side_effect=fake_compress)
 
     with patch("subprocess.run", side_effect=fake_run):
-        adapter._apply_color_fix(job, config, rotate=None)
+        adapter._apply_color_fix(job, config, use_gpu=True, quality=None, rotate=None)
 
     assert calls["count"] == 2
     assert recorded_path["value"] == colorfix_path

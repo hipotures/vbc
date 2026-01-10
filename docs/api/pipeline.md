@@ -253,7 +253,9 @@ def _get_metadata(video_file: VideoFile) -> VideoMetadata:
 
 ```python
 def _determine_cq(self, file: VideoFile) -> int:
-    default_cq = self.config.general.cq or 45
+    use_gpu = self.config.general.gpu
+    encoder_args = select_encoder_args(self.config, use_gpu)
+    default_cq = extract_quality_value(encoder_args) or (45 if use_gpu else 32)
 
     if not file.metadata:
         return default_cq

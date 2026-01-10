@@ -6,7 +6,7 @@ from vbc.config.models import AppConfig, GeneralConfig
 from vbc.domain.models import VideoFile, CompressionJob, JobStatus, VideoMetadata
 from vbc.domain.events import DiscoveryStarted, DiscoveryFinished, JobStarted, JobCompleted
 
-def test_orchestrator_sequential_flow():
+def test_orchestrator_sequential_flow(tmp_path):
     """Test orchestrator executes pipeline stages in correct order."""
     # Mock dependencies
     mock_event_bus = MagicMock()
@@ -16,9 +16,14 @@ def test_orchestrator_sequential_flow():
     mock_ffmpeg = MagicMock()
 
     # Setup test data
-    root_dir = Path("/tmp/test_videos")
-    test_file = VideoFile(path=root_dir / "test.mp4", size_bytes=1000)
+    root_dir = tmp_path / "test_videos"
+    root_dir.mkdir()
+    file_path = root_dir / "test.mp4"
+    file_path.write_text("test")
+    test_file = VideoFile(path=file_path, size_bytes=file_path.stat().st_size)
     mock_file_scanner.scan.return_value = [test_file]
+    mock_file_scanner.extensions = [".mp4"]
+    mock_file_scanner.min_size_bytes = 0
 
     # Mock ffprobe to return valid stream info
     mock_ffprobe.get_stream_info.return_value = {
@@ -31,7 +36,7 @@ def test_orchestrator_sequential_flow():
     }
 
     # Mock compression side effect to update job status
-    def compress_side_effect(job, config, **kwargs):
+    def compress_side_effect(job, config, use_gpu=False, **kwargs):
         job.status = JobStatus.COMPLETED
     mock_ffmpeg.compress.side_effect = compress_side_effect
 

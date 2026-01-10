@@ -77,7 +77,7 @@ def test_min_compression_ratio_revert(tmp_path):
     }
 
     mock_ffmpeg = MagicMock()
-    def compress_side_effect(job, config, **kwargs):
+    def compress_side_effect(job, config, use_gpu=False, **kwargs):
         job.status = JobStatus.COMPLETED
         # Create 'compressed' file that is actually too large
         job.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -101,5 +101,4 @@ def test_min_compression_ratio_revert(tmp_path):
     assert output_file.exists()
     assert output_file.stat().st_size == 1000
     assert output_file.read_text() == "a" * 1000
-
 

@@ -212,9 +212,9 @@ if config.general.filter_cameras:
 ### Step 6: Decision Logic
 
 ```python
-# Determine CQ (dynamic or default)
-target_cq = _determine_cq(video_file)
-# Checks: CLI override → custom_cq from EXIF → dynamic_cq mapping → default
+# Determine quality (dynamic or default)
+target_cq = _determine_cq(video_file, use_gpu=config.general.gpu)
+# Checks: CLI override → custom_cq from EXIF → dynamic_cq mapping → default from encoder args
 
 # Determine rotation (manual or pattern-based)
 rotation = _determine_rotation(video_file)

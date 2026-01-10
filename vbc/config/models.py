@@ -5,7 +5,7 @@ All fields have defaults; empty YAML files are valid (use all defaults).
 
 Key models:
 - AppConfig: Top-level configuration container
-- GeneralConfig: Core compression settings (threads, CQ, GPU, filters)
+- GeneralConfig: Core compression settings (threads, GPU, filters, metadata)
 - GpuConfig: GPU monitoring and sparkline display settings
 - UiConfig: Dashboard layout and display preferences
 - AutoRotateConfig: Filename pattern-based rotation rules
@@ -63,6 +63,77 @@ def validate_queue_sort(value: Optional[str], extensions: List[str]) -> str:
     return normalized
 
 
+def _default_gpu_common_args() -> List[str]:
+    return [
+        "-c:v av1_nvenc",
+        "-preset p7",
+        "-tune hq",
+        "-b:v 0",
+        "-cq 45",
+        "-f mp4",
+    ]
+
+
+def _default_gpu_advanced_args() -> List[str]:
+    return [
+        "-c:v av1_nvenc",
+        "-preset p7",
+        "-tune hq",
+        "-b:v 0",
+        "-cq 45",
+        "-rc vbr",
+        "-multipass fullres",
+        "-rc-lookahead 32",
+        "-spatial-aq 1",
+        "-temporal-aq 1",
+        "-aq-strength 8",
+        "-b_ref_mode middle",
+        "-f mp4",
+    ]
+
+
+def _default_cpu_common_args() -> List[str]:
+    return [
+        "-c:v libsvtav1",
+        "-preset 6",
+        "-crf 32",
+        "-svtav1-params tune=0:enable-overlays=1",
+        "-f mp4",
+    ]
+
+
+def _default_cpu_advanced_args() -> List[str]:
+    return [
+        "-c:v libaom-av1",
+        "-crf 30",
+        "-b:v 0",
+        "-cpu-used 0",
+        "-tune ssim",
+        "-lag-in-frames 35",
+        "-aq-mode 1",
+        "-row-mt 1",
+        "-threads 0",
+        "-f matroska",
+    ]
+
+
+class GpuEncoderConfig(BaseModel):
+    """NVENC AV1 encoder settings."""
+
+    advanced: bool = False
+    common_args: List[str] = Field(default_factory=_default_gpu_common_args)
+    advanced_args: List[str] = Field(default_factory=_default_gpu_advanced_args)
+
+
+class CpuEncoderConfig(BaseModel):
+    """CPU encoder settings for SVT-AV1 and advanced AOM modes."""
+
+    advanced: bool = False
+    common_args: List[str] = Field(default_factory=_default_cpu_common_args)
+    advanced_args: List[str] = Field(default_factory=_default_cpu_advanced_args)
+    advanced_enforce_input_pix_fmt: bool = True
+
+
 class GpuConfig(BaseModel):
     """GPU monitoring and dashboard sparkline configuration.
 
@@ -88,12 +159,11 @@ class GpuConfig(BaseModel):
 class GeneralConfig(BaseModel):
     """Core compression and processing configuration.
 
-    Controls compression quality, threading, GPU/CPU selection, file filtering,
-    and metadata handling.
+    Controls threading, GPU/CPU selection, file filtering, and metadata handling.
+    Quality targets are defined in encoder args and overridden via dynamic_cq/CLI.
 
     Attributes:
         threads: Max concurrent compression jobs (default 1, min 1).
-        cq: Constant Quality factor for AV1 (0-63; lower=higher quality; default 45).
         prefetch_factor: Submit-on-demand multiplier (jobs = threads * prefetch_factor).
         gpu: Use GPU (NVENC) instead of CPU (SVT-AV1) encoder.
         gpu_refresh_rate: [DEPRECATED] Use gpu_config.sample_interval_s.
@@ -105,7 +175,7 @@ class GeneralConfig(BaseModel):
         copy_metadata: Preserve EXIF/XMP metadata from source video.
         use_exif: Extract camera model from EXIF for dynamic_cq matching.
         filter_cameras: Only process videos from these camera models (empty = all).
-        dynamic_cq: Override CQ per camera model (e.g., {"ILCE-7RM5": 38}).
+        dynamic_cq: Override quality per camera model (e.g., {"ILCE-7RM5": 38}).
         extensions: Video file extensions to process.
         min_size_bytes: Skip files smaller than this (default 1MiB).
         clean_errors: Remove .err markers and retry failed jobs.
@@ -117,7 +187,6 @@ class GeneralConfig(BaseModel):
     """
 
     threads: int = Field(default=1, gt=0)
-    cq: Optional[int] = Field(default=45, ge=0, le=63)
     prefetch_factor: int = Field(default=1, ge=1)
     gpu: bool = True
     gpu_refresh_rate: int = Field(default=5, ge=1)
@@ -199,7 +268,7 @@ class UiConfig(BaseModel):
 class AppConfig(BaseModel):
     """Top-level VBC application configuration.
 
-    Combines all configuration sections: general, GPU, UI, autorotate, and directory mappings.
+    Combines all configuration sections: general, GPU monitoring, encoder, UI, autorotate, and directory mappings.
 
     Directory mapping modes:
     1. Suffix mode: input_dirs + suffix_output_dirs (e.g., /videos -> /videos_out)
@@ -214,6 +283,8 @@ class AppConfig(BaseModel):
         suffix_errors_dirs: Suffix for auto-generated error dirs (default "_err").
         autorotate: Filename pattern-based rotation rules.
         gpu_config: GPU monitoring configuration.
+        gpu_encoder: GPU encoder configuration.
+        cpu_encoder: CPU encoder configuration.
         ui: Dashboard UI configuration.
     """
 
@@ -225,6 +296,8 @@ class AppConfig(BaseModel):
     suffix_errors_dirs: Optional[str] = Field(default="_err")
     autorotate: AutoRotateConfig = Field(default_factory=AutoRotateConfig)
     gpu_config: GpuConfig = Field(default_factory=GpuConfig)
+    gpu_encoder: GpuEncoderConfig = Field(default_factory=GpuEncoderConfig)
+    cpu_encoder: CpuEncoderConfig = Field(default_factory=CpuEncoderConfig)
     ui: UiConfig = Field(default_factory=UiConfig)
 
     @field_validator("suffix_output_dirs")

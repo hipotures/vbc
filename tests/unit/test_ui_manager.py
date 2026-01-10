@@ -17,11 +17,11 @@ from vbc.domain.events import (
 )
 from vbc.domain.models import VideoFile, CompressionJob, JobStatus
 from vbc.ui.keyboard import (
-    HideConfig,
     InterruptRequested,
     RequestShutdown,
     ThreadControlEvent,
-    ToggleConfig,
+    ToggleOverlayTab,
+    CloseOverlay,
 )
 
 def test_ui_manager_updates_state_on_event(tmp_path):
@@ -89,10 +89,11 @@ def test_ui_manager_discovery_and_controls():
     bus.publish(InterruptRequested())
     assert state.interrupt_requested is True
 
-    bus.publish(ToggleConfig())
-    assert state.show_config is True
-    bus.publish(HideConfig())
-    assert state.show_config is False
+    bus.publish(ToggleOverlayTab(tab="settings"))
+    assert state.show_overlay is True
+    assert state.active_tab == "settings"
+    bus.publish(CloseOverlay())
+    assert state.show_overlay is False
 
 
 def test_ui_manager_job_lifecycle_updates(tmp_path):

@@ -65,7 +65,7 @@ All components communicate via **EventBus** for loose coupling and testability.
 uv run vbc /path/to/videos
 
 # With custom configuration
-uv run vbc /path/to/videos --config conf/vbc.yaml --threads 8 --cq 40
+uv run vbc /path/to/videos --config conf/vbc.yaml --threads 8 --quality 40
 
 # GPU acceleration with camera filtering
 uv run vbc /path/to/videos --gpu --camera "Sony,DJI"

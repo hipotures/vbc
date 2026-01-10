@@ -4,8 +4,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 import subprocess
 import queue
-from vbc.infrastructure.ffmpeg import FFmpegAdapter
-from vbc.config.models import GeneralConfig
+from vbc.infrastructure.ffmpeg import FFmpegAdapter, select_encoder_args
+from vbc.config.models import AppConfig, GeneralConfig
 from vbc.domain.models import VideoFile, VideoMetadata, CompressionJob, JobStatus
 from vbc.infrastructure.event_bus import EventBus
 
@@ -42,9 +42,9 @@ class TestCPUEncodingPath:
 
     def test_build_command_cpu_mode(self, ffmpeg_adapter, sample_job):
         """Test command generation for CPU encoding."""
-        config = GeneralConfig(gpu=False, cq=45, copy_metadata=True)
-
-        cmd = ffmpeg_adapter._build_command(sample_job, config, rotate=None)
+        config = AppConfig(general=GeneralConfig(gpu=False, copy_metadata=True))
+        encoder_args = select_encoder_args(config, use_gpu=False)
+        cmd = ffmpeg_adapter._build_command(sample_job, config, encoder_args, use_gpu=False, rotate=None)
 
         # Verify CPU encoder is used
         assert '-c:v' in cmd
@@ -61,9 +61,9 @@ class TestCPUEncodingPath:
 
     def test_build_command_no_metadata_copy(self, ffmpeg_adapter, sample_job):
         """Test -map_metadata -1 when copy_metadata=False."""
-        config = GeneralConfig(gpu=True, cq=45, copy_metadata=False)
-
-        cmd = ffmpeg_adapter._build_command(sample_job, config, rotate=None)
+        config = AppConfig(general=GeneralConfig(gpu=True, copy_metadata=False))
+        encoder_args = select_encoder_args(config, use_gpu=True)
+        cmd = ffmpeg_adapter._build_command(sample_job, config, encoder_args, use_gpu=True, rotate=None)
 
         # Verify metadata stripping
         assert '-map_metadata' in cmd
@@ -76,9 +76,9 @@ class TestRotationPaths:
 
     def test_build_command_rotation_90(self, ffmpeg_adapter, sample_job):
         """Test 90° rotation command."""
-        config = GeneralConfig(gpu=True, cq=45)
-
-        cmd = ffmpeg_adapter._build_command(sample_job, config, rotate=90)
+        config = AppConfig(general=GeneralConfig(gpu=True))
+        encoder_args = select_encoder_args(config, use_gpu=True)
+        cmd = ffmpeg_adapter._build_command(sample_job, config, encoder_args, use_gpu=True, rotate=90)
 
         # Verify rotation filter
         assert '-vf' in cmd
@@ -87,9 +87,9 @@ class TestRotationPaths:
 
     def test_build_command_rotation_270(self, ffmpeg_adapter, sample_job):
         """Test 270° rotation command."""
-        config = GeneralConfig(gpu=True, cq=45)
-
-        cmd = ffmpeg_adapter._build_command(sample_job, config, rotate=270)
+        config = AppConfig(general=GeneralConfig(gpu=True))
+        encoder_args = select_encoder_args(config, use_gpu=True)
+        cmd = ffmpeg_adapter._build_command(sample_job, config, encoder_args, use_gpu=True, rotate=270)
 
         # Verify rotation filter
         assert '-vf' in cmd
@@ -98,9 +98,9 @@ class TestRotationPaths:
 
     def test_build_command_rotation_180(self, ffmpeg_adapter, sample_job):
         """Test 180° rotation command (double transpose)."""
-        config = GeneralConfig(gpu=True, cq=45)
-
-        cmd = ffmpeg_adapter._build_command(sample_job, config, rotate=180)
+        config = AppConfig(general=GeneralConfig(gpu=True))
+        encoder_args = select_encoder_args(config, use_gpu=True)
+        cmd = ffmpeg_adapter._build_command(sample_job, config, encoder_args, use_gpu=True, rotate=180)
 
         # Verify double transpose for 180°
         assert '-vf' in cmd

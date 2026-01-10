@@ -231,7 +231,7 @@ uv run vbc /path/to/videos
 
 1. **Discovery**: Scans `/path/to/videos` for video files (`.mp4`, `.mov`, `.avi`, `.flv`, `.webm`)
 2. **Output Created**: Creates `/path/to/videos_out/` directory automatically
-3. **Compression**: Starts processing with defaults (1 thread, CQ 45, GPU mode)
+3. **Compression**: Starts processing with defaults (1 thread, quality from encoder args: -cq 45, GPU mode)
 4. **Dashboard**: Shows real-time progress, active jobs, queue, and summary
 
 ### Check Results
@@ -257,7 +257,7 @@ exiftool -XMP-vbc:all /path/to/videos_out/compressed_video.mp4
 
 /path/to/videos_out/          # Output (auto-created)
 ├── video1.mp4                # Compressed to AV1
-├── video2.mp4                # Compressed (converted to .mp4)
+├── video2.mp4                # Compressed (converted to output format; mp4 by default)
 ├── subfolder/
 │   └── video3.mp4            # Compressed
 └── failed_video.err          # Error marker (if compression failed)
@@ -341,7 +341,7 @@ ffmpeg -codecs | grep nvenc
 
 ```bash
 # Test with a small video
-uv run vbc /path/to/test/video --threads 1 --cq 45
+uv run vbc /path/to/test/video --threads 1 --quality 45
 
 # Run demo mode (no file I/O)
 uv run vbc --demo
@@ -399,10 +399,6 @@ general:
   # Max concurrent compression threads (1-16).
   # Can be adjusted at runtime with < and > keys.
   threads: 4
-
-  # Default constant quality (0-63). Lower = better quality, larger files.
-  # Recommendations: 35-38 (Archival), 40-45 (High), 48-52 (Good).
-  cq: 45
 
   # Submit-on-demand queue multiplier (1-5).
   # Formula: max_queued = prefetch_factor * threads.
@@ -491,6 +487,67 @@ gpu_config:
   # Optional: specific device name to monitor (overrides index).
   nvtop_device_name: null
 
+# --- GPU Encoder Settings ---
+
+gpu_encoder:
+  # Use advanced_args instead of common_args when true.
+  advanced: false
+
+  # Base NVENC args (used when advanced=false).
+  common_args:
+    - "-c:v av1_nvenc"
+    - "-preset p7"
+    - "-tune hq"
+    - "-b:v 0"
+    - "-cq 45"
+    - "-f mp4"
+
+  # Full NVENC args (used when advanced=true).
+  advanced_args:
+    - "-c:v av1_nvenc"
+    - "-preset p7"
+    - "-tune hq"
+    - "-b:v 0"
+    - "-cq 45"
+    - "-rc vbr"
+    - "-multipass fullres"
+    - "-rc-lookahead 32"
+    - "-spatial-aq 1"
+    - "-temporal-aq 1"
+    - "-aq-strength 8"
+    - "-b_ref_mode middle"
+    - "-f mp4"
+
+# --- CPU Encoder Settings ---
+
+cpu_encoder:
+  # Use advanced_args instead of common_args when true.
+  advanced: false
+
+  # Base SVT-AV1 args (used when advanced=false).
+  common_args:
+    - "-c:v libsvtav1"
+    - "-preset 6"
+    - "-crf 32"
+    - "-svtav1-params tune=0:enable-overlays=1"
+    - "-f mp4"
+
+  # Enforce input pix_fmt when advanced=true (adds -pix_fmt from ffprobe).
+  advanced_enforce_input_pix_fmt: true
+
+  # Full CPU args (used when advanced=true).
+  advanced_args:
+    - "-c:v libaom-av1"
+    - "-crf 30"
+    - "-b:v 0"
+    - "-cpu-used 0"
+    - "-tune ssim"
+    - "-lag-in-frames 35"
+    - "-aq-mode 1"
+    - "-row-mt 1"
+    - "-threads 0"
+    - "-f matroska"
+
 # --- UI Settings ---
 
 ui:
@@ -558,13 +615,13 @@ uv run vbc /path/to/videos
 uv run vbc /path/to/videos --gpu --threads 8
 
 # CPU mode for archival quality
-uv run vbc /path/to/videos --cpu --cq 35 --threads 4
+uv run vbc /path/to/videos --cpu --quality 35 --threads 4
 
 # Custom config file
 uv run vbc /path/to/videos --config conf/production.yaml
 
 # Camera-specific processing
-uv run vbc /path/to/videos --camera "Sony,DJI" --cq 38
+uv run vbc /path/to/videos --camera "Sony,DJI" --quality 38
 
 # Rotate all videos 180°
 uv run vbc /path/to/videos --rotate-180
@@ -583,7 +640,7 @@ uv run vbc /path/to/videos --debug --threads 2
 | `INPUT_DIR` | Positional | - | Directory to process (or comma-separated list) |
 | `--config`, `-c` | Path | `conf/vbc.yaml` | Configuration file |
 | `--threads`, `-t` | Integer | From config (1) | Max concurrent threads |
-| `--cq` | Integer | From config (45) | Constant quality (0-63, lower=better) |
+| `--quality` | Integer | From encoder args (`-cq`/`-crf`) | Quality override (0-63, lower=better) |
 | `--gpu` / `--cpu` | Boolean | `--gpu` | Use GPU (NVENC) or CPU (SVT-AV1) |
 | `--queue-sort` | String | `name` | Queue order (`name`, `rand`, `dir`, `size`, `ext`) |
 | `--queue-seed` | Integer | None | Seed for deterministic random order |
@@ -712,9 +769,11 @@ Architecture deep dive: [docs/architecture/overview.md](docs/architecture/overvi
 Apply different quality settings per camera model:
 
 ```yaml
-general:
-  cq: 45  # Default for unknown cameras
+gpu_encoder:
+  common_args:
+    - "-cq 45"  # Default for unknown cameras
 
+general:
   dynamic_cq:
     "ILCE-7RM5": 38      # Sony A7R V - highest quality
     "DC-GH7": 40         # Panasonic GH7 - high quality
@@ -725,7 +784,7 @@ general:
 1. VBC extracts full EXIF metadata via ExifTool
 2. Searches all metadata fields for camera model strings
 3. First match wins (order matters in YAML)
-4. Applies custom CQ instead of default
+4. Applies custom quality value instead of default
 
 **Example**:
 - File: `IMG_1234.MOV`

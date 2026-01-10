@@ -205,10 +205,12 @@ class SettingsOverlay:
     def _render_content(self) -> Group:
         """Returns content without outer Panel or footer (for tabbed overlay)."""
         # === ENCODING CARD ===
+        quality_raw = self._get("quality", "")
+        quality_token = quality_raw.split()[0] if quality_raw else "—"
         encoding_data = [
             ("Encoder", self._get("encoder", "").split(" | ")[0] if "encoder" in self._parsed else "—"),
             ("Preset", self._get("encoder", "").split("Preset: ")[-1] if "Preset:" in self._get("encoder", "") else "—"),
-            ("Quality", f"CQ{self._get('quality', '').replace('CQ', '').split()[0]}" if "quality" in self._parsed else "—"),
+            ("Quality", quality_token),
             ("Audio", self._get("audio", "Auto (lossless->AAC 256k, AAC/MP3 copy, other->AAC 192k)")),
             ("CPU Fallback", self._get("cpu_fallback", "").split(" | ")[0] if "cpu_fallback" in self._parsed else "False"),
         ]

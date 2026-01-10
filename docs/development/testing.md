@@ -78,19 +78,25 @@ import pytest
 from pathlib import Path
 from pydantic import ValidationError
 from vbc.config.models import GeneralConfig, AutoRotateConfig, AppConfig
+from vbc.infrastructure.ffmpeg import extract_quality_value, replace_quality_value
 
 def test_general_config_defaults():
     """Test GeneralConfig with default values."""
     config = GeneralConfig()
-    assert config.threads == 4
-    assert config.cq == 45
+    assert config.threads == 1
     assert config.gpu is True
     assert config.copy_metadata is True
+
+def test_encoder_defaults():
+    """Test default encoder quality values."""
+    config = AppConfig()
+    assert extract_quality_value(config.gpu_encoder.common_args) == 45
+    assert extract_quality_value(config.cpu_encoder.common_args) == 32
 
 def test_general_config_validation():
     """Test GeneralConfig validation rules."""
     # Valid config
-    config = GeneralConfig(threads=8, cq=40)
+    config = GeneralConfig(threads=8)
     assert config.threads == 8
 
     # Invalid: threads must be > 0
@@ -98,10 +104,10 @@ def test_general_config_validation():
         GeneralConfig(threads=0)
     assert "greater than 0" in str(exc_info.value)
 
-    # Invalid: CQ must be 0-63
+    # Invalid: min_compression_ratio must be 0.0-1.0
     with pytest.raises(ValidationError) as exc_info:
-        GeneralConfig(cq=70)
-    assert "less than or equal to 63" in str(exc_info.value)
+        GeneralConfig(min_compression_ratio=1.5)
+    assert "less than or equal to 1.0" in str(exc_info.value)
 
 def test_autorotate_validation():
     """Test AutoRotateConfig angle validation."""
@@ -367,15 +373,17 @@ uv run pytest -m "not slow"
 Test multiple scenarios:
 
 ```python
-@pytest.mark.parametrize("cq,expected_quality", [
+@pytest.mark.parametrize("quality,expected_quality", [
     (35, "high"),
     (45, "medium"),
     (55, "low"),
 ])
-def test_quality_mapping(cq, expected_quality):
-    """Test CQ to quality mapping."""
-    config = GeneralConfig(cq=cq)
-    # Assert quality level based on CQ
+def test_quality_mapping(quality, expected_quality):
+    """Test quality-to-label mapping."""
+    config = AppConfig()
+    args = replace_quality_value(config.gpu_encoder.common_args, quality)
+    assert extract_quality_value(args) == quality
+    # Assert quality label based on value
 ```
 
 ## Test Coverage Goals

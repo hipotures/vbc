@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 from typer.testing import CliRunner
 
 from vbc.config.models import AppConfig, GeneralConfig, AutoRotateConfig
+from vbc.infrastructure.ffmpeg import select_encoder_args, extract_quality_value
 from vbc import main as vbc_main
 
 
@@ -26,7 +27,7 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
 
     def fake_load_config(_path):
         return AppConfig(
-            general=GeneralConfig(threads=4, cq=45, gpu=True, use_exif=False, copy_metadata=False),
+            general=GeneralConfig(threads=4, gpu=True, use_exif=False, copy_metadata=False),
             autorotate=AutoRotateConfig(patterns={}),
         )
 
@@ -95,7 +96,7 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
             str(input_dir),
             "--threads",
             "2",
-            "--cq",
+            "--quality",
             "30",
             "--cpu",
             "--queue-sort",
@@ -114,7 +115,6 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
     assert result.exit_code == 0
     config = created["config"]
     assert config.general.threads == 2
-    assert config.general.cq == 30
     assert config.general.gpu is False
     assert config.general.queue_sort == "size-desc"
     assert config.general.queue_seed == 99
@@ -123,6 +123,8 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
     assert config.general.min_size_bytes == 123
     assert config.general.manual_rotation == 180
     assert config.general.debug is True
+    encoder_args = select_encoder_args(config, use_gpu=False)
+    assert extract_quality_value(encoder_args) == 30
     assert created["run_dir"] == [input_dir]
     assert created["log_path"] == output_dir
     assert created["log_debug"] is True
@@ -145,7 +147,7 @@ def test_main_uses_config_input_dirs_when_cli_missing(tmp_path, monkeypatch):
 
     def fake_load_config(_path):
         return AppConfig(
-            general=GeneralConfig(threads=2, cq=45, gpu=True, use_exif=False, copy_metadata=False),
+            general=GeneralConfig(threads=2, gpu=True, use_exif=False, copy_metadata=False),
             input_dirs=[str(input_dir_a), str(input_dir_b), str(input_dir_a)],
             autorotate=AutoRotateConfig(patterns={}),
         )

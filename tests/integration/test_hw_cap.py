@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from vbc.infrastructure.ffmpeg import FFmpegAdapter
 from vbc.domain.models import VideoFile, CompressionJob, JobStatus
-from vbc.config.models import GeneralConfig
+from vbc.config.models import AppConfig, GeneralConfig
 from vbc.infrastructure.event_bus import EventBus
 from vbc.ui.state import UIState
 from vbc.ui.manager import UIManager
@@ -23,7 +23,7 @@ def test_ffmpeg_hw_cap_detection():
     
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)
     job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
-    config = GeneralConfig(threads=4, cq=45, gpu=True)
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
     
     # Mock ffmpeg output containing the error
     hw_error_msg = "Error: Hardware is lacking required capabilities"
@@ -34,7 +34,7 @@ def test_ffmpeg_hw_cap_detection():
         process_instance.wait.return_value = 1
         process_instance.returncode = 1
         
-        adapter.compress(job, config)
+        adapter.compress(job, config, use_gpu=True)
         
         # Verify event was published
         bus.publish.assert_called()
