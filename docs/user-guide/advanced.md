@@ -214,6 +214,18 @@ uv run vbc /videos --skip-av1
 
 **Use case:** Mixed library with some files already compressed to AV1.
 
+## Skip Already Encoded Files
+
+VBC automatically detects files it has already encoded to prevent accidental re-compression (e.g., if output is used as input).
+
+### How It Works
+
+1. **Tag Detection**: Checks for `VBCEncoder` or `VBC Encoder` tags in metadata (via FFprobe or ExifTool).
+2. **Auto-Skip**: If found, the file is skipped with status `SKIPPED`.
+3. **Warning**: At the end of processing, a yellow warning is displayed if any files were skipped for this reason.
+
+**Note:** This feature is always active and cannot be disabled.
+
 ## Audio Consistency Check
 
 Verify that audio handling in the output matches VBC's rules.

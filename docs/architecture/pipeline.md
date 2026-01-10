@@ -192,7 +192,17 @@ video_file.metadata = _get_metadata(video_file, stream_info)
 # - ExifTool EXIF info (camera model, bitrate, GPS)
 ```
 
-### Step 5: Filtering
+### Step 5: VBC Encoded Check
+
+```python
+# Check if file was already encoded by VBC (to prevent re-encoding)
+if metadata.vbc_encoded:
+    # Increment skipped_vbc_count
+    bus.publish(JobFailed(job=..., error_message="File already encoded by VBC", status=SKIPPED))
+    return
+```
+
+### Step 6: Filtering
 
 ```python
 # Skip AV1
@@ -209,7 +219,7 @@ if config.general.filter_cameras:
         return
 ```
 
-### Step 6: Decision Logic
+### Step 7: Decision Logic
 
 ```python
 # Determine quality (dynamic or default)
@@ -221,7 +231,7 @@ rotation = _determine_rotation(video_file)
 # Checks: manual_rotation → autorotate patterns → None
 ```
 
-### Step 7: Create Job & Start
+### Step 8: Create Job & Start
 
 ```python
 job = CompressionJob(
@@ -235,7 +245,7 @@ bus.publish(JobStarted(job=job))
 job.status = JobStatus.PROCESSING
 ```
 
-### Step 8: Compression
+### Step 9: Compression
 
 ```python
 # Run FFmpeg
