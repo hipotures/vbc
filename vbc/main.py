@@ -677,6 +677,12 @@ def compress(
                             error_entries=error_entries,
                         )
 
+            # Warning for files skipped because they were already encoded by VBC
+            if not demo and orchestrator and getattr(orchestrator, "skipped_vbc_count", 0) > 0:
+                from rich.console import Console
+                console = Console()
+                console.print(f"\n[bold yellow]Warning: {orchestrator.skipped_vbc_count} files were skipped because they were already encoded by VBC.[/bold yellow]")
+
     except KeyboardInterrupt:
         # Ctrl+C was already handled by orchestrator - just exit gracefully
         typer.secho("\n✓ Compression stopped by user (Ctrl+C)", fg=typer.colors.YELLOW)

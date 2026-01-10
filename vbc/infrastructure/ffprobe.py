@@ -125,6 +125,20 @@ class FFprobeAdapter:
             if bit_rate > 0 and size > 0:
                 duration = (size * 8) / bit_rate
 
+        # Check for VBC tags in format or stream tags
+        format_tags = fmt.get("tags", {}) or {}
+        stream_tags = video_stream.get("tags", {}) or {}
+        
+        # Check for VBC Encoder tag (case-insensitive check for key presence)
+        vbc_encoded = False
+        for tags_dict in (format_tags, stream_tags):
+            for k, v in tags_dict.items():
+                if k.lower() in ("vbcencoder", "vbc encoder"):
+                    vbc_encoded = True
+                    break
+            if vbc_encoded:
+                break
+
         return {
             "width": int(video_stream.get("width", 0)),
             "height": int(video_stream.get("height", 0)),
@@ -134,4 +148,5 @@ class FFprobeAdapter:
             "duration": duration,
             "color_space": video_stream.get("color_space"),
             "pix_fmt": video_stream.get("pix_fmt"),
+            "vbc_encoded": vbc_encoded,
         }

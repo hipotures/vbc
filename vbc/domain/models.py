@@ -62,6 +62,7 @@ class VideoMetadata(BaseModel):
     color_space: Optional[str] = None
     pix_fmt: Optional[str] = None
     duration: Optional[float] = None
+    vbc_encoded: bool = False
 
 class VideoFile(BaseModel):
     """A discovered video file to process.

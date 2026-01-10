@@ -112,6 +112,16 @@ class ExifToolAdapter:
         if not camera_model and camera_raw:
             camera_model = camera_raw
 
+        # Check for VBC Encoder tag
+        vbc_encoded = False
+        # ExifTool often returns keys like "XMP:VBCEncoder" or just "VBCEncoder"
+        # We check keys in the dict
+        for key in tags.keys():
+            k_lower = key.lower()
+            if "vbcencoder" in k_lower or "vbc encoder" in k_lower:
+                vbc_encoded = True
+                break
+
         bitrate = tags.get('QuickTime:AvgBitrate') or tags.get('AvgBitrate')
         bitrate_kbps = float(bitrate) / 1000 if bitrate else None
 
@@ -121,6 +131,7 @@ class ExifToolAdapter:
             "custom_cq": custom_cq,
             "bitrate_kbps": bitrate_kbps,
             "matched_pattern": matched_pattern,
+            "vbc_encoded": vbc_encoded,
         }
 
     def copy_metadata(self, source: Path, target: Path):

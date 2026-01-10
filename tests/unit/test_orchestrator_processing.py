@@ -1,5 +1,6 @@
 import os
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from vbc.config.models import AppConfig, GeneralConfig, AutoRotateConfig
@@ -491,3 +492,81 @@ def test_write_vbc_tags_runs_exiftool(tmp_path):
         )
 
     assert mock_run.called
+
+
+def test_ffprobe_detects_vbc_tag():
+    from vbc.infrastructure.ffprobe import FFprobeAdapter
+    adapter = FFprobeAdapter()
+
+    # Mock subprocess.run to return JSON with VBCEncoder tag
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stdout = """
+        {
+            "streams": [{
+                "codec_type": "video",
+                "width": 1920,
+                "height": 1080,
+                "tags": {
+                    "other_tag": "value"
+                }
+            }],
+            "format": {
+                "duration": "10.0",
+                "tags": {
+                    "VBCEncoder": "NVENC AV1"
+                }
+            }
+        }
+        """
+
+        info = adapter.get_stream_info(Path("test.mp4"))
+        assert info["vbc_encoded"] is True
+
+
+def test_orchestrator_skips_vbc_encoded_file(tmp_path):
+    # Setup
+    config = AppConfig(general=GeneralConfig(threads=1, gpu=False), autorotate=AutoRotateConfig(patterns={}))
+    bus = EventBus()
+    scanner = MagicMock()
+    exif = MagicMock()
+    ffprobe = MagicMock()
+    ffmpeg = MagicMock()
+
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=scanner,
+        exif_adapter=exif,
+        ffprobe_adapter=ffprobe,
+        ffmpeg_adapter=ffmpeg
+    )
+
+    # Mock file discovery to finding one file
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    video_file = VideoFile(path=input_dir / "test.mp4", size_bytes=1000)
+    orchestrator._folder_mapping = {input_dir: output_dir}
+
+    # Mock ffprobe to return info with vbc_encoded=True
+    ffprobe.get_stream_info.return_value = {
+        "width": 1920, "height": 1080, "codec": "h264", "fps": 30.0, "duration": 10.0,
+        "vbc_encoded": True
+    }
+
+    # Capture events
+    events = []
+    bus.subscribe(JobFailed, events.append)
+
+    # Run processing
+    orchestrator._process_file(video_file, input_dir)
+
+    # Verify
+    assert orchestrator.skipped_vbc_count == 1
+    assert len(events) == 1
+    assert events[0].job.status == JobStatus.SKIPPED
+    assert "already encoded by VBC" in events[0].error_message
+    assert not ffmpeg.compress.called

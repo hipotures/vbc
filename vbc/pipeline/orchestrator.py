@@ -104,6 +104,10 @@ class Orchestrator:
         self._refresh_lock = threading.Lock()
         self._shutdown_event = threading.Event()  # Signal workers to stop
 
+        # Stats
+        self.skipped_vbc_count = 0
+        self._stats_lock = threading.Lock()
+
         # Folder mapping (input_dir -> output_dir)
         self._folder_mapping: Dict[Path, Path] = {}
         self._output_dir_map_override: Dict[Path, Path] = output_dir_map or {}
@@ -341,6 +345,10 @@ class Orchestrator:
         width = int(stream_info.get("width", 0) or 0)
         height = int(stream_info.get("height", 0) or 0)
         megapixels = round(width * height / 1_000_000) if width and height else None
+        
+        # Check vbc_encoded from ffprobe
+        vbc_encoded = bool(stream_info.get("vbc_encoded", False))
+        
         metadata = VideoMetadata(
             width=width,
             height=height,
@@ -351,6 +359,7 @@ class Orchestrator:
             color_space=stream_info.get("color_space"),
             pix_fmt=stream_info.get("pix_fmt"),
             duration=float(stream_info.get("duration") or 0.0),
+            vbc_encoded=vbc_encoded,
         )
 
         if self.config.general.use_exif:
@@ -360,6 +369,10 @@ class Orchestrator:
                 metadata.camera_raw = exif_info.get("camera_raw")
                 metadata.custom_cq = exif_info.get("custom_cq")
                 metadata.bitrate_kbps = exif_info.get("bitrate_kbps")
+                # Merge vbc_encoded from ExifTool (more reliable for XMP)
+                if exif_info.get("vbc_encoded"):
+                    metadata.vbc_encoded = True
+                    
                 matched_pattern = exif_info.get("matched_pattern")
                 if self.config.general.debug and matched_pattern and metadata.custom_cq is not None:
                     raw_model = metadata.camera_raw or "None"
@@ -799,6 +812,12 @@ class Orchestrator:
 
             # 1. Metadata & Decision (using thread-safe cache)
             video_file.metadata = self._get_metadata(video_file, base_metadata=stream_info)
+
+            if video_file.metadata and video_file.metadata.vbc_encoded:
+                with self._stats_lock:
+                    self.skipped_vbc_count += 1
+                self.event_bus.publish(JobFailed(job=CompressionJob(source_file=video_file, status=JobStatus.SKIPPED), error_message="File already encoded by VBC"))
+                return
 
             if self.config.general.skip_av1 and video_file.metadata and "av1" in video_file.metadata.codec.lower():
                 self.event_bus.publish(JobFailed(job=CompressionJob(source_file=video_file, status=JobStatus.SKIPPED), error_message="Already encoded in AV1"))
