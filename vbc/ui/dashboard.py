@@ -929,7 +929,7 @@ class Dashboard:
 
         # Get console dimensions for responsive sizing
         w = self.console.size.width
-        pw = max(85, w - 10)  # Use full width minus small margins
+        pw = max(95, w - 10)  # Use full width minus small margins
 
         # === TAB HEADER ===
         tabs_table = Table(show_header=False, box=None, expand=True, padding=0)
@@ -957,31 +957,31 @@ class Dashboard:
                 f"[{shortcuts_text}]⌨ Shortcuts[/] [{shortcuts_text}][M][/]",
                 border_style=shortcuts_border,
                 box=shortcuts_box,
-                padding=(0, 1),
+                padding=(0, 0),
             ),
             Panel(
                 f"[{settings_text}]⚙ Settings[/] [{settings_text}][C][/]",
                 border_style=settings_border,
                 box=settings_box,
-                padding=(0, 1),
+                padding=(0, 0),
             ),
             Panel(
                 f"[{io_text}]📁 I/O[/] [{io_text}][F][/]",
                 border_style=io_border,
                 box=io_box,
-                padding=(0, 1),
+                padding=(0, 0),
             ),
             Panel(
                 f"[{tui_text}]◈ TUI[/] [{tui_text}][T][/]",
                 border_style=tui_border,
                 box=tui_box,
-                padding=(0, 1),
+                padding=(0, 0),
             ),
             Panel(
                 f"[{reference_text}]📖 Reference[/] [{reference_text}][L][/]",
                 border_style=reference_border,
                 box=reference_box,
-                padding=(0, 1),
+                padding=(0, 0),
             ),
         )
 
@@ -1197,7 +1197,7 @@ class Dashboard:
         # Overlay
         if self.state.show_overlay:
             w = self.console.size.width
-            overlay_w = max(85, w - 10)  # Dynamic width, full console minus margins
+            overlay_w = max(95, w - 10)  # Dynamic width, full console minus margins
             return _Overlay(
                 layout,
                 self._generate_tabbed_overlay(),
