@@ -27,6 +27,7 @@ from vbc.infrastructure.housekeeping import HousekeepingService
 from vbc.pipeline.orchestrator import Orchestrator
 from vbc.pipeline.demo_orchestrator import DemoOrchestrator
 from vbc.pipeline.error_file_mover import move_failed_files, collect_error_entries
+from vbc.pipeline.repair import process_repairs
 from vbc.ui.state import UIState
 from vbc.ui.manager import UIManager
 from vbc.ui.dashboard import Dashboard
@@ -676,6 +677,14 @@ def compress(
                             logger=logger,
                             error_entries=error_entries,
                         )
+
+                if config.general.repair_corrupted_flv:
+                    process_repairs(
+                        input_dirs,
+                        errors_dir_map,
+                        config.general.extensions,
+                        logger=logger,
+                    )
 
             # Warning for files skipped because they were already encoded by VBC
             if not demo and orchestrator and getattr(orchestrator, "skipped_vbc_count", 0) > 0:

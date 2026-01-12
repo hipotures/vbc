@@ -52,6 +52,10 @@ tests/data/
 !assets/
 !assets/**
 
+# Allow scripts directory
+!scripts/
+!scripts/*.py
+
 # Allow new tests
 !tests/
 !tests/**/

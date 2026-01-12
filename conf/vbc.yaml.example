@@ -101,6 +101,9 @@ general:
   # If compression < 10%, keep original file instead of compressed version.
   min_compression_ratio: 0.1
 
+  # Attempt to repair corrupted FLV/MP4 files (text prefix error).
+  repair_corrupted_flv: false
+
   # Enable verbose debug logging.
   debug: false
 
