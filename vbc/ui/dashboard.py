@@ -555,10 +555,17 @@ class Dashboard:
                 elapsed = (datetime.now() - self.state.processing_start_time).total_seconds()
                 if elapsed > 0:
                     total = self.state.files_to_process
-                    done = self.state.completed_count + self.state.failed_count
-                    rem = total - done
-                    if rem > 0 and done > 0:
-                        avg = elapsed / done
+                    # Calculate done relative to discovery snapshot to correctly track queue progress
+                    # (files_to_process is reset on refresh, but completed_count is cumulative)
+                    done_since = (self.state.completed_count - self.state.completed_count_at_last_discovery) + \
+                                 (self.state.failed_count - self.state.failed_count_at_last_discovery)
+                    rem = total - done_since
+                    
+                    # Use global session stats for average speed calculation
+                    session_done = self.state.completed_count + self.state.failed_count
+                    
+                    if rem > 0 and session_done > 0:
+                        avg = elapsed / session_done
                         eta_str = self.format_global_eta(avg * rem)
                     
                     tp = self.state.total_input_bytes / elapsed

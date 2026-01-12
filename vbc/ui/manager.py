@@ -77,6 +77,7 @@ class UIManager:
         self.state.discovery_finished = True
         self.state.discovery_finished_time = datetime.now()
         self.state.completed_count_at_last_discovery = self.state.completed_count
+        self.state.failed_count_at_last_discovery = self.state.failed_count
 
     def on_refresh_finished(self, event: RefreshFinished):
         if event.added <= 0 and event.removed <= 0:
