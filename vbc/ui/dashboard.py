@@ -551,25 +551,50 @@ class Dashboard:
             eta_str = "--:--"
             throughput_str = "0.0 MB/s"
             
-            if self.state.processing_start_time and self.state.completed_count > 0:
-                elapsed = (datetime.now() - self.state.processing_start_time).total_seconds()
-                if elapsed > 0:
-                    total = self.state.files_to_process
-                    # Calculate done relative to discovery snapshot to correctly track queue progress
-                    # (files_to_process is reset on refresh, but completed_count is cumulative)
-                    done_since = (self.state.completed_count - self.state.completed_count_at_last_discovery) + \
-                                 (self.state.failed_count - self.state.failed_count_at_last_discovery)
-                    rem = total - done_since
-                    
-                    # Use global session stats for average speed calculation
-                    session_done = self.state.completed_count + self.state.failed_count
-                    
-                    if rem > 0 and session_done > 0:
-                        avg = elapsed / session_done
-                        eta_str = self.format_global_eta(avg * rem)
-                    
+            if self.state.processing_start_time and (self.state.completed_count > 0 or self.state.failed_count > 0):
+                now = datetime.now()
+                elapsed = (now - self.state.processing_start_time).total_seconds()
+                
+                # --- Sliding Window Stats (Last 30s) ---
+                window_sec = 30.0
+                cutoff = now.timestamp() - window_sec
+                bytes_window = 0
+                files_window = 0
+                
+                # Calculate window stats from history
+                for ts, size in reversed(self.state.throughput_history):
+                    if ts.timestamp() < cutoff:
+                        break
+                    bytes_window += size
+                    files_window += 1
+                
+                time_window = min(elapsed, window_sec)
+                
+                # --- Throughput (MB/s) ---
+                # Prefer window stats, fallback to global if window is empty but session active
+                if time_window > 0.1 and bytes_window > 0:
+                    tp = bytes_window / time_window
+                elif elapsed > 0:
                     tp = self.state.total_input_bytes / elapsed
-                    throughput_str = f"{tp / 1024 / 1024:.1f} MB/s"
+                else:
+                    tp = 0
+                throughput_str = f"{tp / 1024 / 1024:.1f} MB/s"
+
+                # --- ETA Calculation ---
+                total = self.state.files_to_process
+                done_since = (self.state.completed_count - self.state.completed_count_at_last_discovery) + \
+                             (self.state.failed_count - self.state.failed_count_at_last_discovery)
+                rem = total - done_since
+                
+                if rem > 0:
+                    avg_sec_per_file = 0
+                    if files_window > 0 and time_window > 0:
+                         avg_sec_per_file = time_window / files_window
+                    elif (self.state.completed_count + self.state.failed_count) > 0 and elapsed > 0:
+                         avg_sec_per_file = elapsed / (self.state.completed_count + self.state.failed_count)
+                    
+                    if avg_sec_per_file > 0:
+                        eta_str = self.format_global_eta(avg_sec_per_file * rem)
             
             saved = self.format_size(self.state.space_saved_bytes)
             ratio = self.state.compression_ratio

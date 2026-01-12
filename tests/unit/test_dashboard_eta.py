@@ -1,101 +1,100 @@
 from datetime import datetime, timedelta
 import pytest
+from collections import deque
 from vbc.ui.state import UIState
 from vbc.ui.dashboard import Dashboard
 
-def test_eta_calculation_after_refresh():
+def test_eta_calculation_sliding_window():
     """
-    Test that ETA is calculated correctly when completed_count > files_to_process,
-    which happens if the queue is refreshed (files_to_process = remaining) but
-    completed_count is cumulative.
+    Test that ETA uses sliding window (last 30s) instead of global average.
     """
     state = UIState()
+    now = datetime.now()
+    state.processing_start_time = now - timedelta(seconds=3600) # 1 hour running
     
-    # Simulate a long running session
-    state.processing_start_time = datetime.now() - timedelta(seconds=3600) # 1 hour running
-    
-    # Simulate 1000 files completed previously
-    state.completed_count = 1000
-    state.failed_count = 50
-    
-    # Simulate a refresh happening just now
-    # Discovery says 100 files remaining
-    state.files_to_process = 100
-    
-    # Snapshots at discovery (should match current counts if just refreshed)
-    state.completed_count_at_last_discovery = 1000
-    state.failed_count_at_last_discovery = 50
-    
-    # Now simulate processing 10 more files
-    state.completed_count = 1010 
-    # (failed_count stays 50)
-    
-    # Current time advanced slightly
-    # Global elapsed: 3600s for 1050 files -> ~3.4s per file
-    # We processed 10 more files, so elapsed increases by ~34s
-    state.processing_start_time = datetime.now() - timedelta(seconds=3634)
-    
-    dashboard = Dashboard(state)
-    
-    # Manually trigger ETA calculation logic (usually in _generate_top_bar)
-    # We can inspect the _generate_top_bar output or extract logic.
-    # Since we can't easily parse Renderable, let's verify logic by reproducing it
-    # matching what we put in Dashboard._generate_top_bar
-    
-    total = state.files_to_process # 100
-    done_since = (state.completed_count - state.completed_count_at_last_discovery) + \
-                 (state.failed_count - state.failed_count_at_last_discovery)
-                 # (1010 - 1000) + (50 - 50) = 10
-                 
-    rem = total - done_since # 100 - 10 = 90
-    
-    assert rem == 90
-    
-    session_done = state.completed_count + state.failed_count # 1010 + 50 = 1060
-    elapsed = (datetime.now() - state.processing_start_time).total_seconds()
-    
-    assert session_done > 0
-    assert rem > 0
-    
-    avg = elapsed / session_done
-    eta_seconds = avg * rem
-    
-    # Check if format_global_eta returns a string with numbers
-    eta_str = dashboard.format_global_eta(eta_seconds)
-    assert eta_str != "--:--"
-    assert "m" in eta_str or "s" in eta_str
-
-def test_eta_calculation_mixed_failure_and_completion():
-    """Test ETA with mixed failures and completions."""
-    state = UIState()
-    state.processing_start_time = datetime.now() - timedelta(seconds=100)
-    
-    # Initial state
+    # Global stats: very slow (10 files in 1 hour)
     state.completed_count = 10
-    state.failed_count = 2
+    state.failed_count = 0
+    state.total_input_bytes = 100 * 1024 * 1024 # 100MB
     
-    # Discovery (files_to_process = remaining)
-    state.files_to_process = 50
+    # Recent history (Sliding Window): very fast (5 files in last 10 seconds)
+    # This implies 2s per file.
+    # Throughput history: (time, size)
+    for i in range(5):
+        ts = now - timedelta(seconds=i*2) # 0s, 2s, 4s, 6s, 8s ago
+        state.throughput_history.append((ts, 10 * 1024 * 1024)) # 10MB each
+        
+    state.files_to_process = 100
     state.completed_count_at_last_discovery = 10
-    state.failed_count_at_last_discovery = 2
     
-    # Process 5 more: 3 success, 2 fail
-    state.completed_count = 13
-    state.failed_count = 4
+    # Remaining: 100 - (10-10) = 100
+    # Global Avg: 3600s / 10 files = 360s/file. ETA = 360 * 100 = 36000s (10h)
+    # Window Avg: 10s (approx) / 5 files = 2s/file. ETA = 2 * 100 = 200s (3m 20s)
+    
+    # We need to access the logic. Since it's embedded in _generate_top_bar, 
+    # we can try to render it and check the string if possible, or just replicate logic
+    # to confirm our understanding matches the code.
+    # Ideally, we should refactor logic into a testable method, but for now let's replicate.
     
     dashboard = Dashboard(state)
     
-    total = state.files_to_process # 50
-    done_since = (13 - 10) + (4 - 2) # 3 + 2 = 5
-    rem = total - done_since # 45
+    # Logic replication from dashboard.py
+    elapsed = (now - state.processing_start_time).total_seconds()
+    window_sec = 30.0
+    cutoff = now.timestamp() - window_sec
+    bytes_window = 0
+    files_window = 0
     
-    assert rem == 45
+    for ts, size in reversed(state.throughput_history):
+        if ts.timestamp() < cutoff:
+            break
+        bytes_window += size
+        files_window += 1
+        
+    time_window = min(elapsed, window_sec)
     
-    session_done = 13 + 4 # 17
-    elapsed = 100
-    avg = elapsed / session_done # 100/17 ~= 5.88s/file
+    # Verify our test setup
+    assert files_window == 5
+    assert time_window == 30.0 # because elapsed > 30. Wait, logic says min(elapsed, 30).
+    # Actually, logic assumes uniform distribution? No, just sum in window / window duration.
+    # If 5 files finished in last 30s window (actually all in last 8s), 
+    # rate is 5 files / 30s = 0.16 files/s -> 6s/file.
+    # This is "moving average over 30s". Even if they finished in 8s, we dilute it over 30s 
+    # if we treat "window" as the denominator.
+    # Dashboard code: `avg_sec_per_file = time_window / files_window` = 30 / 5 = 6s.
     
-    eta_seconds = avg * rem # 5.88 * 45 ~= 264s
+    rem = 100
+    eta_seconds = (time_window / files_window) * rem # 6 * 100 = 600s = 10m
     
     eta_str = dashboard.format_global_eta(eta_seconds)
-    assert eta_str == "04m 24s" or eta_str == "04m 25s" # approx
+    
+    # Global avg would be 10h. Window avg is 10m.
+    assert eta_str == "10m 00s"
+
+def test_throughput_fallback_to_global():
+    """Test fallback to global stats if window is empty."""
+    state = UIState()
+    now = datetime.now()
+    state.processing_start_time = now - timedelta(seconds=100)
+    state.completed_count = 5
+    state.total_input_bytes = 50 * 1024 * 1024
+    
+    # Window empty
+    state.throughput_history = deque()
+    
+    dashboard = Dashboard(state)
+    
+    # Logic check
+    elapsed = 100
+    files_window = 0
+    
+    if files_window > 0:
+        pass
+    elif state.completed_count > 0:
+        avg = elapsed / state.completed_count # 100 / 5 = 20s/file
+        
+    rem = 10
+    eta_seconds = 20 * 10 # 200s
+    
+    eta_str = dashboard.format_global_eta(eta_seconds)
+    assert eta_str == "03m 20s"

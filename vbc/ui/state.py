@@ -41,6 +41,7 @@ class UIState:
         # Bytes tracking
         self.total_input_bytes = 0
         self.total_output_bytes = 0
+        self.throughput_history: deque[Tuple[datetime, int]] = deque()
 
         # Job lists
         self.active_jobs: List[CompressionJob] = []
@@ -127,6 +128,13 @@ class UIState:
             self.completed_count += 1
             self.total_input_bytes += job.source_file.size_bytes
             self.total_output_bytes += output_size
+            self.throughput_history.append((datetime.now(), job.source_file.size_bytes))
+            
+            # Prune history older than 60s
+            cutoff = datetime.now().timestamp() - 60
+            while self.throughput_history and self.throughput_history[0][0].timestamp() < cutoff:
+                self.throughput_history.popleft()
+                
             # Store output size in job for display
             job.output_size_bytes = output_size
             self.recent_jobs.appendleft(job)
@@ -135,6 +143,11 @@ class UIState:
     def add_failed_job(self, job: CompressionJob):
         with self._lock:
             self.failed_count += 1
+            self.throughput_history.append((datetime.now(), 0))
+            # Prune history older than 60s
+            cutoff = datetime.now().timestamp() - 60
+            while self.throughput_history and self.throughput_history[0][0].timestamp() < cutoff:
+                self.throughput_history.popleft()
             self.recent_jobs.appendleft(job)
             self.remove_active_job(job)
 
