@@ -68,16 +68,22 @@ def move_failed_files(
     extensions: List[str],
     logger: Optional[logging.Logger] = None,
     error_entries: Optional[List[Tuple[Path, Path, Path, Path]]] = None,
-) -> int:
+) -> List[Path]:
+    """
+    Moves failed source files and their error markers to the errors directory.
+    Returns a list of paths to the moved video files in the destination (errors) directory.
+    """
     error_entries = error_entries or collect_error_entries(
         input_dirs, output_dir_map, errors_dir_map
     )
 
     total = len(error_entries)
+    moved_video_files: List[Path] = []
+    
     if total == 0:
         if logger:
             logger.info("No .err files found for failed file relocation.")
-        return 0
+        return []
 
     if logger:
         logger.info(f"Relocating {total} failed files to errors directories.")
@@ -109,6 +115,7 @@ def move_failed_files(
                     dest_source.parent.mkdir(parents=True, exist_ok=True)
                     if source_path != dest_source:
                         shutil.move(str(source_path), str(dest_source))
+                        moved_video_files.append(dest_source)
                         if logger:
                             logger.info(f"Moved source file: {source_path} -> {dest_source}")
             else:
@@ -119,4 +126,6 @@ def move_failed_files(
 
     if logger:
         logger.info("Failed file relocation finished.")
-    return total
+    
+    # Deduplicate in case multiple source variants were moved for one error
+    return sorted(list(set(moved_video_files)))

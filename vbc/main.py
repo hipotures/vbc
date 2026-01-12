@@ -659,6 +659,7 @@ def compress(
                     output_dir_map,
                     errors_dir_map,
                 )
+                moved_files = []
                 if error_entries:
                     if len(error_entries) > 100:
                         confirm = typer.confirm(
@@ -669,7 +670,7 @@ def compress(
                             logger.info("Skipping failed file relocation (user declined).")
                             error_entries = []
                     if error_entries:
-                        move_failed_files(
+                        moved_files = move_failed_files(
                             input_dirs,
                             output_dir_map,
                             errors_dir_map,
@@ -678,12 +679,13 @@ def compress(
                             error_entries=error_entries,
                         )
 
-                if config.general.repair_corrupted_flv:
+                if config.general.repair_corrupted_flv and moved_files:
                     process_repairs(
                         input_dirs,
                         errors_dir_map,
                         config.general.extensions,
                         logger=logger,
+                        target_files=moved_files,
                     )
 
             # Warning for files skipped because they were already encoded by VBC

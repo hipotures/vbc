@@ -5,22 +5,23 @@ from typing import Optional
 
 def repair_flv_file(input_path: Path, output_path: Path, keep_intermediate=False) -> bool:
     """
-    Repairs a FLV/MP4 file that has a text error prefix (e.g. 'upstream request timeout').
+    Repairs a FLV/MP4 file by removing the text error prefix and saving as a clean .flv.
     
     Args:
         input_path: Path to the corrupted file.
-        output_path: Path where the repaired file should be saved.
-        keep_intermediate: If True, intermediate .flv and .mkv files are not deleted.
+        output_path: Path where the repaired .flv file should be saved.
+        keep_intermediate: Ignored in this version as we produce only one file.
         
     Returns:
-        True if repair was successful (output_path exists), False otherwise.
+        True if repair was successful, False otherwise.
     """
-    temp_dir = output_path.parent
-    
+    # Ensure output has .flv extension if we're just cutting
+    if output_path.suffix.lower() != ".flv":
+        output_path = output_path.with_suffix(".flv")
+
     # 1. Find FLV offset
     try:
         # Look for the first occurrence of "FLV" (magic bytes for FLV header)
-        # Using grep -abo to find the byte offset
         result = subprocess.run(
             ["grep", "-abo", "FLV", str(input_path)],
             capture_output=True, text=True
@@ -28,69 +29,53 @@ def repair_flv_file(input_path: Path, output_path: Path, keep_intermediate=False
         if not result.stdout:
             return False
         
-        # Get the first offset (e.g., "24:FLV")
+        # Get the first offset (e.g., "528:FLV")
         first_line = result.stdout.splitlines()[0]
         offset = int(first_line.split(":")[0])
     except Exception:
         return False
 
-    # 2. Extract clean FLV using tail (fast)
-    clean_flv = temp_dir / f"{input_path.stem}.clean.flv"
-    # tail -c +N starts from N-th byte (1-indexed). So offset 24 means start from 25.
+    # 2. Extract clean FLV using tail (fast and robust)
+    # tail -c +N starts from N-th byte (1-indexed). So offset 528 means start from 529.
     tail_cmd = ["tail", "-c", f"+{offset + 1}", str(input_path)]
     
-    with open(clean_flv, "wb") as f_out:
-        try:
+    try:
+        with open(output_path, "wb") as f_out:
             subprocess.run(tail_cmd, stdout=f_out, check=True)
-        except subprocess.CalledProcessError:
+        
+        # Sanity check: is the output file significantly larger than 0?
+        if not output_path.exists() or output_path.stat().st_size <= 1000:
+            if output_path.exists():
+                output_path.unlink()
             return False
 
-    # 3. Remux to MKV (Safe harbor)
-    recovered_mkv = temp_dir / f"{input_path.stem}.recovered.mkv"
-    mkv_cmd = [
-        "ffmpeg", "-y", "-v", "warning",
-        "-err_detect", "ignore_err",
-        "-i", str(clean_flv),
-        "-c", "copy",
-        str(recovered_mkv)
-    ]
-    
-    mkv_success = False
-    try:
-        subprocess.run(mkv_cmd, capture_output=True, check=True)
-        mkv_success = True
-    except subprocess.CalledProcessError:
-        pass
+        # Verify with ffprobe to ensure the file is actually readable and has video
+        # This prevents "repair loops" where we restore a file that VBC will reject again.
+        probe_cmd = [
+            "ffprobe", 
+            "-v", "error", 
+            "-select_streams", "v:0",
+            "-show_entries", "stream=codec_type",
+            "-of", "json",
+            str(output_path)
+        ]
+        probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+        
+        if probe_result.returncode != 0:
+            if output_path.exists():
+                output_path.unlink()
+            return False
+            
+        import json
+        probe_data = json.loads(probe_result.stdout)
+        if not probe_data.get("streams"):
+            # No video stream found - VBC will reject this file anyway
+            if output_path.exists():
+                output_path.unlink()
+            return False
 
-    if not mkv_success:
-        if not keep_intermediate and clean_flv.exists():
-            clean_flv.unlink()
+        return True
+    except Exception:
+        if output_path.exists():
+            output_path.unlink()
         return False
-
-    # 4. Remux to MP4 (Final) or whatever the output path extension is
-    # We use output_path directly
-    mp4_cmd = [
-        "ffmpeg", "-y", "-v", "warning",
-        "-i", str(recovered_mkv),
-        "-c", "copy",
-        "-movflags", "+faststart",
-        str(output_path)
-    ]
-    
-    success = False
-    try:
-        subprocess.run(mp4_cmd, capture_output=True, check=True)
-        success = True
-    except subprocess.CalledProcessError:
-        # If MP4 fails but MKV worked, we could consider returning MKV? 
-        # But the function signature expects output_path.
-        pass
-
-    # Cleanup
-    if not keep_intermediate:
-        if clean_flv.exists():
-            clean_flv.unlink()
-        if recovered_mkv.exists():
-            recovered_mkv.unlink()
-
-    return success

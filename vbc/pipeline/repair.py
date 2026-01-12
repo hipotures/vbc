@@ -11,6 +11,7 @@ def process_repairs(
     errors_dir_map: Dict[Path, Path],
     extensions: List[str],
     logger: Optional[logging.Logger] = None,
+    target_files: Optional[List[Path]] = None,
 ) -> int:
     """
     Scans error directories for corrupted FLV/MP4 files (with text prefix),
@@ -21,6 +22,7 @@ def process_repairs(
         errors_dir_map: Mapping from input_dir to errors_dir.
         extensions: List of video extensions to scan for.
         logger: Logger instance.
+        target_files: Optional list of specific files to repair (if None, scans all).
         
     Returns:
         Number of successfully repaired files.
@@ -43,32 +45,59 @@ def process_repairs(
             if not errors_dir or not errors_dir.exists():
                 continue
                 
-            # Find all video files in errors_dir
-            for ext in extensions:
-                if not ext.startswith("."):
-                    ext = f".{ext}"
-                for candidate in errors_dir.rglob(f"*{ext}"):
-                    # Check if already repaired
-                    repaired_marker = candidate.with_suffix(candidate.suffix + ".repaired")
-                    if repaired_marker.exists():
-                        continue
-                    
-                    # Store candidate info
+            # If target_files is provided, use it. Otherwise, scan all extensions.
+            files_to_check = []
+            if target_files is not None:
+                # Filter target_files that belong to this errors_dir
+                for t in target_files:
                     try:
-                        rel_path = candidate.relative_to(errors_dir)
-                    except ValueError:
-                        rel_path = Path(candidate.name)
-                    
-                    dest_path = input_dir / rel_path
-                    candidates_to_repair.append((candidate, dest_path, repaired_marker))
+                        if errors_dir in t.parents or t.parent == errors_dir:
+                            files_to_check.append(t)
+                    except Exception:
+                        pass
+            else:
+                for ext in extensions:
+                    if not ext.startswith("."):
+                        ext = f".{ext}"
+                    files_to_check.extend(errors_dir.rglob(f"*{ext}"))
+            
+            for candidate in files_to_check:
+                if not candidate.exists():
+                    continue
+
+                # Check if already repaired
+                repaired_marker = candidate.with_suffix(candidate.suffix + ".repaired")
+                if repaired_marker.exists():
+                    continue
+                
+                # Store candidate info
+                try:
+                    rel_path = candidate.relative_to(errors_dir)
+                except ValueError:
+                    rel_path = Path(candidate.name)
+                
+                dest_path = input_dir / rel_path
+                candidates_to_repair.append((candidate, dest_path, repaired_marker))
     
+    # Deduplicate candidates by candidate path
+    seen_candidates = set()
+    unique_candidates = []
+    for c, dp, rm in candidates_to_repair:
+        if c not in seen_candidates:
+            unique_candidates.append((c, dp, rm))
+            seen_candidates.add(c)
+    candidates_to_repair = unique_candidates
+
     if not candidates_to_repair:
         return 0
 
     if logger:
         logger.info(f"Found {len(candidates_to_repair)} files eligible for repair.")
     
-    console.print(f"[bold cyan]Found {len(candidates_to_repair)} failed files eligible for repair attempt.[/bold cyan]")
+    if target_files is not None:
+        console.print(f"[bold cyan]Attempting to repair {len(candidates_to_repair)} failed files from this session.[/bold cyan]")
+    else:
+        console.print(f"[bold cyan]Found {len(candidates_to_repair)} failed files in error directories (including previous failures).[/bold cyan]")
 
     # 2. Process repairs with progress bar
     with Progress(
@@ -88,27 +117,34 @@ def process_repairs(
                 logger.debug(f"Attempting repair: {candidate}")
 
             # Try to repair directly to destination
-            # We create a temporary output path first to ensure atomicity
-            temp_output = candidate.with_suffix(".repaired_temp.mp4")
+            # We save as .flv to match what repair_flv_file now produces
+            temp_output = candidate.with_suffix(".repaired_temp.flv")
+            final_dest = dest_path.with_suffix(".flv")
             
-            success = repair_flv_file(candidate, temp_output)
+            try:
+                success = repair_flv_file(candidate, temp_output)
+            except Exception as e:
+                if logger:
+                    logger.error(f"Critical error during repair of {candidate}: {e}")
+                success = False
             
             if success:
-                # Move temp output to final destination
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                # Move temp output to final destination (source folder)
+                final_dest.parent.mkdir(parents=True, exist_ok=True)
                 
                 try:
-                    shutil.move(str(temp_output), str(dest_path))
+                    import shutil
+                    shutil.move(str(temp_output), str(final_dest))
                     
                     # Create marker in errors_dir
                     repaired_marker.touch()
                     
                     if logger:
-                        logger.info(f"Repaired: {candidate.name} -> {dest_path}")
+                        logger.info(f"Repaired and restored as FLV: {candidate.name} -> {final_dest}")
                     total_repaired += 1
                 except Exception as e:
                     if logger:
-                        logger.error(f"Failed to move repaired file {temp_output} to {dest_path}: {e}")
+                        logger.error(f"Failed to move repaired file {temp_output} to {final_dest}: {e}")
                     if temp_output.exists():
                         temp_output.unlink()
             else:
@@ -118,14 +154,16 @@ def process_repairs(
             
             progress.advance(task)
 
-    summary_msg = f"Repaired {total_repaired}/{len(candidates_to_repair)} files."
     if total_repaired > 0:
+        summary_msg = f"Repaired {total_repaired}/{len(candidates_to_repair)} files."
         console.print(f"[bold green]✔ {summary_msg}[/bold green]")
         console.print(f"\n[bold white]Please re-run VBC to compress the repaired files restored to source folders.[/bold white]")
         if logger:
             logger.info(summary_msg)
-    else:
-        console.print(f"[yellow]⚠ {summary_msg} (No repairable content found)[/yellow]")
+    elif target_files is not None:
+        # If we targeted specific files but repaired none, user needs to know
+        summary_msg = f"Repaired 0/{len(candidates_to_repair)} files."
+        console.print(f"[yellow]⚠ {summary_msg} (Files unreadable or missing video stream)[/yellow]")
         if logger:
             logger.info(summary_msg)
 
