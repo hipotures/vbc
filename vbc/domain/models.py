@@ -102,3 +102,4 @@ class CompressionJob(BaseModel):
     duration_seconds: Optional[float] = None
     rotation_angle: Optional[int] = None
     progress_percent: float = 0.0
+    quality_value: Optional[int] = None

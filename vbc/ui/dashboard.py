@@ -423,6 +423,7 @@ class Dashboard:
             diff = in_s - out_s
             ratio = (diff / in_s) * 100 if in_s > 0 else 0
             dur = self.format_time(job.duration_seconds)
+            q_val = f" • Q{job.quality_value}" if job.quality_value is not None else ""
 
             s_in = self.format_size(in_s)
             s_out = self.format_size(out_s)
@@ -434,7 +435,7 @@ class Dashboard:
                 filename_max = max(25, panel_w - 3)  # Reserve only for icon + space
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
                 l1 = f"{icon} {filename}"
-                l2 = f"  [green]{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
+                l2 = f"  [green]{s_in} → {s_out} ({ratio:.1f}%) • {dur}{q_val}[/]"
                 return Group(l1, l2)
             else: # B: 1 line
                 # ✓ filename  |  size → size (ratio%) • duration (right-aligned)
@@ -445,7 +446,7 @@ class Dashboard:
                 grid.add_column(justify="right")  # Stats (right-aligned)
                 grid.add_row(
                     f"{icon} {filename}",
-                    f"[green]{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
+                    f"[green]{s_in} → {s_out} ({ratio:.1f}%) • {dur}{q_val}[/]"
                 )
                 return grid
 
@@ -453,10 +454,22 @@ class Dashboard:
             # Kept original logic usually means ratio check or similar
             icon = "[dim]≡[/]"
             reason = "kept"
+            if job.error_message:
+                if "already encoded" in job.error_message:
+                    reason = "vbc"
+                elif "Camera" in job.error_message:
+                    reason = "cam"
+                elif "threshold" in job.error_message:
+                    reason = "kept"
+                else:
+                    # Fallback for other skip reasons
+                    reason = "skip"
+            
             if level == "A":
                 filename_max = max(25, panel_w - 3)
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
-                return Group(f"{icon} {filename}", f"  [dim]{reason} (below threshold)[/]")
+                detail = f"  [dim]{reason} ({job.error_message})[/]" if job.error_message else f"  [dim]{reason}[/]"
+                return Group(f"{icon} {filename}", detail)
             else:
                 filename_max = max(20, panel_w - 15)
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)

@@ -29,8 +29,10 @@ class ExifToolAdapter:
                 "XMP:CameraModelName",
                 "DeviceModelName",
                 "QuickTime:DeviceModelName",
+                "H264:Model",
+                "M2TS:Model",
             ],
-            ["EXIF:Make", "QuickTime:Make", "Make", "XMP:Make"],
+            ["EXIF:Make", "QuickTime:Make", "Make", "XMP:Make", "H264:Make", "M2TS:Make"],
             ["QuickTime:HandlerVendorID", "HandlerVendorID", "HandlerVendorId"],
             ["Platform"],
         ]
@@ -40,7 +42,14 @@ class ExifToolAdapter:
             if value:
                 value_str = str(value).strip()
                 if value_str:
-                    return value_str
+                    # Map common MTS manufacturer IDs to names
+                    mts_map = {
+                        "259": "Panasonic",
+                        "258": "Sony",
+                        "257": "Canon",
+                        "260": "JVC",
+                    }
+                    return mts_map.get(value_str, value_str)
         return None
 
     def extract_metadata(self, file: VideoFile) -> VideoMetadata:
@@ -95,19 +104,34 @@ class ExifToolAdapter:
             raise ValueError(f"Could not extract metadata for {file.path}")
 
         tags = metadata_list[0]
-        full_metadata_text = str(tags)
+        
+        # Build a searchable text from tag values only
+        # This keeps searching in the 'whole exif' but avoids matching dict keys
+        full_metadata_text = " ".join(str(v) for v in tags.values())
 
         camera_raw = self._extract_camera_raw(tags)
 
         camera_model = None
         custom_cq = None
         matched_pattern = None
-        for pattern, cq_value in dynamic_cq.items():
-            if pattern in full_metadata_text:
-                camera_model = pattern
-                custom_cq = cq_value
-                matched_pattern = pattern
-                break
+        
+        # 1. Prioritize matching against the extracted camera model/make
+        if camera_raw:
+            for pattern, cq_value in dynamic_cq.items():
+                if pattern in camera_raw:
+                    camera_model = camera_raw
+                    custom_cq = cq_value
+                    matched_pattern = pattern
+                    break
+        
+        # 2. Fallback: Search in all exif values
+        if custom_cq is None:
+            for pattern, cq_value in dynamic_cq.items():
+                if pattern in full_metadata_text:
+                    camera_model = pattern
+                    custom_cq = cq_value
+                    matched_pattern = pattern
+                    break
 
         if not camera_model and camera_raw:
             camera_model = camera_raw

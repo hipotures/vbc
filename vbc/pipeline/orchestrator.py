@@ -906,7 +906,12 @@ class Orchestrator:
 
             target_cq = self._determine_cq(video_file, use_gpu=use_gpu)
             rotation = self._determine_rotation(video_file)
-            job = CompressionJob(source_file=video_file, output_path=output_path, rotation_angle=rotation or 0)
+            job = CompressionJob(
+                source_file=video_file,
+                output_path=output_path,
+                rotation_angle=rotation or 0,
+                quality_value=target_cq
+            )
             quality_value = target_cq
 
             # 2. Compress
@@ -937,6 +942,7 @@ class Orchestrator:
                     err_path = output_path_cpu.with_suffix('.err')
                 job.status = JobStatus.PROCESSING
                 job.error_message = None
+                job.quality_value = quality_value
                 self.ffmpeg_adapter.compress(
                     job,
                     self.config,
