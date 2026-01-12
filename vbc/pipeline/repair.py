@@ -74,13 +74,21 @@ def process_repairs(
                 # Check error file content to decide strategy
                 err_file = candidate.with_suffix(".err")
                 error_code = ""
+                is_hw_cap = False
                 if err_file.exists():
                     try:
                         err_content = err_file.read_text()
-                        if "code 234" in err_content or "Invalid argument" in err_content:
+                        if "Hardware is lacking required capabilities" in err_content:
+                            is_hw_cap = True
+                        elif "code 234" in err_content or "Invalid argument" in err_content:
                             error_code = "234"
                     except Exception:
                         pass
+
+                if is_hw_cap:
+                    if logger:
+                        logger.debug(f"Skipping repair for {candidate.name} - hardware limit, not corruption.")
+                    continue
 
                 try:
                     rel_path = candidate.relative_to(errors_dir)
