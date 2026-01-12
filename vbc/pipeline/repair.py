@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 from rich.console import Console
 from vbc.utils.flv_repair import repair_flv_file
+from vbc.utils.reencode_repair import repair_via_reencode
 
 def process_repairs(
     input_dirs: List[Path],
@@ -14,15 +15,16 @@ def process_repairs(
     target_files: Optional[List[Path]] = None,
 ) -> int:
     """
-    Scans error directories for corrupted FLV/MP4 files (with text prefix),
-    repairs them, and moves the repaired version back to the source input directory.
+    Scans error directories for corrupted files and attempts to repair them.
+    Strategy 1: Text prefix removal (for FLV/MP4 stream dumps).
+    Strategy 2: Fast re-encode (for corrupted MP4/MOV containers).
     
     Args:
         input_dirs: List of source input directories.
         errors_dir_map: Mapping from input_dir to errors_dir.
         extensions: List of video extensions to scan for.
         logger: Logger instance.
-        target_files: Optional list of specific files to repair (if None, scans all).
+        target_files: Optional list of specific files to repair.
         
     Returns:
         Number of successfully repaired files.
@@ -31,7 +33,7 @@ def process_repairs(
     total_repaired = 0
     candidates_to_repair = []
 
-    # 1. Scan for candidates first (using a spinner)
+    # 1. Scan for candidates first
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -48,7 +50,6 @@ def process_repairs(
             # If target_files is provided, use it. Otherwise, scan all extensions.
             files_to_check = []
             if target_files is not None:
-                # Filter target_files that belong to this errors_dir
                 for t in target_files:
                     try:
                         if errors_dir in t.parents or t.parent == errors_dir:
@@ -70,21 +71,31 @@ def process_repairs(
                 if repaired_marker.exists():
                     continue
                 
-                # Store candidate info
+                # Check error file content to decide strategy
+                err_file = candidate.with_suffix(".err")
+                error_code = ""
+                if err_file.exists():
+                    try:
+                        err_content = err_file.read_text()
+                        if "code 234" in err_content or "Invalid argument" in err_content:
+                            error_code = "234"
+                    except Exception:
+                        pass
+
                 try:
                     rel_path = candidate.relative_to(errors_dir)
                 except ValueError:
                     rel_path = Path(candidate.name)
                 
                 dest_path = input_dir / rel_path
-                candidates_to_repair.append((candidate, dest_path, repaired_marker))
+                candidates_to_repair.append((candidate, dest_path, repaired_marker, error_code))
     
-    # Deduplicate candidates by candidate path
+    # Deduplicate
     seen_candidates = set()
     unique_candidates = []
-    for c, dp, rm in candidates_to_repair:
+    for c, dp, rm, ec in candidates_to_repair:
         if c not in seen_candidates:
-            unique_candidates.append((c, dp, rm))
+            unique_candidates.append((c, dp, rm, ec))
             seen_candidates.add(c)
     candidates_to_repair = unique_candidates
 
@@ -97,9 +108,9 @@ def process_repairs(
     if target_files is not None:
         console.print(f"[bold cyan]Attempting to repair {len(candidates_to_repair)} failed files from this session.[/bold cyan]")
     else:
-        console.print(f"[bold cyan]Found {len(candidates_to_repair)} failed files in error directories (including previous failures).[/bold cyan]")
+        console.print(f"[bold cyan]Found {len(candidates_to_repair)} failed files in error directories.[/bold cyan]")
 
-    # 2. Process repairs with progress bar
+    # 2. Process repairs
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -110,47 +121,51 @@ def process_repairs(
     ) as progress:
         task = progress.add_task("Repairing corrupted files", total=len(candidates_to_repair))
         
-        for candidate, dest_path, repaired_marker in candidates_to_repair:
+        for candidate, dest_path, repaired_marker, error_code in candidates_to_repair:
             progress.update(task, description=f"Repairing [yellow]{candidate.name}[/yellow]")
             
-            if logger:
-                logger.debug(f"Attempting repair: {candidate}")
+            success = False
+            repaired_file_path = None
+            
+            # STRATEGY 1: FLV Prefix Cut (Fast)
+            # Try this if no specific error code OR if it looks like it might be an FLV dump
+            if not error_code:
+                temp_flv = candidate.with_suffix(".repaired_temp.flv")
+                try:
+                    if repair_flv_file(candidate, temp_flv):
+                        success = True
+                        repaired_file_path = temp_flv
+                        dest_path = dest_path.with_suffix(".flv") # Update dest extension
+                except Exception:
+                    pass
 
-            # Try to repair directly to destination
-            # We save as .flv to match what repair_flv_file now produces
-            temp_output = candidate.with_suffix(".repaired_temp.flv")
-            final_dest = dest_path.with_suffix(".flv")
+            # STRATEGY 2: Re-encode (Slow, Fallback)
+            # Use if Strategy 1 failed OR if we have specific corruption error code (234)
+            if not success:
+                temp_mkv = candidate.with_suffix(".repaired_temp.mkv")
+                try:
+                    # Inform user this might take longer
+                    if logger: logger.info(f"Attempting re-encode repair for {candidate.name}")
+                    if repair_via_reencode(candidate, temp_mkv):
+                        success = True
+                        repaired_file_path = temp_mkv
+                        dest_path = dest_path.with_suffix(".mkv") # Update dest extension
+                except Exception:
+                    pass
             
-            try:
-                success = repair_flv_file(candidate, temp_output)
-            except Exception as e:
-                if logger:
-                    logger.error(f"Critical error during repair of {candidate}: {e}")
-                success = False
-            
-            if success:
-                # Move temp output to final destination (source folder)
-                final_dest.parent.mkdir(parents=True, exist_ok=True)
-                
+            if success and repaired_file_path:
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
                 try:
                     import shutil
-                    shutil.move(str(temp_output), str(final_dest))
-                    
-                    # Create marker in errors_dir
+                    shutil.move(str(repaired_file_path), str(dest_path))
                     repaired_marker.touch()
-                    
                     if logger:
-                        logger.info(f"Repaired and restored as FLV: {candidate.name} -> {final_dest}")
+                        logger.info(f"Repaired and restored: {candidate.name} -> {dest_path}")
                     total_repaired += 1
                 except Exception as e:
                     if logger:
-                        logger.error(f"Failed to move repaired file {temp_output} to {final_dest}: {e}")
-                    if temp_output.exists():
-                        temp_output.unlink()
-            else:
-                # Not a repairable file or repair failed
-                if temp_output.exists():
-                    temp_output.unlink()
+                        logger.error(f"Failed to move repaired file: {e}")
+                    if repaired_file_path.exists(): repaired_file_path.unlink()
             
             progress.advance(task)
 
