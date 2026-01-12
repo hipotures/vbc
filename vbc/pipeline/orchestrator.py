@@ -520,6 +520,19 @@ class Orchestrator:
             "-XMP-exif:GPSPosition<GPSPosition",
             "-QuickTime:GPSCoordinates<GPSPosition",
             "-Keys:GPSCoordinates<GPSPosition",
+            # Fix for MTS/AVCHD missing dates in MP4
+            "-QuickTime:CreateDate<DateTimeOriginal",
+            "-QuickTime:ModifyDate<DateTimeOriginal",
+            "-QuickTime:TrackCreateDate<DateTimeOriginal",
+            "-QuickTime:TrackModifyDate<DateTimeOriginal",
+            "-QuickTime:MediaCreateDate<DateTimeOriginal",
+            "-QuickTime:MediaModifyDate<DateTimeOriginal",
+            "-QuickTime:CreationDate<DateTimeOriginal",
+            # Fix missing Make/Model
+            "-QuickTime:Make<Make",
+            "-QuickTime:Model<Model",
+            "-UserData:Make<Make",
+            "-UserData:Model<Model",
         ])
         if config_path.exists():
             exiftool_cmd.extend(vbc_tags)
