@@ -1067,26 +1067,24 @@ class Orchestrator:
                             self._refresh_requested = False
                             # Perform new discovery on all folders
                             new_files, new_stats = self._perform_discovery(list(self._folder_mapping.keys()))
-                            new_paths = {vf.path for vf in new_files}
-                            removed = 0
-                            if pending:
-                                new_pending = deque()
-                                for vf in pending:
-                                    if vf.path in new_paths:
-                                        new_pending.append(vf)
-                                    else:
-                                        removed += 1
-                                self._prune_failed_pending(new_pending)
-                                pending = new_pending
-                            # Track already submitted files to avoid duplicates
-                            submitted_paths = {vf.path for vf in in_flight.values()}
-                            submitted_paths.update(vf.path for vf in pending)
-                            # Add only new files not already in queue or processing
-                            added = 0
-                            for vf in new_files:
-                                if vf.path not in submitted_paths:
-                                    pending.append(vf)
-                                    added += 1
+                            
+                            # Identify currently processing files to exclude them from queue
+                            in_flight_paths = {vf.path for vf in in_flight.values()}
+                            old_pending_paths = {vf.path for vf in pending}
+                            
+                            # Rebuild pending queue from sorted new_files, excluding in-flight ones
+                            # This ensures the queue is fully re-sorted according to config
+                            new_pending_list = [vf for vf in new_files if vf.path not in in_flight_paths]
+                            new_pending_paths = {vf.path for vf in new_pending_list}
+                            
+                            # Calculate stats
+                            added = len(new_pending_paths - old_pending_paths)
+                            removed = len(old_pending_paths - new_pending_paths)
+                            
+                            # Replace queue
+                            pending = deque(new_pending_list)
+                            self._prune_failed_pending(pending)
+                            
                             self.event_bus.publish(RefreshFinished(added=added, removed=removed))
                             # Update discovery stats (include ignored_small like old code)
                             self.event_bus.publish(DiscoveryFinished(
