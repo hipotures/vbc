@@ -738,6 +738,69 @@ class Orchestrator:
 
         return all_files, total_stats
 
+    def _trigger_critical_shutdown(self, reason: str):
+        """Initiate immediate shutdown due to critical error (e.g. disk full/IO error)."""
+        self.logger.error(f"CRITICAL SHUTDOWN: {reason}")
+        with self._thread_lock:
+            self._shutdown_requested = True
+            self._thread_lock.notify_all()
+        self._shutdown_event.set()
+        from vbc.domain.events import ActionMessage
+        self.event_bus.publish(ActionMessage(message=f"CRITICAL ERROR: {reason}"))
+
+    def _move_completed_file(self, video_file: VideoFile, output_dir: Path) -> bool:
+        """Move already encoded file to output directory safely."""
+        source_path = video_file.path
+        
+        try:
+            rel_path = video_file.path.name # Simple name for now, or relative logic
+            # Try to get relative path if possible
+            try:
+                # Find which input dir it belongs to
+                input_dir = self._find_input_folder(source_path)
+                if input_dir:
+                    rel_path = source_path.relative_to(input_dir)
+            except ValueError:
+                pass
+                
+            dest_path = output_dir / rel_path
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Check if destination exists
+            if dest_path.exists():
+                src_size = source_path.stat().st_size
+                dest_size = dest_path.stat().st_size
+                
+                if src_size == dest_size:
+                    # Identical file exists in destination. Safe to delete source.
+                    self.logger.info(f"Duplicate found in output (size match). Deleting source: {source_path}")
+                    source_path.unlink()
+                    return True
+                else:
+                    # Different file exists. Rename to avoid overwrite.
+                    stem = dest_path.stem
+                    suffix = dest_path.suffix
+                    dest_path = dest_path.with_name(f"{stem}_vbc_dup{suffix}")
+                    self.logger.warning(f"Destination exists with different size. Renaming move to: {dest_path.name}")
+
+            # Perform Move
+            self.logger.info(f"Moving already encoded file: {source_path.name} -> {dest_path}")
+            shutil.move(str(source_path), str(dest_path))
+            
+            # Verify Move
+            if not dest_path.exists():
+                raise RuntimeError(f"Move failed: Destination {dest_path} not found after move")
+            
+            if dest_path.stat().st_size != video_file.size_bytes:
+                 raise RuntimeError(f"Move failed: Size mismatch (src={video_file.size_bytes}, dest={dest_path.stat().st_size})")
+
+            return True
+
+        except Exception as e:
+            msg = f"Failed to move file {source_path.name}: {str(e)}"
+            self._trigger_critical_shutdown(msg)
+            raise RuntimeError(msg)
+
     def _process_file(self, video_file: VideoFile, input_dir: Optional[Path] = None):
         """Processes a single file with dynamic concurrency control."""
         filename = video_file.path.name
@@ -814,10 +877,15 @@ class Orchestrator:
             video_file.metadata = self._get_metadata(video_file, base_metadata=stream_info)
 
             if video_file.metadata and video_file.metadata.vbc_encoded:
-                with self._stats_lock:
-                    self.skipped_vbc_count += 1
-                self.event_bus.publish(JobFailed(job=CompressionJob(source_file=video_file, status=JobStatus.SKIPPED), error_message="File already encoded by VBC"))
-                return
+                # File is already encoded by VBC but is in input folder.
+                # Move it to output folder safely.
+                if self._move_completed_file(video_file, output_dir):
+                    # Publish as Completed (Done) since it's effectively finished work
+                    # We fake the job object for the event
+                    job = CompressionJob(source_file=video_file, status=JobStatus.COMPLETED, output_path=output_path, output_size_bytes=video_file.size_bytes, duration_seconds=0.1)
+                    # Note: output_path might differ if renamed, but for event log it's fine
+                    self.event_bus.publish(JobCompleted(job=job))
+                    return
 
             if self.config.general.skip_av1 and video_file.metadata and "av1" in video_file.metadata.codec.lower():
                 self.event_bus.publish(JobFailed(job=CompressionJob(source_file=video_file, status=JobStatus.SKIPPED), error_message="Already encoded in AV1"))
