@@ -622,13 +622,15 @@ class ReferenceOverlay:
         # === ACTIVE JOB INDICATORS ===
         spinner_frames = "●○◉◎"
         spinner_rotating = "◐◓◑◒"
+        spinner_custom = "◍◌"
         normal_spinner = spinner_frames[self.spinner_frame % len(spinner_frames)]
         rotating_spinner = spinner_rotating[self.spinner_frame % len(spinner_rotating)]
-        
+        custom_spinner = spinner_custom[self.spinner_frame % len(spinner_custom)]
+
         spinners_table = Table(show_header=False, box=None, padding=(0, 1))
         spinners_table.add_column(width=12)
         spinners_table.add_column()
-        
+
         spinners_table.add_row(
             f"[{COLORS['accent_green']}]{' '.join(spinner_frames)}[/]",
             "Normal processing"
@@ -636,6 +638,10 @@ class ReferenceOverlay:
         spinners_table.add_row(
             f"[{COLORS['accent_green']}]{' '.join(spinner_rotating)}[/]",
             "Video rotation applied"
+        )
+        spinners_table.add_row(
+            f"[{COLORS['accent_green']}]{' '.join(spinner_custom)}[/]",
+            "Custom camera settings"
         )
         
         spinners_card = Panel(

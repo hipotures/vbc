@@ -296,7 +296,19 @@ class Dashboard:
 
         spinner_frames = "●○◉◎"
         spinner_rotating = "◐◓◑◒"
-        use_spinner = spinner_rotating if (job.rotation_angle or 0) > 0 else spinner_frames
+        spinner_custom = "◍◌"  # toggle8
+        
+        # Decide which spinner set to use
+        is_custom = False
+        if job.source_file.metadata and job.source_file.metadata.custom_cq is not None:
+            is_custom = True
+
+        if (job.rotation_angle or 0) > 0:
+            use_spinner = spinner_rotating
+        elif is_custom:
+            use_spinner = spinner_custom
+        else:
+            use_spinner = spinner_frames
 
         # Metadata
         meta = job.source_file.metadata
