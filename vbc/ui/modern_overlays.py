@@ -604,9 +604,7 @@ class ReferenceOverlay:
         
         status_content = Group(
             status_columns,
-            "",
             Rule(style=COLORS['border']),
-            "",
             symbols_table
         )
         
@@ -671,11 +669,6 @@ class ReferenceOverlay:
         gpu_content.append(f"[{COLORS['dim']}]Scales:[/]")
         gpu_content.append(f"  [{COLORS['muted']}]{scales_text}[/]")
         gpu_content.append("")
-        gpu_content.append(
-            f"[{COLORS['dim']}]Symbols:[/] {symbols} "
-            f"[{COLORS['muted']}]low→high[/]   "
-            f"[{COLORS['dim']}]{spark_cfg.style.missing}[/] [{COLORS['muted']}]missing[/]"
-        )
         gpu_content.append(f"[{COLORS['dim']}]Time:[/] [{COLORS['muted']}]left=older, right=newer (5min window)[/]")
         
         gpu_card = Panel(
