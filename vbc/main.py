@@ -8,6 +8,8 @@ from typing import Optional, List, Tuple
 # Silence all warnings (especially from pyexiftool) to prevent UI glitches
 warnings.filterwarnings("ignore")
 from vbc.config.loader import load_config, load_demo_config
+from vbc.config.overrides import CliConfigOverrides
+from vbc.config.local_registry import LocalConfigRegistry
 from vbc.infrastructure.logging import setup_logging
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
@@ -95,7 +97,33 @@ def compress(
 
     try:
         config = load_config(config_path)
-        # Apply CLI overrides
+        # Validate queue_sort first if provided
+        validated_queue_sort = None
+        if queue_sort is not None:
+            try:
+                validated_queue_sort = validate_queue_sort(queue_sort, config.general.extensions)
+            except ValueError as exc:
+                typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+                raise typer.Exit(code=1)
+
+        # Create CLI overrides object (for per-job config resolution)
+        cli_overrides = CliConfigOverrides(
+            threads=threads,
+            quality=quality,
+            gpu=gpu,
+            queue_sort=validated_queue_sort,
+            queue_seed=queue_seed,
+            log_path=str(log_path) if log_path else None,
+            clean_errors=clean_errors,
+            skip_av1=skip_av1,
+            min_size=min_size,
+            min_ratio=min_ratio,
+            camera=[c.strip() for c in camera.split(",") if c.strip()] if camera else None,
+            debug=debug,
+            rotate_180=rotate_180,
+        )
+
+        # Apply CLI overrides to global config
         if threads: config.general.threads = threads
         if quality is not None:
             config.gpu_encoder.common_args = replace_quality_value(config.gpu_encoder.common_args, quality)
@@ -103,12 +131,8 @@ def compress(
             config.cpu_encoder.common_args = replace_quality_value(config.cpu_encoder.common_args, quality)
             config.cpu_encoder.advanced_args = replace_quality_value(config.cpu_encoder.advanced_args, quality)
         if gpu is not None: config.general.gpu = gpu
-        if queue_sort is not None:
-            try:
-                config.general.queue_sort = validate_queue_sort(queue_sort, config.general.extensions)
-            except ValueError as exc:
-                typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
-                raise typer.Exit(code=1)
+        if validated_queue_sort is not None:
+            config.general.queue_sort = validated_queue_sort
         if queue_seed is not None: config.general.queue_seed = queue_seed
         if log_path is not None: config.general.log_path = str(log_path)
         if clean_errors: config.general.clean_errors = True
@@ -573,6 +597,9 @@ def compress(
             ffprobe = FFprobeAdapter()
             ffmpeg = FFmpegAdapter(event_bus=bus)
 
+            # Create local config registry
+            local_registry = LocalConfigRegistry()
+
             orchestrator = Orchestrator(
                 config=config,
                 event_bus=bus,
@@ -581,6 +608,8 @@ def compress(
                 ffprobe_adapter=ffprobe,
                 ffmpeg_adapter=ffmpeg,
                 output_dir_map=output_dir_map,
+                local_config_registry=local_registry,
+                cli_overrides=cli_overrides,
             )
         
         keyboard = KeyboardListener(bus)

@@ -31,6 +31,20 @@ class JobStatus(str, Enum):
     HW_CAP_LIMIT = "HW_CAP_LIMIT"
     INTERRUPTED = "INTERRUPTED"
 
+
+class ConfigSource(str, Enum):
+    """Source of configuration parameters.
+
+    Attributes:
+        GLOBAL: Global conf/vbc.yaml configuration.
+        LOCAL: Local VBC.YAML in video directory.
+        CLI: CLI arguments (highest priority).
+    """
+
+    GLOBAL = "G"
+    LOCAL = "L"
+    CLI = "C"
+
 class VideoMetadata(BaseModel):
     """Extracted video stream information.
 
@@ -92,6 +106,8 @@ class CompressionJob(BaseModel):
         duration_seconds: Wall-clock time spent in FFmpeg (excludes metadata ops).
         rotation_angle: Applied rotation in degrees (0, 90, 180, 270) or None.
         progress_percent: [0-100] progress during encoding (updated by FFmpeg adapter).
+        quality_value: CQ quality value used for this job.
+        config_source: Configuration source (GLOBAL, LOCAL, or CLI).
     """
 
     source_file: VideoFile
@@ -103,3 +119,4 @@ class CompressionJob(BaseModel):
     rotation_angle: Optional[int] = None
     progress_percent: float = 0.0
     quality_value: Optional[int] = None
+    config_source: ConfigSource = ConfigSource.GLOBAL

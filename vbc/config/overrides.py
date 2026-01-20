@@ -1,16 +1,20 @@
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import yaml
 
 from vbc.config.models import AppConfig
+from vbc.domain.models import ConfigSource
 from vbc.infrastructure.ffmpeg import replace_quality_value
+
+if TYPE_CHECKING:
+    from vbc.config.local_registry import LocalConfigRegistry
 
 LOCAL_CONFIG_FILENAME = "VBC.YAML"
 
-_ALLOWED_ROOT_KEYS = {"general", "gpu_encoder", "cpu_encoder", "autorotate"}
+_ALLOWED_ROOT_KEYS = {"general", "gpu_encoder", "cpu_encoder", "autorotate", "cq"}
 _ALLOWED_GENERAL_KEYS = {
     "gpu",
     "cpu_fallback",
@@ -124,11 +128,63 @@ def merge_local_config(
     override_data: Dict[str, Any],
     cli_overrides: Optional[CliConfigOverrides],
 ) -> AppConfig:
+    # Extract cq override before merging (handled specially)
+    cq_override = override_data.pop("cq", None) if "cq" in override_data else None
+
+    # Handle encoder args specially - extract quality and apply via replace_quality_value
+    override_data = _process_encoder_overrides(base_config, override_data)
+
     merged = _deep_merge_dicts(base_config.model_dump(), override_data)
     config = AppConfig(**merged)
+
+    # Apply root-level cq override (applies to all encoders)
+    if cq_override is not None:
+        config.gpu_encoder.common_args = replace_quality_value(config.gpu_encoder.common_args, cq_override)
+        config.gpu_encoder.advanced_args = replace_quality_value(config.gpu_encoder.advanced_args, cq_override)
+        config.cpu_encoder.common_args = replace_quality_value(config.cpu_encoder.common_args, cq_override)
+        config.cpu_encoder.advanced_args = replace_quality_value(config.cpu_encoder.advanced_args, cq_override)
+
     if cli_overrides:
         cli_overrides.apply(config)
     return config
+
+
+def _process_encoder_overrides(base_config: AppConfig, override_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Process encoder overrides - extract quality values and apply to base args.
+
+    Instead of replacing entire args lists, extracts quality values from override
+    and applies them to base config args using replace_quality_value().
+    """
+    from vbc.infrastructure.ffmpeg import extract_quality_value
+
+    result = dict(override_data)
+
+    for encoder_key in ("gpu_encoder", "cpu_encoder"):
+        if encoder_key not in result:
+            continue
+
+        encoder_override = result[encoder_key]
+        if not isinstance(encoder_override, dict):
+            continue
+
+        base_encoder = getattr(base_config, encoder_key)
+
+        for args_key in ("common_args", "advanced_args"):
+            if args_key not in encoder_override:
+                continue
+
+            override_args = encoder_override[args_key]
+            if not isinstance(override_args, list):
+                continue
+
+            # Extract quality value from override args
+            override_quality = extract_quality_value(override_args)
+            if override_quality is not None:
+                # Apply quality to base args instead of replacing
+                base_args = getattr(base_encoder, args_key)
+                encoder_override[args_key] = replace_quality_value(base_args, override_quality)
+
+    return result
 
 
 def _filter_local_overrides(data: Dict[str, Any], path: Path) -> Dict[str, Any]:
@@ -160,6 +216,14 @@ def _filter_local_overrides(data: Dict[str, Any], path: Path) -> Dict[str, Any]:
         if key in data:
             filtered[key] = data[key]
 
+    # Pass through cq override (handled specially in merge_local_config)
+    if "cq" in data:
+        cq_val = data["cq"]
+        if isinstance(cq_val, int) and 0 <= cq_val <= 63:
+            filtered["cq"] = cq_val
+        else:
+            _logger.warning("Invalid cq value in %s: %s (must be int 0-63)", path, cq_val)
+
     return filtered
 
 
@@ -171,3 +235,46 @@ def _deep_merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[st
         else:
             merged[key] = value
     return merged
+
+
+def build_job_config(
+    base_config: AppConfig,
+    local_registry: Optional["LocalConfigRegistry"],
+    file_path: Path,
+    cli_overrides: Optional[CliConfigOverrides],
+) -> Tuple[AppConfig, ConfigSource]:
+    """Build config for a specific job with proper hierarchy.
+
+    Applies configuration overrides in priority order:
+    1. Global config (base_config)
+    2. Local VBC.YAML (if exists for file's directory)
+    3. CLI arguments (if provided)
+
+    Args:
+        base_config: Global configuration from conf/vbc.yaml.
+        local_registry: Registry of local VBC.YAML files (optional).
+        file_path: Path to video file being processed.
+        cli_overrides: CLI argument overrides (optional).
+
+    Returns:
+        Tuple of (merged_config, config_source_indicator)
+        - merged_config: Final configuration with all overrides applied
+        - config_source_indicator: Highest priority source (GLOBAL, LOCAL, or CLI)
+    """
+    # Start with global config (deep copy to avoid mutation)
+    config = base_config.model_copy(deep=True)
+    source = ConfigSource.GLOBAL
+
+    # Apply local config if exists
+    if local_registry:
+        local_entry = local_registry.get_applicable_config(file_path)
+        if local_entry:
+            config = merge_local_config(config, local_entry.data, None)
+            source = ConfigSource.LOCAL
+
+    # Apply CLI overrides (highest priority)
+    if cli_overrides and cli_overrides.has_overrides:
+        cli_overrides.apply(config)
+        source = ConfigSource.CLI
+
+    return config, source

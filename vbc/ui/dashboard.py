@@ -435,7 +435,10 @@ class Dashboard:
             diff = in_s - out_s
             ratio = (diff / in_s) * 100 if in_s > 0 else 0
             dur = self.format_time(job.duration_seconds)
-            q_val = f"Q{job.quality_value} • " if job.quality_value is not None else ""
+
+            # Show config source prefix (G/L/C)
+            source_prefix = job.config_source.value if job.config_source else "G"
+            q_val = f"{source_prefix} • Q{job.quality_value} • " if job.quality_value is not None else f"{source_prefix} • "
 
             s_in = self.format_size(in_s)
             s_out = self.format_size(out_s)

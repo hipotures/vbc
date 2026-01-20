@@ -23,8 +23,12 @@ import time
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union, TYPE_CHECKING
 from vbc.config.models import AppConfig, GeneralConfig
+
+if TYPE_CHECKING:
+    from vbc.config.local_registry import LocalConfigRegistry
+    from vbc.config.overrides import CliConfigOverrides
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
 from vbc.infrastructure.exif_tool import ExifToolAdapter
@@ -77,6 +81,8 @@ class Orchestrator:
         ffprobe_adapter: FFprobeAdapter,
         ffmpeg_adapter: FFmpegAdapter,
         output_dir_map: Optional[Dict[Path, Path]] = None,
+        local_config_registry: Optional["LocalConfigRegistry"] = None,
+        cli_overrides: Optional["CliConfigOverrides"] = None,
     ):
         self.config = config
         self.event_bus = event_bus
@@ -85,6 +91,10 @@ class Orchestrator:
         self.ffprobe_adapter = ffprobe_adapter
         self.ffmpeg_adapter = ffmpeg_adapter
         self.logger = logging.getLogger(__name__)
+
+        # Local config registry and CLI overrides for per-job config resolution
+        self.local_registry = local_config_registry
+        self.cli_overrides = cli_overrides
 
         # Metadata cache (thread-safe)
         self._metadata_cache = {}  # Path -> VideoMetadata
@@ -386,10 +396,20 @@ class Orchestrator:
 
         return metadata
 
-    def _determine_cq(self, file: VideoFile, use_gpu: Optional[bool] = None) -> int:
-        """Determine the quality value based on camera model and encoder defaults."""
-        use_gpu = self.config.general.gpu if use_gpu is None else use_gpu
-        encoder_args = select_encoder_args(self.config, use_gpu)
+    def _determine_cq(self, file: VideoFile, use_gpu: Optional[bool] = None, config: Optional[AppConfig] = None) -> int:
+        """Determine the quality value based on camera model and encoder defaults.
+
+        Args:
+            file: Video file to determine CQ for.
+            use_gpu: Whether to use GPU encoder (defaults to config.general.gpu).
+            config: Config to use (defaults to self.config for backward compatibility).
+
+        Returns:
+            CQ quality value.
+        """
+        cfg = config if config is not None else self.config
+        use_gpu = cfg.general.gpu if use_gpu is None else use_gpu
+        encoder_args = select_encoder_args(cfg, use_gpu)
         default_cq = extract_quality_value(encoder_args)
         if default_cq is None:
             default_cq = 45 if use_gpu else 32
@@ -400,7 +420,7 @@ class Orchestrator:
         if not file.metadata.camera_model:
             return default_cq
         model = file.metadata.camera_model
-        for key, cq_value in self.config.general.dynamic_cq.items():
+        for key, cq_value in cfg.general.dynamic_cq.items():
             if key in model:
                 return cq_value
         return default_cq
@@ -411,12 +431,21 @@ class Orchestrator:
         encoder_args = select_encoder_args(self.config, use_gpu)
         return output_extension_for_args(encoder_args)
 
-    def _determine_rotation(self, file: VideoFile) -> Optional[int]:
-        """Determines if rotation is needed based on filename pattern."""
-        if self.config.general.manual_rotation is not None:
-            return self.config.general.manual_rotation
+    def _determine_rotation(self, file: VideoFile, config: Optional[AppConfig] = None) -> Optional[int]:
+        """Determines if rotation is needed based on filename pattern.
+
+        Args:
+            file: Video file to determine rotation for.
+            config: Config to use (defaults to self.config for backward compatibility).
+
+        Returns:
+            Rotation angle in degrees, or None if no rotation needed.
+        """
+        cfg = config if config is not None else self.config
+        if cfg.general.manual_rotation is not None:
+            return cfg.general.manual_rotation
         filename = file.path.name
-        for pattern, angle in self.config.autorotate.patterns.items():
+        for pattern, angle in cfg.autorotate.patterns.items():
             if re.search(pattern, filename):
                 return angle
         return None
@@ -749,6 +778,10 @@ class Orchestrator:
                 f"already_compressed={total_stats['already_compressed']}, ignored_small={total_stats['ignored_small']}, ignored_err={total_stats['ignored_err']}"
             )
 
+        # Build local config registry (scan for VBC.YAML files)
+        if self.local_registry:
+            self.local_registry.build_from_discovery(input_dirs)
+
         return all_files, total_stats
 
     def _trigger_critical_shutdown(self, reason: str):
@@ -893,6 +926,8 @@ class Orchestrator:
                 # File is already encoded by VBC but is in input folder.
                 # Move it to output folder safely.
                 if self._move_completed_file(video_file, output_dir):
+                    with self._stats_lock:
+                        self.skipped_vbc_count += 1
                     # Publish as Completed (Done) since it's effectively finished work
                     # We fake the job object for the event
                     job = CompressionJob(source_file=video_file, status=JobStatus.COMPLETED, output_path=output_path, output_size_bytes=video_file.size_bytes, duration_seconds=0.1)
@@ -917,13 +952,24 @@ class Orchestrator:
                     self.event_bus.publish(JobFailed(job=CompressionJob(source_file=video_file, status=JobStatus.SKIPPED), error_message=f'Camera model "{cam_model}" not in filter'))
                     return
 
-            target_cq = self._determine_cq(video_file, use_gpu=use_gpu)
-            rotation = self._determine_rotation(video_file)
+            # Determine job-specific config and source
+            from vbc.config.overrides import build_job_config
+            job_config, config_source = build_job_config(
+                self.config,           # base global config
+                self.local_registry,   # local VBC.YAML registry
+                video_file.path,       # file being processed
+                self.cli_overrides     # CLI overrides
+            )
+
+            # Use job_config for determining parameters
+            target_cq = self._determine_cq(video_file, use_gpu=use_gpu, config=job_config)
+            rotation = self._determine_rotation(video_file, config=job_config)
             job = CompressionJob(
                 source_file=video_file,
                 output_path=output_path,
                 rotation_angle=rotation or 0,
-                quality_value=target_cq
+                quality_value=target_cq,
+                config_source=config_source
             )
             quality_value = target_cq
 
@@ -932,7 +978,7 @@ class Orchestrator:
             job.status = JobStatus.PROCESSING
             self.ffmpeg_adapter.compress(
                 job,
-                self.config,
+                job_config,
                 use_gpu,
                 quality=quality_value,
                 rotate=rotation,
@@ -941,12 +987,12 @@ class Orchestrator:
             )
             if (
                 job.status == JobStatus.HW_CAP_LIMIT
-                and self.config.general.cpu_fallback
+                and job_config.general.cpu_fallback
                 and use_gpu
             ):
                 self.logger.info(f"FFMPEG_FALLBACK: {filename} (hw_cap -> CPU)")
                 use_gpu = False
-                quality_value = self._determine_cq(video_file, use_gpu=False)
+                quality_value = self._determine_cq(video_file, use_gpu=False, config=job_config)
                 output_suffix = self._output_suffix_for_mode(use_gpu=False)
                 output_path_cpu = output_dir / rel_path.with_suffix(output_suffix)
                 output_path_cpu.parent.mkdir(parents=True, exist_ok=True)
@@ -958,7 +1004,7 @@ class Orchestrator:
                 job.quality_value = quality_value
                 self.ffmpeg_adapter.compress(
                     job,
-                    self.config,
+                    job_config,
                     use_gpu,
                     quality=quality_value,
                     rotate=rotation,
