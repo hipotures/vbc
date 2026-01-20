@@ -203,6 +203,9 @@ class TestProcessFileEdgeCases:
             'color_space': None,
             'duration': 10.0
         }
+        
+        # Mock ExifTool to return empty dict (so vbc_encoded is False)
+        orchestrator.exif_adapter.extract_exif_info.return_value = {}
 
         # Process file
         orchestrator._process_file(video_file, input_dir)

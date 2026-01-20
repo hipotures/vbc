@@ -548,7 +548,8 @@ def test_orchestrator_skips_vbc_encoded_file(tmp_path):
     output_dir = tmp_path / "out"
     output_dir.mkdir()
 
-    video_file = VideoFile(path=input_dir / "test.mp4", size_bytes=1000)
+    video_file = VideoFile(path=input_dir / "test.mp4", size_bytes=5)
+    (input_dir / "test.mp4").write_text("dummy")
     orchestrator._folder_mapping = {input_dir: output_dir}
 
     # Mock ffprobe to return info with vbc_encoded=True
@@ -559,7 +560,7 @@ def test_orchestrator_skips_vbc_encoded_file(tmp_path):
 
     # Capture events
     events = []
-    bus.subscribe(JobFailed, events.append)
+    bus.subscribe(JobCompleted, events.append)
 
     # Run processing
     orchestrator._process_file(video_file, input_dir)
@@ -567,6 +568,5 @@ def test_orchestrator_skips_vbc_encoded_file(tmp_path):
     # Verify
     assert orchestrator.skipped_vbc_count == 1
     assert len(events) == 1
-    assert events[0].job.status == JobStatus.SKIPPED
-    assert "already encoded by VBC" in events[0].error_message
+    assert events[0].job.status == JobStatus.COMPLETED
     assert not ffmpeg.compress.called

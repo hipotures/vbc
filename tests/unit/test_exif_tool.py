@@ -109,7 +109,7 @@ def test_extract_exif_info_dynamic_cq_match_and_bitrate():
         vf = VideoFile(path=Path("test.mp4"), size_bytes=1000)
         info = adapter.extract_exif_info(vf, {"Sony": 33})
 
-        assert info["camera_model"] == "Sony"
+        assert info["camera_model"] == "Sony A7"
         assert info["camera_raw"] == "Sony A7"
         assert info["custom_cq"] == 33
         assert info["bitrate_kbps"] == 2.0

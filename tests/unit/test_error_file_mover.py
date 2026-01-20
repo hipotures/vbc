@@ -25,7 +25,7 @@ def test_move_failed_files_moves_source_and_err(tmp_path):
         logger=None,
     )
 
-    assert moved == 1
+    assert len(moved) == 1
     assert not source.exists()
     assert not err_file.exists()
     assert (errors_dir / "sub" / "clip.mov").exists()
@@ -56,7 +56,7 @@ def test_move_failed_files_moves_multiple_sources(tmp_path):
         logger=None,
     )
 
-    assert moved == 1
+    assert len(moved) == 2
     assert not source_mp4.exists()
     assert not source_avi.exists()
     assert (errors_dir / "clip.mp4").exists()
@@ -105,7 +105,7 @@ def test_move_failed_files_handles_dotted_names(tmp_path):
         logger=None,
     )
 
-    assert moved == 1
+    assert len(moved) == 1
     assert not source.exists()
     assert not err_file.exists()
     assert (errors_dir / "a.b.c.mp4").exists()
