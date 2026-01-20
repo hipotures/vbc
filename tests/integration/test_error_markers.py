@@ -20,6 +20,7 @@ def test_orchestrator_creates_err_file_on_failure(tmp_path):
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
     mock_exif = MagicMock()
+    mock_exif.extract_exif_info.return_value = {}
 
     mock_ffprobe = MagicMock()
     # Must return valid dict, not MagicMock for nested values
@@ -134,11 +135,14 @@ def test_orchestrator_retries_with_clean_errors(tmp_path):
 
     mock_ffmpeg = MagicMock()
 
+    mock_exif = MagicMock()
+    mock_exif.extract_exif_info.return_value = {}
+
     orchestrator = Orchestrator(
         config=config,
         event_bus=mock_bus,
         file_scanner=mock_scanner,
-        exif_adapter=MagicMock(),
+        exif_adapter=mock_exif,
         ffprobe_adapter=mock_ffprobe,
         ffmpeg_adapter=mock_ffmpeg
     )

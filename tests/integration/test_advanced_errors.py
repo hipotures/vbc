@@ -87,12 +87,15 @@ def test_hardware_error_creates_hw_cap_marker(tmp_path):
     mock_ffmpeg.compress.side_effect = compress_hw_cap
 
     mock_bus = MagicMock()
+    
+    mock_exif = MagicMock()
+    mock_exif.extract_exif_info.return_value = {}
 
     orchestrator = Orchestrator(
         config=config,
         event_bus=mock_bus,
         file_scanner=mock_scanner,
-        exif_adapter=MagicMock(),
+        exif_adapter=mock_exif,
         ffprobe_adapter=mock_ffprobe,
         ffmpeg_adapter=mock_ffmpeg
     )

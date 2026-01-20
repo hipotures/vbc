@@ -12,6 +12,7 @@ def test_orchestrator_sequential_flow(tmp_path):
     mock_event_bus = MagicMock()
     mock_file_scanner = MagicMock()
     mock_exif = MagicMock()
+    mock_exif.extract_exif_info.return_value = {}
     mock_ffprobe = MagicMock()
     mock_ffmpeg = MagicMock()
 

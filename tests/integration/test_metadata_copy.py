@@ -25,11 +25,11 @@ def test_metadata_copy_with_exiftool(tmp_path):
         threads=1,
         copy_metadata=True,  # Enable metadata copying
         use_exif=True,
-        debug=False
     ))
-
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_exif = MagicMock()
+    mock_exif.extract_exif_info.return_value = {}
 
     mock_ffprobe = MagicMock()
     mock_ffprobe.get_stream_info.return_value = {
@@ -58,11 +58,10 @@ def test_metadata_copy_with_exiftool(tmp_path):
             config=config,
             event_bus=MagicMock(),
             file_scanner=mock_scanner,
-            exif_adapter=MagicMock(),
+            exif_adapter=mock_exif,
             ffprobe_adapter=mock_ffprobe,
             ffmpeg_adapter=mock_ffmpeg
         )
-
         orchestrator.run(input_dir)
 
         # Verify exiftool was called for metadata copy
@@ -99,11 +98,11 @@ def test_metadata_copy_disabled(tmp_path):
         threads=1,
         copy_metadata=False,  # Disable metadata copying
         use_exif=False,
-        debug=False
     ))
-
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_exif = MagicMock()
+    mock_exif.extract_exif_info.return_value = {}
 
     mock_ffprobe = MagicMock()
     mock_ffprobe.get_stream_info.return_value = {
@@ -131,7 +130,7 @@ def test_metadata_copy_disabled(tmp_path):
             config=config,
             event_bus=MagicMock(),
             file_scanner=mock_scanner,
-            exif_adapter=MagicMock(),
+            exif_adapter=mock_exif,
             ffprobe_adapter=mock_ffprobe,
             ffmpeg_adapter=mock_ffmpeg
         )
@@ -167,11 +166,11 @@ def test_vbc_custom_tags_written(tmp_path):
         threads=1,
         copy_metadata=True,
         gpu=False,
-        debug=False
     ))
-
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_exif = MagicMock()
+    mock_exif.extract_exif_info.return_value = {}
 
     mock_ffprobe = MagicMock()
     mock_ffprobe.get_stream_info.return_value = {
@@ -199,7 +198,7 @@ def test_vbc_custom_tags_written(tmp_path):
             config=config,
             event_bus=MagicMock(),
             file_scanner=mock_scanner,
-            exif_adapter=MagicMock(),
+            exif_adapter=mock_exif,
             ffprobe_adapter=mock_ffprobe,
             ffmpeg_adapter=mock_ffmpeg
         )
@@ -246,11 +245,11 @@ def test_gps_preservation_via_metadata_copy(tmp_path):
         threads=1,
         copy_metadata=True,
         use_exif=True,
-        debug=False
     ))
-
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_exif = MagicMock()
+    mock_exif.extract_exif_info.return_value = {}
 
     mock_ffprobe = MagicMock()
     mock_ffprobe.get_stream_info.return_value = {
@@ -278,7 +277,7 @@ def test_gps_preservation_via_metadata_copy(tmp_path):
             config=config,
             event_bus=MagicMock(),
             file_scanner=mock_scanner,
-            exif_adapter=MagicMock(),
+            exif_adapter=mock_exif,
             ffprobe_adapter=mock_ffprobe,
             ffmpeg_adapter=mock_ffmpeg
         )
@@ -321,6 +320,8 @@ def test_metadata_copy_retries_on_timeout(tmp_path):
 
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_exif = MagicMock()
+    mock_exif.extract_exif_info.return_value = {}
 
     mock_ffprobe = MagicMock()
     mock_ffprobe.get_stream_info.return_value = {
@@ -345,16 +346,11 @@ def test_metadata_copy_retries_on_timeout(tmp_path):
 
     with patch("subprocess.run") as mock_run:
         # First call times out, second succeeds (2 retries in debug mode)
-        mock_run.side_effect = [
-            subprocess.TimeoutExpired("exiftool", 30),  # First attempt
-            MagicMock(returncode=0),  # Second attempt succeeds
-        ]
-
         orchestrator = Orchestrator(
             config=config,
             event_bus=MagicMock(),
             file_scanner=mock_scanner,
-            exif_adapter=MagicMock(),
+            exif_adapter=mock_exif,
             ffprobe_adapter=mock_ffprobe,
             ffmpeg_adapter=mock_ffmpeg
         )
