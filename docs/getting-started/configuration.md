@@ -452,6 +452,14 @@ Dashboard display settings.
   - `false`: Skip files with `.err` markers
   - `true`: Delete `.err` files and retry compression
 
+#### `repair_corrupted_flv`
+- **Type**: Boolean
+- **Default**: false
+- **Description**: Attempt to repair corrupted FLV files using FFmpeg
+- **Behavior**:
+  - `true`: When a file fails processing and is moved to errors folder, attempts to repair it
+  - `false`: No repair attempt
+
 ### UI/Display
 
 #### `strip_unicode_display`
