@@ -1,7 +1,7 @@
 import subprocess
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 class FFprobeAdapter:
     """Wrapper around ffprobe to extract stream information."""

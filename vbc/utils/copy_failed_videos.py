@@ -7,7 +7,6 @@ the corresponding source .mp4 files to a new directory, preserving
 the date subdirectory structure.
 """
 
-import os
 import sys
 import shutil
 from pathlib import Path
@@ -73,7 +72,7 @@ def copy_failed_videos(source_dir: str, error_dir: str, destination_dir: str):
             not_found += 1
 
     print()
-    print(f"Summary:")
+    print("Summary:")
     print(f"  Copied: {copied}")
     print(f"  Not found: {not_found}")
     print(f"  Total .err files: {len(err_files)}")

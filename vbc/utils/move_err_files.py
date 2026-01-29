@@ -75,12 +75,10 @@ def main():
         dest_mp4 = dest_dir / rel.with_suffix(".mp4")
         dest_err = dest_dir / rel
 
-        mp4_moved = False
         if src_mp4.exists():
             ok, msg = safe_move(src_mp4, dest_mp4)
             if ok:
                 moved_mp4 += 1
-                mp4_moved = True
             else:
                 skipped += 1
                 print(f"[WARN] {msg}")

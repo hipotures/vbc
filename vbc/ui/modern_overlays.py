@@ -15,20 +15,17 @@ Wszystkie panele zachowują 100% obecnej funkcjonalności, ale prezentują
 ją w bardziej przejrzysty i nowoczesny sposób.
 """
 
-import re
 from typing import List, Optional, Tuple
 from rich.console import Console, Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from rich.align import Align
 from rich.rule import Rule
-from rich.box import ROUNDED, SIMPLE, MINIMAL, HEAVY_HEAD
+from rich.box import ROUNDED
 from vbc.config.input_dirs import render_status_icon
 from vbc.ui.gpu_sparkline import (
     DEFAULT_GPU_SPARKLINE_PALETTE,
     DEFAULT_GPU_SPARKLINE_PRESET,
-    PALETTE_GLYPH,
     build_cycle_text,
     build_palette_swatches,
     build_scale_entries,
@@ -621,10 +618,6 @@ class ReferenceOverlay:
         spinner_frames = "●○◉◎"
         spinner_rotating = "◐◓◑◒"
         spinner_custom = "◍◌"
-        normal_spinner = spinner_frames[self.spinner_frame % len(spinner_frames)]
-        rotating_spinner = spinner_rotating[self.spinner_frame % len(spinner_rotating)]
-        custom_spinner = spinner_custom[self.spinner_frame % len(spinner_custom)]
-
         spinners_table = Table(show_header=False, box=None, padding=(0, 1))
         spinners_table.add_column(width=12)
         spinners_table.add_column()
@@ -653,12 +646,6 @@ class ReferenceOverlay:
         
         # === GPU GRAPH ===
         spark_cfg = get_gpu_sparkline_config(self.sparkline_preset)
-        palette = get_gpu_sparkline_palette(self.sparkline_palette)
-        palette_preview = build_palette_swatches(palette.colors, step=2, block=PALETTE_GLYPH)
-        if self.sparkline_mode == "palette":
-            symbols = palette_preview
-        else:
-            symbols = f"[{COLORS['accent_blue']}]{spark_cfg.style.blocks}[/]"
         cycle_text = build_cycle_text(spark_cfg.metrics) or "—"
         scale_entries = build_scale_entries(spark_cfg.metrics)
         scales_text = " • ".join(scale_entries) if scale_entries else "—"

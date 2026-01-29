@@ -7,7 +7,7 @@ represent the problem domain, independent of infrastructure and UI.
 from enum import Enum
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class JobStatus(str, Enum):

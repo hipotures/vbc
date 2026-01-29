@@ -1,6 +1,6 @@
 import random
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from vbc.config.models import GeneralConfig, QUEUE_SORT_CHOICES
 from vbc.domain.models import VideoFile

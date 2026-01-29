@@ -12,7 +12,7 @@ import threading
 import queue
 import shlex
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from vbc.domain.models import CompressionJob, JobStatus
 from vbc.config.models import AppConfig
 from vbc.infrastructure.event_bus import EventBus

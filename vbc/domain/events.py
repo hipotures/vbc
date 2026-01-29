@@ -6,13 +6,13 @@ decoupling the pipeline orchestrator from the UI layer and enabling extensibilit
 See `infrastructure/event_bus.py` for the pub/sub mechanism.
 """
 
-from typing import Optional, List, TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 from pathlib import Path
 from pydantic import BaseModel
 from .models import CompressionJob
 
 if TYPE_CHECKING:
-    from .models import VideoFile
+    pass
 
 
 class Event(BaseModel):

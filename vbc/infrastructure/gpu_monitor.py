@@ -4,7 +4,7 @@ import threading
 import time
 import logging
 import re
-from typing import Optional, Dict, Any
+from typing import Optional
 from vbc.ui.state import UIState
 
 # Number parsing regex

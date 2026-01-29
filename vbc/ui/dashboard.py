@@ -123,7 +123,6 @@ class _Overlay:
             Segment.adjust_line_length(line, self.overlay_width) for line in overlay_lines
         ]
 
-        overlay_height = len(overlay_lines)
         left = max((width - self.overlay_width) // 2, 0)
         # Align to top instead of center to prevent overflow on small terminals
         top = 1  # Small margin from top
@@ -171,7 +170,8 @@ class Dashboard:
             idx += 1
         
         if idx < 2: # B, KB -> no decimal usually, but let's stick to spec
-            if idx == 0: return f"{int(val)}B"
+            if idx == 0:
+                return f"{int(val)}B"
             return f"{val:.1f}KB"
         return f"{val:.1f}{units[idx]}"
 
@@ -507,7 +507,7 @@ class Dashboard:
                 grid = Table.grid(padding=(0, 1), expand=True)
                 grid.add_column(ratio=1)
                 grid.add_column(justify="right")
-                grid.add_row(f"{icon} {filename}", f"[red]err[/]")
+                grid.add_row(f"{icon} {filename}", "[red]err[/]")
                 return grid
 
         elif job.status == JobStatus.INTERRUPTED:
@@ -518,7 +518,7 @@ class Dashboard:
              grid = Table.grid(padding=(0, 1), expand=True)
              grid.add_column(ratio=1)
              grid.add_column(justify="right")
-             grid.add_row(f"{icon}{filename}", f"[red]INTERRUPTED[/]")
+             grid.add_row(f"{icon}{filename}", "[red]INTERRUPTED[/]")
              return grid
 
         filename_max = max(25, panel_w - 3)
@@ -652,10 +652,13 @@ class Dashboard:
 
                 def _c(val, norm, high, op_le=False):
                     if op_le: # <= norm
-                        if val <= norm: return "green"
+                        if val <= norm:
+                            return "green"
                     else: # < norm
-                        if val < norm: return "green"
-                    if val > high: return "red"
+                        if val < norm:
+                            return "green"
+                    if val > high:
+                        return "red"
                     return "yellow"
 
                 # Parse values
@@ -1197,12 +1200,6 @@ class Dashboard:
         # 4. Generate Content
         layout["top"].update(self._generate_top_bar())
 
-        # Middle components
-        def safe_update(name, content):
-            try:
-                pass 
-            except: pass
-
         # Assign directly based on tree structure we just built
         if is_2col:
              layout["left"]["progress"].update(self._generate_progress(h_progress))
@@ -1266,7 +1263,7 @@ class Dashboard:
             # Final update to show INTERRUPTED/FINISHED state
             try:
                 self._live.update(self.create_display())
-            except:
+            except Exception:
                 pass
             self._live.stop()
 

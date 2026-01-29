@@ -4,9 +4,6 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Tuple
-
-# Silence all warnings (especially from pyexiftool) to prevent UI glitches
-warnings.filterwarnings("ignore")
 from vbc.config.loader import load_config, load_demo_config
 from vbc.config.overrides import CliConfigOverrides
 from vbc.config.local_registry import LocalConfigRegistry
@@ -33,7 +30,7 @@ from vbc.pipeline.repair import process_repairs
 from vbc.ui.state import UIState
 from vbc.ui.manager import UIManager
 from vbc.ui.dashboard import Dashboard
-from vbc.ui.keyboard import KeyboardListener, ThreadControlEvent, RequestShutdown
+from vbc.ui.keyboard import KeyboardListener
 from vbc.config.input_dirs import (
     parse_cli_input_dirs,
     normalize_input_dir_entries,
@@ -51,9 +48,9 @@ from vbc.config.input_dirs import (
     can_write_output_dir_path,
 )
 from vbc.config.models import validate_queue_sort, DemoInputFolder
-from vbc.domain.events import (
-    HardwareCapabilityExceeded, JobStarted, JobCompleted, JobFailed, DiscoveryFinished
-)
+
+# Silence all warnings (especially from pyexiftool) to prevent UI glitches
+warnings.filterwarnings("ignore")
 
 app = typer.Typer(help="VBC (Video Batch Compression) - Modular Version")
 
@@ -124,25 +121,35 @@ def compress(
         )
 
         # Apply CLI overrides to global config
-        if threads: config.general.threads = threads
+        if threads:
+            config.general.threads = threads
         if quality is not None:
             config.gpu_encoder.common_args = replace_quality_value(config.gpu_encoder.common_args, quality)
             config.gpu_encoder.advanced_args = replace_quality_value(config.gpu_encoder.advanced_args, quality)
             config.cpu_encoder.common_args = replace_quality_value(config.cpu_encoder.common_args, quality)
             config.cpu_encoder.advanced_args = replace_quality_value(config.cpu_encoder.advanced_args, quality)
-        if gpu is not None: config.general.gpu = gpu
+        if gpu is not None:
+            config.general.gpu = gpu
         if validated_queue_sort is not None:
             config.general.queue_sort = validated_queue_sort
-        if queue_seed is not None: config.general.queue_seed = queue_seed
-        if log_path is not None: config.general.log_path = str(log_path)
-        if clean_errors: config.general.clean_errors = True
-        if skip_av1: config.general.skip_av1 = True
-        if min_size is not None: config.general.min_size_bytes = min_size
-        if min_ratio is not None: config.general.min_compression_ratio = min_ratio
+        if queue_seed is not None:
+            config.general.queue_seed = queue_seed
+        if log_path is not None:
+            config.general.log_path = str(log_path)
+        if clean_errors:
+            config.general.clean_errors = True
+        if skip_av1:
+            config.general.skip_av1 = True
+        if min_size is not None:
+            config.general.min_size_bytes = min_size
+        if min_ratio is not None:
+            config.general.min_compression_ratio = min_ratio
         if camera:
             config.general.filter_cameras = [c.strip() for c in camera.split(",") if c.strip()]
-        if debug: config.general.debug = True
-        if rotate_180: config.general.manual_rotation = 180
+        if debug:
+            config.general.debug = True
+        if rotate_180:
+            config.general.manual_rotation = 180
 
         demo_config = load_demo_config(demo_config_path) if demo else None
 
@@ -563,7 +570,7 @@ def compress(
             logger.warning("Camera filtering requires EXIF analysis. Enabling use_exif automatically.")
             config.general.use_exif = True
 
-        ui_manager = UIManager(bus, ui_state, demo_mode=demo)
+        UIManager(bus, ui_state, demo_mode=demo)
 
         exif = None
         if demo and demo_config:

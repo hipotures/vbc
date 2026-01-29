@@ -4,7 +4,6 @@ import termios
 import tty
 import select
 from typing import Optional
-from pydantic import BaseModel
 from vbc.infrastructure.event_bus import EventBus
 from vbc.domain.events import Event
 

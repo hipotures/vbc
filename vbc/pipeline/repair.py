@@ -1,5 +1,4 @@
 import logging
-import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
@@ -40,7 +39,7 @@ def process_repairs(
         transient=True,
         console=console
     ) as scan_progress:
-        scan_task = scan_progress.add_task("Scanning for repairable files...", total=None)
+        scan_progress.add_task("Scanning for repairable files...", total=None)
         
         for input_dir in input_dirs:
             errors_dir = errors_dir_map.get(input_dir)
@@ -153,7 +152,8 @@ def process_repairs(
                 temp_mkv = candidate.with_suffix(".repaired_temp.mkv")
                 try:
                     # Inform user this might take longer
-                    if logger: logger.info(f"Attempting re-encode repair for {candidate.name}")
+                    if logger:
+                        logger.info(f"Attempting re-encode repair for {candidate.name}")
                     if repair_via_reencode(candidate, temp_mkv):
                         success = True
                         repaired_file_path = temp_mkv
@@ -173,14 +173,15 @@ def process_repairs(
                 except Exception as e:
                     if logger:
                         logger.error(f"Failed to move repaired file: {e}")
-                    if repaired_file_path.exists(): repaired_file_path.unlink()
+                    if repaired_file_path.exists():
+                        repaired_file_path.unlink()
             
             progress.advance(task)
 
     if total_repaired > 0:
         summary_msg = f"Repaired {total_repaired}/{len(candidates_to_repair)} files."
         console.print(f"[bold green]✔ {summary_msg}[/bold green]")
-        console.print(f"\n[bold white]Please re-run VBC to compress the repaired files restored to source folders.[/bold white]")
+        console.print("\n[bold white]Please re-run VBC to compress the repaired files restored to source folders.[/bold white]")
         if logger:
             logger.info(summary_msg)
     elif target_files is not None:

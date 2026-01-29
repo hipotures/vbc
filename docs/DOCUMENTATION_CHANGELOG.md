@@ -202,7 +202,7 @@ uv run pytest tests/test_docs_sync.py -q || {
 
 ## Checklist (All Complete)
 
-- [x] No sprzeczności między README, quickstart, cli, configuration, advanced
+- [x] No contradictions between README, quickstart, CLI, configuration, advanced
 - [x] All CLI flags described in docs exist in code (and vice versa)
 - [x] All config fields described in docs exist in models (and vice versa)
 - [x] Event descriptions match definitions and actual publishers/subscribers

@@ -1,5 +1,5 @@
-[DONE] Tryb demo
-[TODO] ETA: 26m 46s - jest chyba zle liczone, bo tylko na podstawie szybkosc plików juz skompresowanych a nie na podstawie tego, ile jeszcze zostało plików/rozmiar do kompresji
-[TODO] Klawisz F: dedykowane statystyki folderów in/out (liczba plików, rozmiar plików, % skompresowane, liczba nieskompresowanych z różnych powodów - suma, status RW, czy jest maska, czy są podane dedykowane foldery)
-[RESOLVED] Wysledzic, dlaczego czasmi w ACTIVE JOBS progress bar zaczyna sie od początku linii a nie od wciecia, jak wiekszosc. losowe wystapienia, nie widac wyraznego powodu /wrap linii, rozszerz termina/zwerz temina by sie zorientowac/
-[TODO] Zachować w danej sesji liste plików takich jak ten "File is corrupted (ffprobe failed to read). Skipped.", do podglady wylacznie te pliki, jako lista pozycji  / zrobic pagowanie, po 10 plików na stronę, nazwa, rozmiar, lokalizacja, błąd
+[DONE] Demo mode
+[TODO] ETA: 26m 46s - seems miscalculated, based only on speed of already compressed files, not on remaining file count/size to compress
+[TODO] F key: dedicated in/out folder stats (file count, size, % compressed, number of uncompressed for different reasons - total, RW status, whether a mask exists, whether dedicated folders are provided)
+[RESOLVED] Investigate why the ACTIVE JOBS progress bar sometimes starts at the beginning of the line instead of the indent like most. Random occurrences, no clear reason / wrap lines, widen or narrow terminal to observe/
+[TODO] Keep an in-session list of files like "File is corrupted (ffprobe failed to read). Skipped.", show only those files as list entries / add pagination, 10 files per page, name, size, location, error

@@ -1,7 +1,5 @@
 import subprocess
-import logging
 from pathlib import Path
-from typing import Optional
 
 def repair_via_reencode(input_path: Path, output_path: Path) -> bool:
     """
@@ -40,7 +38,8 @@ def repair_via_reencode(input_path: Path, output_path: Path) -> bool:
         
         # Validation
         if not output_path.exists() or output_path.stat().st_size <= 1000:
-            if output_path.exists(): output_path.unlink()
+            if output_path.exists():
+                output_path.unlink()
             return False
             
         # Quick ffprobe check
@@ -55,9 +54,11 @@ def repair_via_reencode(input_path: Path, output_path: Path) -> bool:
         if res.returncode == 0 and '"codec_type": "video"' in res.stdout:
             return True
             
-        if output_path.exists(): output_path.unlink()
+        if output_path.exists():
+            output_path.unlink()
         return False
 
     except Exception:
-        if output_path.exists(): output_path.unlink()
+        if output_path.exists():
+            output_path.unlink()
         return False

@@ -1,6 +1,5 @@
 import threading
 from datetime import datetime
-from pathlib import Path
 from collections import deque
 from typing import List, Optional, Dict, Any, ClassVar, Tuple
 from vbc.domain.models import CompressionJob

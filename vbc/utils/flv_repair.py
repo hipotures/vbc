@@ -1,7 +1,5 @@
 import subprocess
-import os
 from pathlib import Path
-from typing import Optional
 
 def repair_flv_file(input_path: Path, output_path: Path, keep_intermediate=False) -> bool:
     """

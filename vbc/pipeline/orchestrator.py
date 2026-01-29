@@ -24,7 +24,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union, TYPE_CHECKING
-from vbc.config.models import AppConfig, GeneralConfig
+from vbc.config.models import AppConfig
 
 if TYPE_CHECKING:
     from vbc.config.local_registry import LocalConfigRegistry
@@ -753,7 +753,7 @@ class Orchestrator:
                                     continue
                             else:
                                 folder_ignored_err += 1
-                        except:
+                        except (OSError, UnicodeDecodeError):
                             folder_ignored_err += 1
                         if err_path.exists():
                             continue
