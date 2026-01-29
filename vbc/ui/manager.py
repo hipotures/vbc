@@ -56,7 +56,6 @@ class UIManager:
 
     def on_discovery_started(self, event: DiscoveryStarted):
         self.state.discovery_finished = False
-        self.state.discovery_in_progress = True
 
     def on_discovery_finished(self, event: DiscoveryFinished):
         # Debug: log when discovery counters are updated
@@ -76,7 +75,6 @@ class UIManager:
         self.state.ignored_av1_count = event.ignored_av1
         self.state.source_folders_count = event.source_folders_count
         self.state.discovery_finished = True
-        self.state.discovery_in_progress = False
         self.state.discovery_finished_time = datetime.now()
         self.state.completed_count_at_last_discovery = self.state.completed_count
         self.state.failed_count_at_last_discovery = self.state.failed_count

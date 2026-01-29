@@ -869,15 +869,7 @@ class Dashboard:
     def _generate_queue_panel(self, h_lines: int) -> Panel:
         with self.state._lock:
             files = list(self.state.pending_files)
-            scanning = self.state.discovery_in_progress
             levels = [("A", 1)]
-            if not files and scanning and h_lines > 0:
-                table = Table(show_header=False, box=None, padding=(0, 0), expand=True)
-                table.add_column("Content", ratio=1)
-                blink_on = (self._spinner_frame % 2) == 0
-                style = "yellow" if blink_on else "dim yellow"
-                table.add_row(Text("Scanning...", style=style))
-                return Panel(table, title="QUEUE", border_style="cyan")
             table = self._render_list(files, h_lines, levels, self._render_queue_item)
             return Panel(table, title="QUEUE", border_style="cyan")
             
