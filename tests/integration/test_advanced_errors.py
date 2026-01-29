@@ -25,10 +25,12 @@ def test_corrupted_file_creates_err_marker(tmp_path):
 
     vf = VideoFile(path=corrupt_file, size_bytes=corrupt_file.stat().st_size)
 
-    config = AppConfig(general=GeneralConfig(threads=1, debug=False))
+    config = AppConfig(general=GeneralConfig(threads=1, debug=False, min_size_bytes=0))
 
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
 
     mock_ffprobe = MagicMock()
     # Simulate ffprobe failure (raises exception)
@@ -62,10 +64,12 @@ def test_hardware_error_creates_hw_cap_marker(tmp_path):
 
     vf = VideoFile(path=video_file, size_bytes=video_file.stat().st_size)
 
-    config = AppConfig(general=GeneralConfig(threads=1, debug=False))
+    config = AppConfig(general=GeneralConfig(threads=1, debug=False, min_size_bytes=0))
 
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
 
     mock_ffprobe = MagicMock()
     mock_ffprobe.get_stream_info.return_value = {
@@ -170,10 +174,12 @@ def test_missing_file_during_processing(tmp_path):
 
     vf = VideoFile(path=disappearing_file, size_bytes=disappearing_file.stat().st_size)
 
-    config = AppConfig(general=GeneralConfig(threads=1, debug=False))
+    config = AppConfig(general=GeneralConfig(threads=1, debug=False, min_size_bytes=0))
 
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
 
     mock_ffprobe = MagicMock()
 
@@ -213,10 +219,12 @@ def test_exiftool_timeout_handling(tmp_path):
 
     vf = VideoFile(path=video_file, size_bytes=video_file.stat().st_size)
 
-    config = AppConfig(general=GeneralConfig(threads=1, copy_metadata=True, debug=True))
+    config = AppConfig(general=GeneralConfig(threads=1, copy_metadata=True, debug=True, min_size_bytes=0))
 
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
 
     mock_ffprobe = MagicMock()
     mock_ffprobe.get_stream_info.return_value = {
@@ -277,10 +285,12 @@ def test_output_directory_permission_error(tmp_path):
 
     vf = VideoFile(path=video_file, size_bytes=video_file.stat().st_size)
 
-    config = AppConfig(general=GeneralConfig(threads=1, debug=False))
+    config = AppConfig(general=GeneralConfig(threads=1, debug=False, min_size_bytes=0))
 
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
 
     mock_ffprobe = MagicMock()
     mock_ffprobe.get_stream_info.return_value = {

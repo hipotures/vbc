@@ -326,75 +326,12 @@ def compress(
                 status_entries.append((status, entry))
             return status_entries
 
-        def scan_input_dir_stats(
+        def build_initial_input_dir_stats(
             status_entries: List[Tuple[str, str]],
-            output_dir_map: dict,
-            suffix_output_dirs: Optional[str],
-            extensions: List[str],
-            min_size_bytes: int,
-            clean_errors: bool,
-            cpu_fallback: bool,
-            output_suffix: str,
         ) -> List[Tuple[str, str, Optional[int], Optional[int]]]:
             stats: List[Tuple[str, str, Optional[int], Optional[int]]] = []
-            scanner = FileScanner(extensions=extensions, min_size_bytes=min_size_bytes)
-
             for status, entry in status_entries:
-                if status != STATUS_OK:
-                    stats.append((status, entry, None, None))
-                    continue
-                input_dir = Path(entry)
-                output_dir = output_dir_map.get(input_dir)
-                if output_dir is None and suffix_output_dirs:
-                    output_dir = input_dir.with_name(f"{input_dir.name}{suffix_output_dirs}")
-                if output_dir is None:
-                    stats.append((STATUS_NO_ACCESS, entry, None, None))
-                    continue
-
-                count = 0
-                size_bytes = 0
-                for vf in scanner.scan(input_dir):
-                    try:
-                        rel_path = vf.path.relative_to(input_dir)
-                    except ValueError:
-                        rel_path = Path(vf.path.name)
-                    output_path = output_dir / rel_path.with_suffix(output_suffix)
-                    err_path = output_path.with_suffix(".err")
-
-                    if err_path.exists():
-                        if clean_errors:
-                            try:
-                                err_path.unlink()
-                            except OSError:
-                                continue
-                        else:
-                            try:
-                                err_content = err_path.read_text()
-                                if "Hardware is lacking required capabilities" in err_content:
-                                    if cpu_fallback:
-                                        try:
-                                            err_path.unlink()
-                                        except OSError:
-                                            continue
-                                    else:
-                                        continue
-                                else:
-                                    continue
-                            except OSError:
-                                continue
-                            if err_path.exists():
-                                continue
-
-                    try:
-                        if output_path.exists() and output_path.stat().st_mtime >= vf.path.stat().st_mtime:
-                            continue
-                    except OSError:
-                        continue
-
-                    count += 1
-                    size_bytes += vf.size_bytes
-
-                stats.append((status, entry, count, size_bytes))
+                stats.append((status, entry, None, None))
             return stats
 
 
@@ -496,16 +433,7 @@ def compress(
         if demo and demo_config:
             input_dir_stats = demo_dir_stats
         else:
-            input_dir_stats = scan_input_dir_stats(
-                input_dir_status_entries,
-                output_dir_map,
-                suffix_output_dirs,
-                extensions,
-                config.general.min_size_bytes,
-                config.general.clean_errors,
-                config.general.cpu_fallback,
-                output_suffix,
-            )
+            input_dir_stats = build_initial_input_dir_stats(input_dir_status_entries)
         ext_list = ", ".join(extensions)
 
         if demo and demo_config:

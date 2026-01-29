@@ -14,11 +14,13 @@ def test_orchestrator_creates_err_file_on_failure(tmp_path):
 
     vf = VideoFile(path=video_file_path, size_bytes=video_file_path.stat().st_size)
 
-    config = AppConfig(general=GeneralConfig(threads=1, debug=False))
+    config = AppConfig(general=GeneralConfig(threads=1, debug=False, min_size_bytes=0))
 
     mock_bus = MagicMock()
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
     mock_exif = MagicMock()
     mock_exif.extract_exif_info.return_value = {}
 
@@ -71,11 +73,13 @@ def test_orchestrator_skips_existing_err_file(tmp_path):
 
     vf = VideoFile(path=video_file_path, size_bytes=video_file_path.stat().st_size)
 
-    config = AppConfig(general=GeneralConfig(threads=1, clean_errors=False, debug=False))
+    config = AppConfig(general=GeneralConfig(threads=1, clean_errors=False, debug=False, min_size_bytes=0))
 
     mock_bus = MagicMock()
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
 
     mock_ffprobe = MagicMock()
     mock_ffprobe.get_stream_info.return_value = {
@@ -117,11 +121,13 @@ def test_orchestrator_retries_with_clean_errors(tmp_path):
     vf = VideoFile(path=video_file_path, size_bytes=video_file_path.stat().st_size)
 
     # clean_errors=True
-    config = AppConfig(general=GeneralConfig(threads=1, clean_errors=True, debug=False))
+    config = AppConfig(general=GeneralConfig(threads=1, clean_errors=True, debug=False, min_size_bytes=0))
 
     mock_bus = MagicMock()
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
 
     mock_ffprobe = MagicMock()
     mock_ffprobe.get_stream_info.return_value = {

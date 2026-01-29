@@ -25,9 +25,12 @@ def test_metadata_copy_with_exiftool(tmp_path):
         threads=1,
         copy_metadata=True,  # Enable metadata copying
         use_exif=True,
+        min_size_bytes=0,
     ))
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
     mock_exif = MagicMock()
     mock_exif.extract_exif_info.return_value = {}
 
@@ -98,9 +101,12 @@ def test_metadata_copy_disabled(tmp_path):
         threads=1,
         copy_metadata=False,  # Disable metadata copying
         use_exif=False,
+        min_size_bytes=0,
     ))
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
     mock_exif = MagicMock()
     mock_exif.extract_exif_info.return_value = {}
 
@@ -166,9 +172,12 @@ def test_vbc_custom_tags_written(tmp_path):
         threads=1,
         copy_metadata=True,
         gpu=False,
+        min_size_bytes=0,
     ))
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
     mock_exif = MagicMock()
     mock_exif.extract_exif_info.return_value = {}
 
@@ -245,9 +254,12 @@ def test_gps_preservation_via_metadata_copy(tmp_path):
         threads=1,
         copy_metadata=True,
         use_exif=True,
+        min_size_bytes=0,
     ))
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
     mock_exif = MagicMock()
     mock_exif.extract_exif_info.return_value = {}
 
@@ -316,10 +328,13 @@ def test_metadata_copy_retries_on_timeout(tmp_path):
         threads=1,
         copy_metadata=True,
         debug=True,  # Debug mode enables retry logic
+        min_size_bytes=0,
     ))
 
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
     mock_exif = MagicMock()
     mock_exif.extract_exif_info.return_value = {}
 

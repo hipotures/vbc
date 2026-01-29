@@ -5,19 +5,21 @@ from vbc.pipeline.orchestrator import Orchestrator
 from vbc.config.models import AppConfig, GeneralConfig
 from vbc.domain.models import VideoFile, VideoMetadata, JobStatus, CompressionJob
 
-def test_skip_av1_logic():
+def test_skip_av1_logic(tmp_path):
     """Test that files already encoded in AV1 are skipped when skip_av1=True."""
-    config = AppConfig(general=GeneralConfig(threads=1, skip_av1=True, debug=False))
+    config = AppConfig(general=GeneralConfig(threads=1, skip_av1=True, debug=False, min_size_bytes=0))
 
-    # File already AV1
-    vf_av1 = VideoFile(
-        path=Path("/tmp/test_av1/already_av1.mp4"),
-        size_bytes=1000
-    )
+    input_dir = tmp_path / "test_av1"
+    input_dir.mkdir()
+    file_path = input_dir / "already_av1.mp4"
+    file_path.write_text("av1")
+    vf_av1 = VideoFile(path=file_path, size_bytes=file_path.stat().st_size)
 
     # Mock scanner to return this file
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf_av1]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
 
     mock_ffprobe = MagicMock()
     # Return AV1 codec to trigger skip
@@ -42,7 +44,7 @@ def test_skip_av1_logic():
         ffmpeg_adapter=mock_ffmpeg
     )
 
-    orchestrator.run(Path("/tmp/test_av1"))
+    orchestrator.run(input_dir)
 
     # Verify ffmpeg.compress was NOT called
     mock_ffmpeg.compress.assert_not_called()
@@ -50,7 +52,7 @@ def test_skip_av1_logic():
 def test_min_compression_ratio_revert(tmp_path):
     """Test that original file is kept if compression savings < min_compression_ratio."""
     # ratio 0.1 means we need at least 10% savings
-    config = AppConfig(general=GeneralConfig(threads=1, min_compression_ratio=0.1, debug=False))
+    config = AppConfig(general=GeneralConfig(threads=1, min_compression_ratio=0.1, debug=False, min_size_bytes=0))
 
     input_dir = tmp_path / "in"
     input_dir.mkdir()
@@ -65,6 +67,8 @@ def test_min_compression_ratio_revert(tmp_path):
 
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
+    mock_scanner.extensions = [".mp4"]
+    mock_scanner.min_size_bytes = 0
 
     mock_ffprobe = MagicMock()
     mock_ffprobe.get_stream_info.return_value = {
@@ -101,4 +105,3 @@ def test_min_compression_ratio_revert(tmp_path):
     assert output_file.exists()
     assert output_file.stat().st_size == 1000
     assert output_file.read_text() == "a" * 1000
-

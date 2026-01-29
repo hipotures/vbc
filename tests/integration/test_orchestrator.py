@@ -42,7 +42,7 @@ def test_orchestrator_sequential_flow(tmp_path):
     mock_ffmpeg.compress.side_effect = compress_side_effect
 
     # Initialize orchestrator
-    config = AppConfig(general=GeneralConfig(threads=1, debug=False))
+    config = AppConfig(general=GeneralConfig(threads=1, debug=False, min_size_bytes=0))
     orchestrator = Orchestrator(
         config=config,
         event_bus=mock_event_bus,
@@ -58,8 +58,6 @@ def test_orchestrator_sequential_flow(tmp_path):
     # Verify sequence
     # 1. Discovery
     assert mock_event_bus.publish.call_args_list[0][0][0].__class__ == DiscoveryStarted
-    mock_file_scanner.scan.assert_called_once_with(root_dir)
-
     # 2. FFprobe called for stream info
     mock_ffprobe.get_stream_info.assert_called()
 
