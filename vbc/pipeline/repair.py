@@ -15,8 +15,8 @@ def process_repairs(
 ) -> int:
     """
     Scans error directories for corrupted files and attempts to repair them.
-    Strategy 1: Text prefix removal (for FLV/MP4 stream dumps).
-    Strategy 2: Fast re-encode (for corrupted MP4/MOV containers).
+    Strategy 1: Text prefix removal (for FLV/MP4 stream dumps) as a pre-clean step.
+    Strategy 2: Fast re-encode to MKV (final output for all repairs).
     
     Args:
         input_dirs: List of source input directories.
@@ -95,14 +95,15 @@ def process_repairs(
                     rel_path = Path(candidate.name)
                 
                 dest_path = input_dir / rel_path
-                candidates_to_repair.append((candidate, dest_path, repaired_marker, error_code))
+                dest_mkv = dest_path.with_suffix(".mkv")
+                candidates_to_repair.append((candidate, dest_path, dest_mkv, repaired_marker, error_code))
     
     # Deduplicate
     seen_candidates = set()
     unique_candidates = []
-    for c, dp, rm, ec in candidates_to_repair:
+    for c, dp, dmkv, rm, ec in candidates_to_repair:
         if c not in seen_candidates:
-            unique_candidates.append((c, dp, rm, ec))
+            unique_candidates.append((c, dp, dmkv, rm, ec))
             seen_candidates.add(c)
     candidates_to_repair = unique_candidates
 
@@ -128,38 +129,44 @@ def process_repairs(
     ) as progress:
         task = progress.add_task("Repairing corrupted files", total=len(candidates_to_repair))
         
-        for candidate, dest_path, repaired_marker, error_code in candidates_to_repair:
+        for candidate, dest_path, dest_mkv, repaired_marker, error_code in candidates_to_repair:
             progress.update(task, description=f"Repairing [yellow]{candidate.name}[/yellow]")
             
             success = False
             repaired_file_path = None
+            temp_flv = None
+
+            if dest_mkv.exists():
+                if logger:
+                    logger.warning(
+                        f"Skipping repair for {candidate.name} - MKV already exists in source: {dest_mkv}"
+                    )
+                progress.advance(task)
+                continue
             
             # STRATEGY 1: FLV Prefix Cut (Fast)
             # Try this if no specific error code OR if it looks like it might be an FLV dump
+            reencode_input = candidate
             if not error_code:
                 temp_flv = candidate.with_suffix(".repaired_temp.flv")
                 try:
                     if repair_flv_file(candidate, temp_flv):
-                        success = True
-                        repaired_file_path = temp_flv
-                        dest_path = dest_path.with_suffix(".flv") # Update dest extension
+                        reencode_input = temp_flv
                 except Exception:
-                    pass
+                    temp_flv = None
 
-            # STRATEGY 2: Re-encode (Slow, Fallback)
-            # Use if Strategy 1 failed OR if we have specific corruption error code (234)
-            if not success:
-                temp_mkv = candidate.with_suffix(".repaired_temp.mkv")
-                try:
-                    # Inform user this might take longer
-                    if logger:
-                        logger.info(f"Attempting re-encode repair for {candidate.name}")
-                    if repair_via_reencode(candidate, temp_mkv):
-                        success = True
-                        repaired_file_path = temp_mkv
-                        dest_path = dest_path.with_suffix(".mkv") # Update dest extension
-                except Exception:
-                    pass
+            # STRATEGY 2: Re-encode to MKV (Final output)
+            temp_mkv = candidate.with_suffix(".repaired_temp.mkv")
+            try:
+                # Inform user this might take longer
+                if logger:
+                    logger.info(f"Attempting re-encode repair for {candidate.name}")
+                if repair_via_reencode(reencode_input, temp_mkv):
+                    success = True
+                    repaired_file_path = temp_mkv
+                    dest_path = dest_mkv
+            except Exception:
+                pass
             
             if success and repaired_file_path:
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -175,6 +182,11 @@ def process_repairs(
                         logger.error(f"Failed to move repaired file: {e}")
                     if repaired_file_path.exists():
                         repaired_file_path.unlink()
+            if temp_flv and temp_flv.exists():
+                try:
+                    temp_flv.unlink()
+                except Exception:
+                    pass
             
             progress.advance(task)
 
