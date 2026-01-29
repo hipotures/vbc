@@ -573,7 +573,22 @@ class Orchestrator:
 
         filename = source_path.name
         if self.config.general.debug:
-            timeout_s = 30
+            rate_bytes = 10 * 1024 * 1024  # 10 MiB/s
+            size_bytes = None
+            try:
+                size_bytes = output_path.stat().st_size
+            except OSError:
+                try:
+                    size_bytes = source_path.stat().st_size
+                except OSError:
+                    size_bytes = None
+            if size_bytes is None:
+                timeout_s = 30
+            else:
+                timeout_s = max(1, (size_bytes + rate_bytes - 1) // rate_bytes)
+            self.logger.info(
+                f"EXIF_COPY_TIMEOUT_SET: {filename} size_bytes={size_bytes} timeout={timeout_s}s"
+            )
             max_attempts = 2
             timed_out = False
             for attempt in range(1, max_attempts + 1):
