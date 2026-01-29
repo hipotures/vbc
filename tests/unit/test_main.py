@@ -72,11 +72,10 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
             return False
 
     class DummyHousekeeper:
-        def cleanup_temp_files(self, directory):
-            created["cleanup_temp"] = directory
-
-        def cleanup_error_markers(self, directory):
-            created["cleanup_err"] = directory
+        def cleanup_output_markers(self, input_dir, output_dir, errors_dir, clean_errors, logger=None):
+            created.setdefault("cleanup_calls", []).append(
+                (input_dir, output_dir, errors_dir, clean_errors)
+            )
 
     monkeypatch.setattr(vbc_main, "load_config", fake_load_config)
     monkeypatch.setattr(vbc_main, "setup_logging", fake_setup_logging)
@@ -132,8 +131,14 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
     assert created["log_debug"] is True
     assert created["keyboard_started"] is True
     assert created["keyboard_stopped"] is True
-    assert created["cleanup_temp"] == input_dir
-    assert created["cleanup_err"] == output_dir
+    assert created["cleanup_calls"] == [
+        (
+            input_dir,
+            output_dir,
+            input_dir.with_name(f"{input_dir.name}_err"),
+            True,
+        )
+    ]
     assert created["exif"].et.run.called
     assert created["exif"].et.terminate.called
 
@@ -193,11 +198,10 @@ def test_main_uses_config_input_dirs_when_cli_missing(tmp_path, monkeypatch):
             return False
 
     class DummyHousekeeper:
-        def cleanup_temp_files(self, _directory):
-            pass
-
-        def cleanup_error_markers(self, _directory):
-            pass
+        def cleanup_output_markers(self, input_dir, output_dir, errors_dir, clean_errors, logger=None):
+            created.setdefault("cleanup_calls", []).append(
+                (input_dir, output_dir, errors_dir, clean_errors)
+            )
 
     monkeypatch.setattr(vbc_main, "load_config", fake_load_config)
     monkeypatch.setattr(vbc_main, "setup_logging", fake_setup_logging)
@@ -216,3 +220,17 @@ def test_main_uses_config_input_dirs_when_cli_missing(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert created["run_dir"] == [input_dir_a, input_dir_b]
     assert created["log_path"] == input_dir_a.with_name(f"{input_dir_a.name}_out")
+    assert created["cleanup_calls"] == [
+        (
+            input_dir_a,
+            input_dir_a.with_name(f"{input_dir_a.name}_out"),
+            input_dir_a.with_name(f"{input_dir_a.name}_err"),
+            False,
+        ),
+        (
+            input_dir_b,
+            input_dir_b.with_name(f"{input_dir_b.name}_out"),
+            input_dir_b.with_name(f"{input_dir_b.name}_err"),
+            False,
+        ),
+    ]
