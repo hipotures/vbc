@@ -721,69 +721,77 @@ class Orchestrator:
             if self.config.general.debug:
                 self.logger.info(f"DISCOVERY_START: scanning {input_dir}")
 
-            # Count all files (including small ones) for statistics
+            # Single-pass discovery: collect stats and candidates in one walk
             folder_total_files = 0
             folder_ignored_small = 0
+            folder_already_compressed = 0
+            folder_ignored_err = 0
+            folder_files_to_process = []
+
             for root, dirs, filenames in os.walk(str(input_dir)):
                 root_path = Path(root)
                 if root_path.name.endswith("_out"):
                     dirs[:] = []
                     continue
+
+                # Deterministic traversal
+                dirs[:] = sorted(d for d in dirs if not d.endswith("_out"))
+                filenames.sort()
+
                 for fname in filenames:
                     fpath = root_path / fname
-                    if fpath.suffix.lower() in self.file_scanner.extensions:
-                        folder_total_files += 1
-                        try:
-                            if fpath.stat().st_size < self.file_scanner.min_size_bytes:
-                                folder_ignored_small += 1
-                        except OSError:
-                            pass
+                    if fpath.suffix.lower() not in self.file_scanner.extensions:
+                        continue
 
-            # Get files that pass size filter
-            files = list(self.file_scanner.scan(input_dir))
+                    folder_total_files += 1
 
-            # Count files that will be skipped during discovery
-            folder_already_compressed = 0
-            folder_ignored_err = 0
-            folder_files_to_process = []
+                    try:
+                        file_stat = fpath.stat()
+                    except OSError:
+                        continue
 
-            for vf in files:
-                try:
-                    rel_path = vf.path.relative_to(input_dir)
-                except ValueError:
-                    rel_path = Path(vf.path.name)
-                output_suffix = self._output_suffix_for_mode()
-                output_path = output_dir / rel_path.with_suffix(output_suffix)
-                err_path = output_path.with_suffix('.err')
+                    if file_stat.st_size < self.file_scanner.min_size_bytes:
+                        folder_ignored_small += 1
+                        continue
 
-                # Check for error markers FIRST (before timestamp check)
-                if err_path.exists():
-                    if self.config.general.clean_errors:
-                        err_path.unlink()  # Remove error marker
-                    else:
-                        # Distinguish hw_cap errors from regular errors
-                        try:
-                            err_content = err_path.read_text()
-                            if "Hardware is lacking required capabilities" in err_content:
-                                if self.config.general.cpu_fallback:
-                                    err_path.unlink()
+                    try:
+                        rel_path = fpath.relative_to(input_dir)
+                    except ValueError:
+                        rel_path = Path(fpath.name)
+                    output_suffix = self._output_suffix_for_mode()
+                    output_path = output_dir / rel_path.with_suffix(output_suffix)
+                    err_path = output_path.with_suffix('.err')
+
+                    # Check for error markers FIRST (before timestamp check)
+                    if err_path.exists():
+                        if self.config.general.clean_errors:
+                            err_path.unlink()  # Remove error marker
+                        else:
+                            # Distinguish hw_cap errors from regular errors
+                            try:
+                                err_content = err_path.read_text()
+                                if "Hardware is lacking required capabilities" in err_content:
+                                    if self.config.general.cpu_fallback:
+                                        err_path.unlink()
+                                    else:
+                                        # hw_cap is not counted as ignored_err
+                                        continue
                                 else:
-                                    # hw_cap is not counted as ignored_err
-                                    continue
-                            else:
+                                    folder_ignored_err += 1
+                            except (OSError, UnicodeDecodeError):
                                 folder_ignored_err += 1
-                        except (OSError, UnicodeDecodeError):
-                            folder_ignored_err += 1
-                        if err_path.exists():
-                            continue
+                            if err_path.exists():
+                                continue
 
-                # Check if already compressed
-                if output_path.exists() and output_path.stat().st_mtime >= vf.path.stat().st_mtime:
-                    folder_already_compressed += 1
-                    continue
+                    # Check if already compressed
+                    if output_path.exists() and output_path.stat().st_mtime >= file_stat.st_mtime:
+                        folder_already_compressed += 1
+                        continue
 
-                # AV1 check is done during processing, not discovery
-                folder_files_to_process.append(vf)
+                    # AV1 check is done during processing, not discovery
+                    folder_files_to_process.append(
+                        VideoFile(path=fpath, size_bytes=file_stat.st_size)
+                    )
 
             # Aggregate stats
             # files_found = only files that could be processed (exclude ignored_small, ignored_err)
