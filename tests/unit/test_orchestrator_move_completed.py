@@ -66,7 +66,7 @@ def test_move_completed_file_deletes_source_on_same_size_duplicate(tmp_path):
     video_file = _make_video(source, 256)
 
     dest = output_dir / "video.mp4"
-    dest.write_bytes(b"y" * 256)
+    dest.write_bytes(b"x" * 256)
 
     orchestrator = _make_orchestrator()
     orchestrator._folder_mapping = {input_dir: output_dir}
@@ -76,6 +76,31 @@ def test_move_completed_file_deletes_source_on_same_size_duplicate(tmp_path):
     assert dest.exists()
     assert not source.exists()
     assert dest.stat().st_size == 256
+
+
+def test_move_completed_file_renames_on_same_size_different_content(tmp_path):
+    input_dir = tmp_path / "input"
+    output_dir = tmp_path / "input_out"
+    input_dir.mkdir()
+    output_dir.mkdir()
+
+    source = input_dir / "video.mp4"
+    video_file = _make_video(source, 256)
+
+    dest = output_dir / "video.mp4"
+    dest.write_bytes(b"y" * 256)
+
+    orchestrator = _make_orchestrator()
+    orchestrator._folder_mapping = {input_dir: output_dir}
+
+    assert orchestrator._move_completed_file(video_file, output_dir) is True
+
+    dup = output_dir / "video_vbc_dup.mp4"
+    assert dest.exists()
+    assert dup.exists()
+    assert not source.exists()
+    assert dest.read_bytes() == b"y" * 256
+    assert dup.read_bytes() == b"x" * 256
 
 
 def test_move_completed_file_renames_on_size_mismatch(tmp_path):

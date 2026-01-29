@@ -15,6 +15,7 @@ Key responsibilities:
 """
 
 import re
+import hashlib
 import threading
 import concurrent.futures
 import shutil
@@ -813,6 +814,13 @@ class Orchestrator:
         """Move already encoded file to output directory safely."""
         source_path = video_file.path
         
+        def _hash_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
+            hasher = hashlib.sha256()
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(chunk_size), b""):
+                    hasher.update(chunk)
+            return hasher.hexdigest()
+
         try:
             rel_path = video_file.path.name # Simple name for now, or relative logic
             # Try to get relative path if possible
@@ -833,10 +841,30 @@ class Orchestrator:
                 dest_size = dest_path.stat().st_size
                 
                 if src_size == dest_size:
-                    # Identical file exists in destination. Safe to delete source.
-                    self.logger.info(f"Duplicate found in output (size match). Deleting source: {source_path}")
-                    source_path.unlink()
-                    return True
+                    try:
+                        src_hash = _hash_file(source_path)
+                        dest_hash = _hash_file(dest_path)
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Failed to hash files for duplicate check ({source_path.name}): {e}"
+                        )
+                        src_hash = None
+                        dest_hash = None
+
+                    if src_hash is not None and src_hash == dest_hash:
+                        # Identical file exists in destination. Safe to delete source.
+                        self.logger.info(
+                            f"Duplicate found in output (hash match). Deleting source: {source_path}"
+                        )
+                        source_path.unlink()
+                        return True
+                    # Same size but different hash or hashing failed - treat as different file.
+                    stem = dest_path.stem
+                    suffix = dest_path.suffix
+                    dest_path = dest_path.with_name(f"{stem}_vbc_dup{suffix}")
+                    self.logger.warning(
+                        f"Destination exists with same size but different content. Renaming move to: {dest_path.name}"
+                    )
                 else:
                     # Different file exists. Rename to avoid overwrite.
                     stem = dest_path.stem
