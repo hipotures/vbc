@@ -573,20 +573,21 @@ class Orchestrator:
         ])
 
         filename = source_path.name
-        if self.config.general.debug:
-            rate_bytes = 10 * 1024 * 1024  # 10 MiB/s
-            size_bytes = None
+        rate_bytes = 10 * 1024 * 1024  # 10 MiB/s
+        size_bytes = None
+        try:
+            size_bytes = output_path.stat().st_size
+        except OSError:
             try:
-                size_bytes = output_path.stat().st_size
+                size_bytes = source_path.stat().st_size
             except OSError:
-                try:
-                    size_bytes = source_path.stat().st_size
-                except OSError:
-                    size_bytes = None
-            if size_bytes is None:
-                timeout_s = 30
-            else:
-                timeout_s = max(1, (size_bytes + rate_bytes - 1) // rate_bytes)
+                size_bytes = None
+        if size_bytes is None:
+            timeout_s = 30
+        else:
+            timeout_s = max(1, (size_bytes + rate_bytes - 1) // rate_bytes)
+
+        if self.config.general.debug:
             self.logger.info(
                 f"EXIF_COPY_TIMEOUT_SET: {filename} size_bytes={size_bytes} timeout={timeout_s}s"
             )
@@ -644,7 +645,11 @@ class Orchestrator:
                 )
         else:
             try:
-                subprocess.run(exiftool_cmd, capture_output=True, check=True)
+                subprocess.run(exiftool_cmd, capture_output=True, check=True, timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                self.logger.warning(
+                    f"ExifTool metadata copy timed out after {timeout_s}s for {filename}"
+                )
             except Exception as e:
                 self.logger.warning(f"Failed to copy deep metadata for {filename}: {e}")
 
@@ -671,7 +676,20 @@ class Orchestrator:
         exiftool_cmd.extend(self._build_vbc_tag_args(source_path, cq, encoder, original_size, finished_at))
         exiftool_cmd.append(str(output_path))
         try:
-            subprocess.run(exiftool_cmd, capture_output=True, check=True)
+            rate_bytes = 10 * 1024 * 1024  # 10 MiB/s
+            try:
+                size_bytes = output_path.stat().st_size
+            except OSError:
+                size_bytes = None
+            if size_bytes is None:
+                timeout_s = 30
+            else:
+                timeout_s = max(1, (size_bytes + rate_bytes - 1) // rate_bytes)
+            subprocess.run(exiftool_cmd, capture_output=True, check=True, timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            self.logger.warning(
+                f"ExifTool tag write timed out after {timeout_s}s for {output_path.name}"
+            )
         except Exception as e:
             self.logger.warning(f"Failed to write VBC tags for {output_path.name}: {e}")
 

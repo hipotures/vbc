@@ -7,6 +7,16 @@ class FFprobeAdapter:
     """Wrapper around ffprobe to extract stream information."""
 
     @staticmethod
+    def _estimate_timeout(file_path: Path) -> int:
+        """Estimate timeout based on file size (bytes)."""
+        rate_bytes = 10 * 1024 * 1024  # 10 MiB/s baseline
+        try:
+            size_bytes = file_path.stat().st_size
+        except OSError:
+            return 30
+        return max(1, (size_bytes + rate_bytes - 1) // rate_bytes)
+
+    @staticmethod
     def _to_float(value: Any) -> float:
         try:
             return float(value)
@@ -66,8 +76,11 @@ class FFprobeAdapter:
             "-show_format",
             str(file_path)
         ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        timeout_s = self._estimate_timeout(file_path)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"ffprobe timed out after {timeout_s}s for {file_path}") from exc
         if result.returncode != 0:
             err = (result.stderr or "").strip()
             detail = err if err else "unknown error (no stderr)"

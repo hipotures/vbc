@@ -16,6 +16,17 @@ def ffprobe():
 class TestFFprobeProcessFailures:
     """Test ffprobe subprocess failures."""
 
+    def test_get_stream_info_timeout(self, ffprobe, tmp_path):
+        """Test RuntimeError when ffprobe times out."""
+        test_file = tmp_path / "test.mp4"
+        test_file.write_text("dummy")
+
+        with patch('subprocess.run') as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd=['ffprobe'], timeout=5)
+
+            with pytest.raises(RuntimeError, match="ffprobe timed out"):
+                ffprobe.get_stream_info(test_file)
+
     def test_get_stream_info_file_not_found(self, ffprobe, tmp_path):
         """Test RuntimeError when ffprobe fails (file not found)."""
         missing_file = tmp_path / "missing.mp4"
