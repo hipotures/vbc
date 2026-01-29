@@ -583,14 +583,20 @@ def compress(
             # Housekeeping (Cleanup stale files)
             housekeeper = HousekeepingService()
             for input_dir in input_dirs:
-                housekeeper.cleanup_temp_files(input_dir)
-                if config.general.clean_errors:
-                    # Also cleanup in output dir if it exists
-                    output_dir = output_dir_map.get(input_dir)
-                    if output_dir is None:
-                        output_dir = input_dir.with_name(f"{input_dir.name}_out")
-                    if output_dir.exists():
-                        housekeeper.cleanup_error_markers(output_dir)
+                output_dir = output_dir_map.get(input_dir)
+                if output_dir is None and config.suffix_output_dirs:
+                    output_dir = input_dir.with_name(f"{input_dir.name}{config.suffix_output_dirs}")
+                errors_dir = errors_dir_map.get(input_dir)
+                if errors_dir is None and config.suffix_errors_dirs:
+                    errors_dir = input_dir.with_name(f"{input_dir.name}{config.suffix_errors_dirs}")
+                if output_dir and errors_dir:
+                    housekeeper.cleanup_output_markers(
+                        input_dir=input_dir,
+                        output_dir=output_dir,
+                        errors_dir=errors_dir,
+                        clean_errors=config.general.clean_errors,
+                        logger=logger,
+                    )
 
             # Components
             scanner = FileScanner(
