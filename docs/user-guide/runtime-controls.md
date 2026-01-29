@@ -10,8 +10,17 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: 16) |
 | `S` or `s` | Graceful shutdown / Cancel | Stop accepting new jobs, finish active compressions. Press again to cancel shutdown |
 | `R` or `r` | Refresh queue | Re-scan input directory and add new files |
-| `C` or `c` | Toggle config | Show/hide configuration overlay |
-| `Esc` | Hide config | Close configuration overlay |
+| `C` or `c` | Overlay: Settings | Toggle settings tab |
+| `F` or `f` | Overlay: I/O | Toggle I/O tab |
+| `L` or `l` | Overlay: Reference | Toggle reference tab |
+| `M` or `m` | Overlay: Shortcuts | Toggle shortcuts tab |
+| `T` or `t` | Overlay: TUI | Toggle TUI tab |
+| `Tab` | Cycle overlay tabs | Next tab |
+| `D` or `d` | Dim overlay | Cycle overlay dim level |
+| `G` or `g` | Rotate GPU metric | Cycle GPU sparkline metric |
+| `W` or `w` | Sparkline preset | Cycle preset |
+| `P` or `p` | Sparkline palette | Cycle palette |
+| `Esc` | Close overlay | Close configuration overlay |
 | `Ctrl+C` | Immediate interrupt | Terminate active compressions immediately |
 
 ## Thread Adjustment

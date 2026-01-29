@@ -7,16 +7,15 @@ VBC uses `pytest` for testing. This guide covers writing and running tests.
 ```
 tests/
 ├── unit/               # Unit tests (fast, isolated)
-│   ├── test_config.py
-│   ├── test_models.py
-│   ├── test_events.py
-│   └── test_adapters.py
-├── integration/        # Integration tests (slower, real dependencies)
-│   ├── test_pipeline.py
-│   └── test_orchestrator.py
-└── fixtures/           # Test data
-    ├── sample.mp4
-    └── corrupted.mp4
+│   ├── test_config_models.py
+│   ├── test_domain_models.py
+│   ├── test_event_bus.py
+│   ├── test_main.py
+│   └── ...
+└── integration/        # Integration tests (slower, real dependencies)
+    ├── test_orchestrator.py
+    ├── test_real_files_compression.py
+    └── ...
 ```
 
 ## Running Tests
@@ -48,12 +47,6 @@ uv run pytest --cov=vbc
 # HTML report
 uv run pytest --cov=vbc --cov-report=html
 # Open htmlcov/index.html
-```
-
-### Watch Mode
-
-```bash
-uv run pytest-watch
 ```
 
 ### Verbose Mode

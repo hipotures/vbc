@@ -192,6 +192,7 @@ autorotate:
 - **Type**: String or null
 - **Default**: `/tmp/vbc/compression.log`
 - **Description**: Path to log file (overrides the output directory default)
+- **Note**: If set to `null`, logs are written to `<output_dir>/compression.log`.
 
 #### `cpu_fallback`
 - **Type**: Boolean
@@ -231,7 +232,7 @@ Advanced settings for GPU monitoring sparklines.
 - **Type**: Boolean
 - **Default**: `true`
 - **Description**: Enable GPU monitoring and dashboard sparklines.
-- **Note**: Requires NVIDIA GPU and `nvidia-smi`.
+- **Note**: Requires NVIDIA GPU and `nvtop` (VBC calls `nvtop -s`). `nvidia-smi` is only for driver checks.
 
 #### `sample_interval_s`
 - **Type**: Float
@@ -522,6 +523,20 @@ uv run vbc /videos \
   --rotate-180 \
   --debug
 ```
+
+## Local Overrides (`VBC.YAML`)
+
+VBC scans input directories for `VBC.YAML` and applies the **nearest ancestor** file per job.
+
+**Priority:** Global config → Local `VBC.YAML` → CLI.
+
+**Allowed root keys:** `general`, `gpu_encoder`, `cpu_encoder`, `autorotate`, `cq`.
+
+**Allowed `general` keys:** `gpu`, `cpu_fallback`, `ffmpeg_cpu_threads`, `copy_metadata`,
+`use_exif`, `filter_cameras`, `dynamic_cq`, `extensions`, `min_size_bytes`, `clean_errors`,
+`skip_av1`, `manual_rotation`, `min_compression_ratio`, `debug`.
+
+**Special key:** `cq` (int 0–63) overrides quality for both GPU and CPU encoder args.
 
 ## Environment-Specific Configs
 

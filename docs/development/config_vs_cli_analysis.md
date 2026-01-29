@@ -13,11 +13,11 @@ These settings can **only** be modified via the YAML file.
 | `ffmpeg_cpu_threads` | null | Per-worker CPU limit for FFmpeg. |
 | `copy_metadata` | True | Boolean flag to toggle metadata copying. |
 | `use_exif` | True | Boolean flag to toggle ExifTool analysis. |
-| `filter_cameras` | [] | List of camera models to process (CLI arg exists in docs but **missing in code**). |
+| `filter_cameras` | [] | List of camera models to process (also available via `--camera`). |
 | `dynamic_cq` | {} | Mapping of camera models to specific CQ values. |
 | `extensions` | [...] | List of allowed input file extensions. |
 | `strip_unicode_display`| True | Clean UI filenames from special characters. |
-| `min_compression_ratio`| 0.1 | Minimum required savings (CLI arg exists in docs but **missing in code**). |
+| `min_compression_ratio`| 0.1 | Minimum required savings (also available via `--min-ratio`). |
 | `gpu_config.*` | - | All advanced GPU monitoring settings (interval, window, device). |
 | `ui.*` | - | All UI scaling and feed settings. |
 | `autorotate.patterns` | {} | Regex-to-angle rotation mapping. |

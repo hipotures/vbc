@@ -62,7 +62,7 @@ Modern video libraries grow fast. Raw 4K footage from cameras and drones consume
 - ✅ **Submit-on-Demand**: Memory-efficient queue (doesn't load 10K futures upfront)
 - ✅ **Metadata Caching**: Thread-safe cache avoids redundant ExifTool calls
 - ✅ **Hardware Detection**: Automatic GPU capability error detection with optional CPU fallback
-- ✅ **Graceful Shutdown**: Finish active jobs cleanly (Ctrl+S) or immediate interrupt (Ctrl+C)
+- ✅ **Graceful Shutdown**: Finish active jobs cleanly (`S`) or immediate interrupt (`Ctrl+C`)
 
 ### Intelligence & Automation
 - ✅ **Auto-Rotation**: Regex-based filename pattern matching (GoPro, DJI, iPhone patterns)
@@ -202,8 +202,8 @@ graph TB
 
 **Event-Driven Architecture**
 - EventBus decouples Pipeline from UI
-- 16 event types (JobStarted, JobCompleted, DiscoveryFinished, etc.)
-- Pydantic events ensure type safety and immutability
+- Event types defined in `vbc/domain/events.py` plus UI control events in `vbc/ui/keyboard.py`
+- Pydantic events ensure type safety
 - Extensible: add new subscribers without modifying publishers
 
 ---
@@ -274,7 +274,7 @@ exiftool -XMP-vbc:all /path/to/videos_out/compressed_video.mp4
 | **Python** | 3.12+ | Runtime |
 | **FFmpeg** | 6.0+ | Video encoding (with `av1_nvenc` or `libsvtav1`) |
 | **ExifTool** | Any recent | Metadata extraction (optional but recommended) |
-| **nvidia-smi** | - | GPU monitoring (NVIDIA GPUs only) |
+| **nvtop** | - | GPU monitoring panel (NVIDIA GPUs only) |
 | **OS** | Linux, macOS, Windows (WSL) | Platform support |
 
 ### Step 1: Install System Dependencies
@@ -324,6 +324,9 @@ For NVIDIA GPU acceleration:
 ```bash
 # Verify NVIDIA driver
 nvidia-smi
+
+# Verify GPU monitoring tool (for sparklines)
+nvtop -s
 
 # Verify NVENC support in FFmpeg
 ffmpeg -codecs | grep nvenc
@@ -642,7 +645,7 @@ uv run vbc /path/to/videos --debug --threads 2
 | `--threads`, `-t` | Integer | From config (1) | Max concurrent threads |
 | `--quality` | Integer | From encoder args (`-cq`/`-crf`) | Quality override (0-63, lower=better) |
 | `--gpu` / `--cpu` | Boolean | `--gpu` | Use GPU (NVENC) or CPU (SVT-AV1) |
-| `--queue-sort` | String | `name` | Queue order (`name`, `rand`, `dir`, `size`, `ext`) |
+| `--queue-sort` | String | `name` | Queue order (`name`, `rand`, `dir`, `size`, `size-asc`, `size-desc`, `ext`) |
 | `--queue-seed` | Integer | None | Seed for deterministic random order |
 | `--skip-av1` | Boolean | False | Skip AV1-encoded files |
 | `--camera` | String | All | Filter by camera model (comma-separated) |
@@ -911,11 +914,17 @@ uv run vbc --demo --demo-config conf/demo.yaml
 
 **Demo configuration** (`conf/demo.yaml`):
 ```yaml
-# Simulate file counts, sizes, processing speed
-num_files: 50
-size_distribution: "realistic"  # uniform, realistic, large
-processing_speed: "normal"      # fast, normal, slow
-error_rate: 0.05                # 5% simulated failures
+# Minimal override example (full schema: conf/demo.yaml)
+seed: 1337
+files:
+  count: 50
+sizes:
+  distribution: triangular
+  min_mb: 20
+  mode_mb: 180
+  max_mb: 1800
+errors:
+  total: 3
 ```
 
 **UI shows**: `VBC - demo` title and synthetic filenames. Full event flow matches real runs.
@@ -1141,7 +1150,7 @@ Full contributing guide: [docs/development/contributing.md](docs/development/con
 
 ## License
 
-TODO: Add license information
+MIT License (see LICENSE)
 
 ---
 
@@ -1163,7 +1172,7 @@ VBC is built with excellent open-source tools:
 - **Documentation**: [docs/](docs/)
 - **Issue Tracker**: https://github.com/your-org/vbc/issues
 - **Discussions**: https://github.com/your-org/vbc/discussions
-- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
+- **Documentation Changelog**: [docs/DOCUMENTATION_CHANGELOG.md](docs/DOCUMENTATION_CHANGELOG.md)
 
 ---
 

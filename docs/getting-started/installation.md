@@ -9,6 +9,7 @@
   - For GPU: FFmpeg compiled with `--enable-nvenc`
   - For CPU: FFmpeg with `libsvtav1` support
 - **ExifTool**: Perl-based metadata tool (optional but recommended)
+- **nvtop**: GPU monitoring tool for sparklines (optional; NVIDIA GPUs only)
 - **Operating System**: Linux, macOS, or Windows with WSL
 
 ### Check Existing Tools
@@ -23,6 +24,9 @@ ffmpeg -codecs | grep av1  # Should show av1_nvenc and/or libsvtav1
 
 # Check ExifTool (optional)
 exiftool -ver
+
+# Check GPU monitoring tool (optional)
+nvtop -s
 ```
 
 ## Installation Methods
@@ -139,13 +143,18 @@ For GPU-accelerated compression with NVENC:
    nvidia-smi  # Check driver version
    ```
 
-2. **Verify NVENC support**:
+2. **Install nvtop (optional, for GPU sparklines)**:
+   - Debian/Ubuntu: `sudo apt install nvtop`
+   - Arch: `sudo pacman -S nvtop`
+   - macOS (Homebrew): `brew install nvtop`
+
+3. **Verify NVENC support**:
    ```bash
    ffmpeg -codecs | grep nvenc
    # Should show: av1_nvenc, hevc_nvenc, h264_nvenc
    ```
 
-3. **Test GPU encoding**:
+4. **Test GPU encoding**:
    ```bash
    uv run vbc /path/to/video --gpu --threads 2
    ```

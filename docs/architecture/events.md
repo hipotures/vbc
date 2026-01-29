@@ -470,7 +470,7 @@ def publish(self, event: Event):
 ## Best Practices
 
 1. **One event per action**: Don't combine unrelated state changes
-2. **Immutable events**: Pydantic models are frozen by default
+2. **Immutable events**: Treat events as immutable; don't mutate them after publish
 3. **Descriptive names**: `JobCompleted` > `Event1`
 4. **Minimal data**: Only include necessary fields
 5. **Document purpose**: Add docstrings to event classes

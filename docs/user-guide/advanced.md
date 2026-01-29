@@ -50,7 +50,8 @@ uv run vbc /videos --quality 40
 uv run vbc /videos --config conf/vbc.yaml
 ```
 
-**Note:** `--quality` flag disables dynamic CQ entirely.
+**Note:** `--quality` overrides the base CQ/CRF value but does **not** disable `dynamic_cq`.
+To disable dynamic CQ, set `general.dynamic_cq: {}` or `general.use_exif: false`.
 
 ### Debugging
 
@@ -221,8 +222,8 @@ VBC automatically detects files it has already encoded to prevent accidental re-
 ### How It Works
 
 1. **Tag Detection**: Checks for `VBCEncoder` or `VBC Encoder` tags in metadata (via FFprobe or ExifTool).
-2. **Auto-Skip**: If found, the file is skipped with status `SKIPPED`.
-3. **Warning**: At the end of processing, a yellow warning is displayed if any files were skipped for this reason.
+2. **Auto-Move**: If found, the file is moved to the output directory and published as `JobCompleted`.
+3. **Warning**: At the end of processing, a yellow warning is displayed if any files were moved for this reason.
 
 **Note:** This feature is always active and cannot be disabled.
 

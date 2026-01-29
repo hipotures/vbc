@@ -24,7 +24,7 @@ VBC will:
 
 1. Scan `~/Videos/raw/` for video files
 2. Create output directory `~/Videos/raw_out/`
-3. Start compressing with default settings (CQ=45, 4 threads)
+3. Start compressing with default settings (quality from encoder args, 1 thread)
 4. Show real-time progress in interactive dashboard
 
 ### Step 3: Monitor Progress
@@ -122,11 +122,6 @@ general:
   use_exif: true
   extensions: [".mp4", ".mov", ".avi", ".flv"]
   min_size_bytes: 1048576  # 1 MiB
-
-gpu_encoder:
-  common_args:
-    - "-cq 42"
-
   # Camera-specific quality
   dynamic_cq:
     "ILCE-7RM5": 38      # Sony A7R V
@@ -135,6 +130,10 @@ gpu_encoder:
 
   # Camera filtering (empty = all cameras)
   filter_cameras: []
+
+gpu_encoder:
+  common_args:
+    - "-cq 42"
 
 autorotate:
   patterns:

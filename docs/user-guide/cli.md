@@ -276,7 +276,7 @@ uv run vbc --demo --demo-config conf/demo.yaml
 ### Basic Compression
 
 ```bash
-# Default settings (4 threads, CQ=45, GPU)
+# Default settings (threads=1, quality from encoder args, GPU)
 uv run vbc /videos
 ```
 
@@ -372,9 +372,9 @@ VBC does not use environment variables. All configuration via YAML or CLI.
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success (all files processed) |
+| 0 | Success (including graceful shutdown via `S`) |
 | 1 | Error (invalid config, directory not found, fatal exception) |
-| 130 | Interrupted (Ctrl+C or graceful shutdown) |
+| 130 | Interrupted (Ctrl+C) |
 
 ## Output Files
 
@@ -408,6 +408,8 @@ Detailed log of all operations (INFO and ERROR levels). Override with `--log-pat
 ```
 
 Created for failed compressions. Contains error message.
+These markers are written under the output directory during processing and moved to
+`errors_dirs`/`suffix_errors_dirs` after the run completes (if configured).
 
 **Example:**
 ```
