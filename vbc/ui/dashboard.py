@@ -688,7 +688,10 @@ class Dashboard:
                 # Build GL2 with conditional reverse for active metric
                 # metric_idx follows the GPU sparkline metric order
                 temp_str = f"[{t_col}]{g.get('temp', '??')}[/]"
-                fan_str = f"[{f_col}]fan {g.get('fan_speed', '??')}[/]"
+                # Fan speed: show "-" if value doesn't contain a number (e.g., "CPU Fan")
+                fan_raw = g.get('fan_speed', '??')
+                fan_display = fan_raw if re.search(r'\d', str(fan_raw)) else '-'
+                fan_str = f"[{f_col}]fan {fan_display}[/]"
                 pwr_str = f"[{p_col}]pwr {g.get('power_draw', '??')}[/]"
                 gpu_str = f"[{gu_col}]gpu {g.get('gpu_util', '??')}[/]"
                 mem_str = f"[{mu_col}]mem {g.get('mem_util', '??')}[/]"

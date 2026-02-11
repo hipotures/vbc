@@ -33,6 +33,16 @@ def parse_watts(s: str) -> Optional[float]:
     """'112W' → 112.0"""
     return parse_number(s)
 
+def parse_fan_speed(s: str) -> Optional[float]:
+    """'35%' → 35.0, 'CPU Fan' → None, 'N/A' → None"""
+    result = parse_number(s)
+    # If we got a valid number, return it
+    if result is not None:
+        return result
+    # If it's a non-empty string without a number, still return None
+    # (the UI will handle displaying "-" for None values)
+    return None
+
 class GpuMonitor:
     """Monitors GPU metrics using nvtop -s in a background thread."""
     
@@ -84,7 +94,7 @@ class GpuMonitor:
                                 self.state.gpu_history_pwr.append(parse_watts(gpu.get("power_draw")))
                                 self.state.gpu_history_gpu.append(parse_percent(gpu.get("gpu_util")))
                                 self.state.gpu_history_mem.append(parse_percent(gpu.get("mem_util")))
-                                self.state.gpu_history_fan.append(parse_percent(gpu.get("fan_speed")))
+                                self.state.gpu_history_fan.append(parse_fan_speed(gpu.get("fan_speed")))
             except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError) as e:
                 # Log once if nvtop disappears during runtime (edge case)
                 if isinstance(e, FileNotFoundError) and not hasattr(self, '_logged_not_found'):
