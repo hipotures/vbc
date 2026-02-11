@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import threading
@@ -45,9 +46,10 @@ def parse_fan_speed(s: str) -> Optional[float]:
 
 class GpuMonitor:
     """Monitors GPU metrics using nvtop -s in a background thread."""
-    
+
     def __init__(self, state: UIState, refresh_rate: int = 5,
-                 device_index: int = 0, device_name: Optional[str] = None):
+                 device_index: int = 0, device_name: Optional[str] = None,
+                 nvtop_path: Optional[str] = None):
         self.state = state
         self.refresh_rate = refresh_rate
         self.device_index = device_index
@@ -55,7 +57,15 @@ class GpuMonitor:
         self.logger = logging.getLogger(__name__)
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
-        self._nvtop_available = shutil.which("nvtop") is not None
+
+        # Determine nvtop binary path
+        if nvtop_path:
+            self.nvtop_cmd = nvtop_path
+            self._nvtop_available = os.path.isfile(nvtop_path) and os.access(nvtop_path, os.X_OK)
+        else:
+            nvtop_which = shutil.which("nvtop")
+            self.nvtop_cmd = nvtop_which or "nvtop"
+            self._nvtop_available = nvtop_which is not None
 
     def _poll(self):
         """Polls nvtop and updates state with compensated sleep."""
@@ -65,7 +75,7 @@ class GpuMonitor:
             try:
                 # nvtop -s produces a JSON list of GPUs
                 result = subprocess.run(
-                    ["nvtop", "-s"],
+                    [self.nvtop_cmd, "-s"],
                     capture_output=True,
                     text=True,
                     check=True

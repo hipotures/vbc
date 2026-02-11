@@ -147,6 +147,7 @@ class GpuConfig(BaseModel):
         history_window_s: Total time window shown in sparklines (min 10s, default 5min).
         nvtop_device_index: GPU index to monitor (default 0 for primary GPU).
         nvtop_device_name: Override device selection by name instead of index.
+        nvtop_path: Custom path to nvtop binary (e.g., /usr/local/bin/nvtop). Auto-detected if not set.
     """
 
     enabled: bool = True
@@ -155,6 +156,7 @@ class GpuConfig(BaseModel):
     history_window_s: float = Field(default=300.0, ge=10.0)
     nvtop_device_index: int = Field(default=0, ge=0)
     nvtop_device_name: Optional[str] = None
+    nvtop_path: Optional[str] = None
 
 class GeneralConfig(BaseModel):
     """Core compression and processing configuration.

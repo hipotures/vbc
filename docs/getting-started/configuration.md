@@ -255,6 +255,12 @@ Advanced settings for GPU monitoring sparklines.
 - **Description**: Override device selection by name instead of index (e.g., "NVIDIA GeForce RTX 4090").
 - **Note**: When set, takes precedence over `nvtop_device_index`.
 
+#### `nvtop_path`
+- **Type**: String or null
+- **Default**: `null`
+- **Description**: Custom path to nvtop binary (e.g., "/usr/local/bin/nvtop"). Auto-detected if not set.
+- **Note**: Useful when multiple nvtop versions are installed or nvtop is in a non-standard location.
+
 #### `refresh_rate`
 - **Type**: Integer
 - **Default**: `5`

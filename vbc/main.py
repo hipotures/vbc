@@ -589,7 +589,8 @@ def compress(
                 ui_state,
                 refresh_rate=int(gpu_cfg.sample_interval_s),
                 device_index=gpu_cfg.nvtop_device_index,
-                device_name=gpu_cfg.nvtop_device_name
+                device_name=gpu_cfg.nvtop_device_name,
+                nvtop_path=gpu_cfg.nvtop_path
             )
             gpu_monitor.start()
 

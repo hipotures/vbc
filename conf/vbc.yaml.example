@@ -125,6 +125,10 @@ gpu_config:
   # Optional: specific device name to monitor (overrides index).
   nvtop_device_name: null
 
+  # Optional: custom path to nvtop binary (auto-detected if not set).
+  # Useful when multiple nvtop versions installed (e.g., /usr/local/bin/nvtop).
+  nvtop_path: null
+
 # --- GPU Encoder Settings ---
 
 gpu_encoder:
