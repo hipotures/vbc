@@ -252,6 +252,6 @@ Users can trust the documentation. Maintainers have automated guardrails.
 
 **Next Steps for User**:
 1. Review changes: `git diff docs/`
-2. Test build: `./serve-docs.sh`
+2. Test build: `./scripts/serve-docs.sh`
 3. Verify tests: `uv run pytest tests/test_docs_sync.py -v`
 4. Commit with message: `docs: comprehensive audit and accuracy fixes`

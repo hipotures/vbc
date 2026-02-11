@@ -1074,7 +1074,7 @@ Build and serve docs locally:
 uv sync --extra docs
 
 # Serve documentation
-./serve-docs.sh
+./scripts/serve-docs.sh
 # Or: uv run mkdocs serve
 
 # Open browser: http://127.0.0.1:8000

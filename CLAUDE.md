@@ -23,7 +23,7 @@ uv run vbc /path/to/test/videos --threads 2 --cq 45
 ### Documentation
 ```bash
 # Build and serve documentation
-./serve-docs.sh  # Opens http://127.0.0.1:8000
+./scripts/serve-docs.sh  # Opens http://127.0.0.1:8000
 ```
 
 ### Tests
@@ -132,7 +132,7 @@ VBC has MkDocs documentation in `docs/`:
 - `architecture/` - Overview, events, pipeline flow
 - `api/` - Auto-generated from code
 
-Build docs: `./serve-docs.sh`
+Build docs: `./scripts/serve-docs.sh`
 
 For major VBC changes, update relevant docs in `docs/` alongside code.
 
