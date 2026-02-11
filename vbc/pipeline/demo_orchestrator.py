@@ -383,7 +383,8 @@ class DemoOrchestrator:
             ratio = self._rng.uniform(self.demo_config.output_ratio.min, self.demo_config.output_ratio.max)
             if plan.kept_original:
                 ratio = 1.0
-                job.error_message = f"Ratio {ratio:.2f} above threshold, kept original"
+                filename = video_file.path.name
+                job.error_message = f"Ratio {ratio:.2f} above threshold, kept original: {filename}"
 
             job.status = JobStatus.COMPLETED
             job.output_size_bytes = int(video_file.size_bytes * ratio)

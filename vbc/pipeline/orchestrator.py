@@ -1112,7 +1112,8 @@ class Orchestrator:
                     ratio = out_size / in_size
                     if ratio > (1.0 - self.config.general.min_compression_ratio):
                         shutil.copy2(video_file.path, job.output_path)
-                        job.error_message = f"Ratio {ratio:.2f} above threshold, kept original"
+                        job.error_message = f"Ratio {ratio:.2f} above threshold, kept original: {filename}"
+                        self.logger.info(f"MIN_RATIO_SKIP: {filename} ratio={ratio:.2f} threshold={self.config.general.min_compression_ratio:.2f} kept_original=True")
 
                 self.event_bus.publish(JobCompleted(job=job))
                 if self.config.general.debug and start_time:
