@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import threading
 import time
@@ -44,6 +45,7 @@ class GpuMonitor:
         self.logger = logging.getLogger(__name__)
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self._nvtop_available = shutil.which("nvtop") is not None
 
     def _poll(self):
         """Polls nvtop and updates state with compensated sleep."""
@@ -84,7 +86,12 @@ class GpuMonitor:
                                 self.state.gpu_history_mem.append(parse_percent(gpu.get("mem_util")))
                                 self.state.gpu_history_fan.append(parse_percent(gpu.get("fan_speed")))
             except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError) as e:
-                self.logger.debug(f"GPU Monitor: failed to fetch data: {e}")
+                # Log once if nvtop disappears during runtime (edge case)
+                if isinstance(e, FileNotFoundError) and not hasattr(self, '_logged_not_found'):
+                    self.logger.warning("GPU Monitor: nvtop became unavailable during runtime")
+                    self._logged_not_found = True
+                elif not isinstance(e, FileNotFoundError):
+                    self.logger.debug(f"GPU Monitor: failed to fetch data: {e}")
                 # Append None to history on error
                 with self.state._lock:
                     self.state.gpu_data = None
@@ -104,6 +111,11 @@ class GpuMonitor:
         """Starts the monitoring thread."""
         if self._thread is not None:
             return
+
+        if not self._nvtop_available:
+            self.logger.info("GPU Monitor started (nvtop not available, GPU metrics disabled)")
+            return
+
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._poll, daemon=True)
         self._thread.start()
@@ -115,4 +127,4 @@ class GpuMonitor:
         if self._thread:
             self._thread.join(timeout=1.0)
             self._thread = None
-        self.logger.info("GPU Monitor stopped")
+            self.logger.info("GPU Monitor stopped")
