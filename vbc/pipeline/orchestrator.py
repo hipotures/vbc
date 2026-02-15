@@ -398,11 +398,16 @@ class Orchestrator:
                     metadata.vbc_encoded = True
                     
                 matched_pattern = exif_info.get("matched_pattern")
-                if self.config.general.debug and matched_pattern and metadata.custom_cq is not None:
+                if self.config.general.debug and matched_pattern:
                     raw_model = metadata.camera_raw or "None"
+                    matched_rule = self.config.general.dynamic_quality.get(str(matched_pattern))
+                    has_rate_rule = bool(matched_rule and matched_rule.rate is not None)
+                    cq_value = metadata.custom_cq if metadata.custom_cq is not None else "none"
                     self.logger.debug(
-                        f"DYNAMIC_CQ_MATCH: {video_file.path.name} "
-                        f"pattern=\"{matched_pattern}\" raw=\"{raw_model}\" cq={metadata.custom_cq}"
+                        f"DYNAMIC_QUALITY_MATCH: {video_file.path.name} "
+                        f"pattern=\"{matched_pattern}\" raw=\"{raw_model}\" "
+                        f"quality_mode={self.config.general.quality_mode} cq={cq_value} "
+                        f"has_rate_rule={has_rate_rule}"
                     )
             except Exception as e:
                 if self.config.general.debug:
@@ -568,7 +573,12 @@ class Orchestrator:
             if applied_minrate_bps is not None and applied_minrate_bps > applied_target_bps:
                 applied_minrate_bps = applied_target_bps
 
-        was_capped = applied_target_bps < resolved_target_bps
+        # "capped" means the resolved target exceeded an explicit cap (config or encoder).
+        # Do not treat codec-specific rounding (e.g. SVT kbps quantization) as capping.
+        was_capped = bool(
+            effective_cap_bps is not None
+            and resolved_target_bps > effective_cap_bps
+        )
         source_bps_int = int(round(source_bps)) if source_bps is not None else None
         resolved = ResolvedRateControl(
             target_bps=applied_target_bps,

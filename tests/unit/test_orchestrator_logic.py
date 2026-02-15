@@ -148,6 +148,45 @@ def test_determine_rate_control_dynamic_override():
     assert resolved.cap_source == "encoder:libsvtav1_limit"
 
 
+def test_determine_rate_control_svt_rounding_does_not_set_capped():
+    config = AppConfig(
+        general=GeneralConfig(
+            threads=1,
+            gpu=False,
+            quality_mode="rate",
+            bps="0.2",
+            rate_target_max_bps="95M",
+        ),
+        autorotate=AutoRotateConfig(patterns={}),
+    )
+
+    orch = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+
+    vf = VideoFile(
+        path=Path("test.mp4"),
+        size_bytes=1000,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=30,
+            bitrate_kbps=290685.920,
+        ),
+    )
+
+    resolved = orch._determine_rate_control(vf)
+    assert resolved.resolved_target_bps == 58137184
+    assert resolved.target_bps == 58137000
+    assert resolved.was_capped is False
+
+
 def test_quality_label_for_rate_tags_uses_global_bps_when_no_dynamic_rate():
     config = AppConfig(
         general=GeneralConfig(
