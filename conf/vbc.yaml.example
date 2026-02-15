@@ -74,6 +74,33 @@ general:
   # Example: {"ILCE-7RM5": 38, "Sony": 40}
   dynamic_cq: {}
 
+  # Quality control mode:
+  # - "cq": uses encoder args -cq/-crf (default behavior)
+  # - "rate": uses bitrate target bps/minrate/maxrate
+  quality_mode: "cq"
+
+  # Bitrate target for quality_mode="rate".
+  # Accepted absolute formats: 200000000, 200000k, 200M, 200Mbps
+  # Accepted relative format: 0.8 (input bitrate * 0.8)
+  bps: null
+
+  # Optional VBR clamp values for quality_mode="rate".
+  # Must use the same numeric class as bps (all absolute or all relative).
+  minrate: null
+  maxrate: null
+
+  # Example rate mode (absolute):
+  # quality_mode: "rate"
+  # bps: "200Mbps"
+  # minrate: "180Mbps"
+  # maxrate: "220Mbps"
+
+  # Example rate mode (relative):
+  # quality_mode: "rate"
+  # bps: "0.8"
+  # minrate: "0.7"
+  # maxrate: "0.9"
+
   # File extensions to scan and process.
   extensions:
     - ".mp4"

@@ -106,7 +106,8 @@ class CompressionJob(BaseModel):
         duration_seconds: Wall-clock time spent in FFmpeg (excludes metadata ops).
         rotation_angle: Applied rotation in degrees (0, 90, 180, 270) or None.
         progress_percent: [0-100] progress during encoding (updated by FFmpeg adapter).
-        quality_value: CQ quality value used for this job.
+        quality_value: CQ/CRF numeric value used for this job (legacy field).
+        quality_display: Human-readable quality label (e.g., "CQ45", "200 Mbps").
         config_source: Configuration source (GLOBAL, LOCAL, or CLI).
     """
 
@@ -119,4 +120,5 @@ class CompressionJob(BaseModel):
     rotation_angle: Optional[int] = None
     progress_percent: float = 0.0
     quality_value: Optional[int] = None
+    quality_display: Optional[str] = None
     config_source: ConfigSource = ConfigSource.GLOBAL

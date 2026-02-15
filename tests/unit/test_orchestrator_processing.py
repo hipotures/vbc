@@ -455,7 +455,7 @@ def test_copy_deep_metadata_timeout_writes_err(tmp_path):
             source_path=source,
             output_path=output,
             err_path=err_path,
-            cq=45,
+            quality_label="45",
             encoder="SVT-AV1 (CPU)",
             original_size=1000,
             finished_at="2025-01-01T00:00:00",
@@ -485,7 +485,7 @@ def test_write_vbc_tags_runs_exiftool(tmp_path):
         orchestrator._write_vbc_tags(
             source_path=source,
             output_path=output,
-            cq=45,
+            quality_label="45",
             encoder="SVT-AV1 (CPU)",
             original_size=1000,
             finished_at="2025-01-01T00:00:00",

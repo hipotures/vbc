@@ -438,7 +438,12 @@ class Dashboard:
 
             # Show config source prefix (G/L/C)
             source_prefix = job.config_source.value if job.config_source else "G"
-            q_val = f"{source_prefix} • Q{job.quality_value} • " if job.quality_value is not None else f"{source_prefix} • "
+            if job.quality_display:
+                q_val = f"{source_prefix} • {job.quality_display} • "
+            elif job.quality_value is not None:
+                q_val = f"{source_prefix} • Q{job.quality_value} • "
+            else:
+                q_val = f"{source_prefix} • "
 
             s_in = self.format_size(in_s)
             s_out = self.format_size(out_s)

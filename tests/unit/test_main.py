@@ -16,6 +16,23 @@ def test_main_missing_input_dir_exits(tmp_path):
     assert "No input directories provided" in result.output
 
 
+def test_main_rejects_quality_override_in_rate_mode(monkeypatch):
+    runner = CliRunner()
+
+    def fake_load_config(_path):
+        return AppConfig(
+            general=GeneralConfig(threads=1, extensions=[".mp4"]),
+            autorotate=AutoRotateConfig(patterns={}),
+        )
+
+    monkeypatch.setattr(vbc_main, "load_config", fake_load_config)
+
+    result = runner.invoke(vbc_main.app, ["--quality-mode", "rate", "--quality", "30"])
+
+    assert result.exit_code == 1
+    assert "--quality cannot be used with quality mode 'rate'" in result.output
+
+
 def test_main_compress_applies_overrides(tmp_path, monkeypatch):
     runner = CliRunner()
     input_dir = tmp_path / "input"

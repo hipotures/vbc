@@ -101,6 +101,35 @@ def test_ffmpeg_cpu_threads_requires_positive_value():
     with pytest.raises(ValidationError):
         GeneralConfig(threads=1, extensions=[".mp4"], ffmpeg_cpu_threads=0)
 
+
+def test_rate_mode_requires_bps():
+    with pytest.raises(ValidationError):
+        GeneralConfig(threads=1, extensions=[".mp4"], quality_mode="rate")
+
+
+def test_rate_mode_rejects_mixed_classes():
+    with pytest.raises(ValidationError):
+        GeneralConfig(
+            threads=1,
+            extensions=[".mp4"],
+            quality_mode="rate",
+            bps="0.8",
+            minrate="220000000",
+        )
+
+
+def test_rate_mode_accepts_absolute_values():
+    config = GeneralConfig(
+        threads=1,
+        extensions=[".mp4"],
+        quality_mode="rate",
+        bps="200Mbps",
+        minrate="150M",
+        maxrate="220M",
+    )
+    assert config.quality_mode == "rate"
+    assert config.bps == "200Mbps"
+
 def test_load_config(tmp_path):
     d = tmp_path / "conf"
     d.mkdir()

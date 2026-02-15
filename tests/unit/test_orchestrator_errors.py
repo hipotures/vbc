@@ -121,7 +121,7 @@ class TestDeepMetadataCopyErrors:
             # Should not raise, just log error
             orchestrator._copy_deep_metadata(
                 source, dest, err_path,
-                cq=45, encoder="av1_nvenc",
+                quality_label="45", encoder="av1_nvenc",
                 original_size=1000, finished_at="2025-01-01 12:00:00"
             )
 
@@ -147,7 +147,7 @@ class TestDeepMetadataCopyErrors:
             # Should not raise, just log warning
             orchestrator._copy_deep_metadata(
                 source, dest, err_path,
-                cq=45, encoder="av1_nvenc",
+                quality_label="45", encoder="av1_nvenc",
                 original_size=1000, finished_at="2025-01-01 12:00:00"
             )
 
@@ -168,7 +168,7 @@ class TestDeepMetadataCopyErrors:
             # Should not raise
             orchestrator._copy_deep_metadata(
                 source, dest, err_path,
-                cq=45, encoder="av1_nvenc",
+                quality_label="45", encoder="av1_nvenc",
                 original_size=1000, finished_at="2025-01-01 12:00:00"
             )
 

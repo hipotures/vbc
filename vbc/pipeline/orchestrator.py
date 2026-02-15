@@ -26,6 +26,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union, TYPE_CHECKING
 from vbc.config.models import AppConfig
+from vbc.config.rate_control import (
+    ResolvedRateControl,
+    resolve_rate_control_values,
+    format_bps_human,
+)
 
 if TYPE_CHECKING:
     from vbc.config.local_registry import LocalConfigRegistry
@@ -38,6 +43,7 @@ from vbc.infrastructure.ffmpeg import (
     FFmpegAdapter,
     select_encoder_args,
     extract_quality_value,
+    extract_quality_flag,
     output_extension_for_args,
     infer_encoder_label,
 )
@@ -366,6 +372,7 @@ class Orchestrator:
             codec=str(stream_info.get("codec", "unknown") or "unknown"),
             audio_codec=stream_info.get("audio_codec"),
             fps=float(stream_info.get("fps") or 0.0),
+            bitrate_kbps=stream_info.get("bitrate_kbps"),
             megapixels=megapixels,
             color_space=stream_info.get("color_space"),
             pix_fmt=stream_info.get("pix_fmt"),
@@ -425,6 +432,25 @@ class Orchestrator:
             if key in model:
                 return cq_value
         return default_cq
+
+    def _determine_rate_control(self, file: VideoFile, config: Optional[AppConfig] = None) -> ResolvedRateControl:
+        cfg = config if config is not None else self.config
+        source_bps = None
+        if file.metadata and file.metadata.bitrate_kbps and file.metadata.bitrate_kbps > 0:
+            source_bps = file.metadata.bitrate_kbps * 1000.0
+        return resolve_rate_control_values(
+            cfg.general.bps,
+            cfg.general.minrate,
+            cfg.general.maxrate,
+            source_bps,
+        )
+
+    def _quality_display_for_cq(self, cq_value: int, use_gpu: bool, config: Optional[AppConfig] = None) -> str:
+        cfg = config if config is not None else self.config
+        encoder_args = select_encoder_args(cfg, use_gpu)
+        quality_flag = extract_quality_flag(encoder_args)
+        quality_label = "CQ" if quality_flag == "-cq" else "CRF" if quality_flag == "-crf" else "Q"
+        return f"{quality_label}{cq_value}"
 
     def _output_suffix_for_mode(self, use_gpu: Optional[bool] = None) -> str:
         """Return output file suffix (including dot) for the selected encoder."""
@@ -509,7 +535,7 @@ class Orchestrator:
     def _build_vbc_tag_args(
         self,
         source_path: Path,
-        cq: int,
+        quality_label: str,
         encoder: str,
         original_size: int,
         finished_at: str
@@ -517,7 +543,7 @@ class Orchestrator:
         return [
             f"-XMP:VBCOriginalName={source_path.name}",
             f"-XMP:VBCOriginalSize={original_size}",
-            f"-XMP:VBCQuality={cq}",
+            f"-XMP:VBCQuality={quality_label}",
             f"-XMP:VBCEncoder={encoder}",
             f"-XMP:VBCFinishedAt={finished_at}",
         ]
@@ -527,14 +553,20 @@ class Orchestrator:
         source_path: Path,
         output_path: Path,
         err_path: Path,
-        cq: int,
+        quality_label: str,
         encoder: str,
         original_size: int,
         finished_at: str
     ) -> None:
         """Copy full metadata from source to output using ExifTool (legacy behavior)."""
         config_path = Path(__file__).resolve().parents[2] / "conf" / "exiftool.conf"
-        vbc_tags = self._build_vbc_tag_args(source_path, cq, encoder, original_size, finished_at)
+        vbc_tags = self._build_vbc_tag_args(
+            source_path,
+            quality_label,
+            encoder,
+            original_size,
+            finished_at,
+        )
 
         exiftool_cmd = ["exiftool"]
         if config_path.exists():
@@ -657,7 +689,7 @@ class Orchestrator:
         self,
         source_path: Path,
         output_path: Path,
-        cq: int,
+        quality_label: str,
         encoder: str,
         original_size: int,
         finished_at: str
@@ -673,7 +705,15 @@ class Orchestrator:
             "-config", str(config_path),
             "-overwrite_original",
         ]
-        exiftool_cmd.extend(self._build_vbc_tag_args(source_path, cq, encoder, original_size, finished_at))
+        exiftool_cmd.extend(
+            self._build_vbc_tag_args(
+                source_path,
+                quality_label,
+                encoder,
+                original_size,
+                finished_at,
+            )
+        )
         exiftool_cmd.append(str(output_path))
         try:
             rate_bytes = 10 * 1024 * 1024  # 10 MiB/s
@@ -1030,17 +1070,44 @@ class Orchestrator:
                 self.cli_overrides     # CLI overrides
             )
 
-            # Use job_config for determining parameters
-            target_cq = self._determine_cq(video_file, use_gpu=use_gpu, config=job_config)
             rotation = self._determine_rotation(video_file, config=job_config)
+            quality_value: Optional[int] = None
+            quality_display = "unknown"
+            rate_control: Optional[ResolvedRateControl] = None
+
+            try:
+                if job_config.general.quality_mode == "rate":
+                    rate_control = self._determine_rate_control(video_file, config=job_config)
+                    quality_display = format_bps_human(rate_control.target_bps)
+                else:
+                    quality_value = self._determine_cq(video_file, use_gpu=use_gpu, config=job_config)
+                    quality_display = self._quality_display_for_cq(
+                        quality_value,
+                        use_gpu=use_gpu,
+                        config=job_config,
+                    )
+            except ValueError as exc:
+                err_msg = str(exc)
+                failed_job = CompressionJob(
+                    source_file=video_file,
+                    status=JobStatus.FAILED,
+                    output_path=output_path,
+                    error_message=err_msg,
+                    config_source=config_source,
+                )
+                with open(err_path, "w") as f:
+                    f.write(err_msg)
+                self.event_bus.publish(JobFailed(job=failed_job, error_message=err_msg))
+                return
+
             job = CompressionJob(
                 source_file=video_file,
                 output_path=output_path,
                 rotation_angle=rotation or 0,
-                quality_value=target_cq,
+                quality_value=quality_value,
+                quality_display=quality_display,
                 config_source=config_source
             )
-            quality_value = target_cq
 
             # 2. Compress
             self.event_bus.publish(JobStarted(job=job))
@@ -1050,6 +1117,7 @@ class Orchestrator:
                 job_config,
                 use_gpu,
                 quality=quality_value,
+                rate_control=rate_control,
                 rotate=rotation,
                 shutdown_event=self._shutdown_event,
                 input_path=input_path,
@@ -1061,7 +1129,17 @@ class Orchestrator:
             ):
                 self.logger.info(f"FFMPEG_FALLBACK: {filename} (hw_cap -> CPU)")
                 use_gpu = False
-                quality_value = self._determine_cq(video_file, use_gpu=False, config=job_config)
+                if job_config.general.quality_mode == "rate":
+                    rate_control = self._determine_rate_control(video_file, config=job_config)
+                    quality_value = None
+                    quality_display = format_bps_human(rate_control.target_bps)
+                else:
+                    quality_value = self._determine_cq(video_file, use_gpu=False, config=job_config)
+                    quality_display = self._quality_display_for_cq(
+                        quality_value,
+                        use_gpu=False,
+                        config=job_config,
+                    )
                 output_suffix = self._output_suffix_for_mode(use_gpu=False)
                 output_path_cpu = output_dir / rel_path.with_suffix(output_suffix)
                 output_path_cpu.parent.mkdir(parents=True, exist_ok=True)
@@ -1071,11 +1149,13 @@ class Orchestrator:
                 job.status = JobStatus.PROCESSING
                 job.error_message = None
                 job.quality_value = quality_value
+                job.quality_display = quality_display
                 self.ffmpeg_adapter.compress(
                     job,
                     job_config,
                     use_gpu,
                     quality=quality_value,
+                    rate_control=rate_control,
                     rotate=rotation,
                     shutdown_event=self._shutdown_event,
                     input_path=input_path,
@@ -1084,15 +1164,16 @@ class Orchestrator:
             # Check final status after compression
             if job.status == JobStatus.COMPLETED:
                 if job.output_path.exists():
-                    encoder_args = select_encoder_args(self.config, use_gpu)
+                    encoder_args = select_encoder_args(job_config, use_gpu)
                     encoder_label = infer_encoder_label(encoder_args, use_gpu)
                     finished_at = datetime.now().astimezone().isoformat(timespec="seconds")
-                    if self.config.general.copy_metadata:
+                    quality_label = job.quality_display or quality_display
+                    if job_config.general.copy_metadata:
                         self._copy_deep_metadata(
                             video_file.path,
                             job.output_path,
                             err_path,
-                            quality_value,
+                            quality_label,
                             encoder_label,
                             video_file.size_bytes,
                             finished_at
@@ -1101,7 +1182,7 @@ class Orchestrator:
                         self._write_vbc_tags(
                             video_file.path,
                             job.output_path,
-                            quality_value,
+                            quality_label,
                             encoder_label,
                             video_file.size_bytes,
                             finished_at
@@ -1110,10 +1191,13 @@ class Orchestrator:
                     out_size = job.output_path.stat().st_size
                     in_size = video_file.size_bytes
                     ratio = out_size / in_size
-                    if ratio > (1.0 - self.config.general.min_compression_ratio):
+                    if ratio > (1.0 - job_config.general.min_compression_ratio):
                         shutil.copy2(video_file.path, job.output_path)
                         job.error_message = f"Ratio {ratio:.2f} above threshold, kept original: {filename}"
-                        self.logger.info(f"MIN_RATIO_SKIP: {filename} ratio={ratio:.2f} threshold={self.config.general.min_compression_ratio:.2f} kept_original=True")
+                        self.logger.info(
+                            f"MIN_RATIO_SKIP: {filename} ratio={ratio:.2f} "
+                            f"threshold={job_config.general.min_compression_ratio:.2f} kept_original=True"
+                        )
 
                 self.event_bus.publish(JobCompleted(job=job))
                 if self.config.general.debug and start_time:

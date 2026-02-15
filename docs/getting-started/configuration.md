@@ -71,6 +71,10 @@ general:
     "ILCE-7RM5": 38            # Sony A7R V - higher quality
     "DC-GH7": 40               # Panasonic GH7
     "DJI OsmoPocket3": 45      # DJI Pocket 3 - lower quality
+  quality_mode: cq              # cq (default) or rate
+  bps: null                     # e.g. 200Mbps, 200M, 200000k, 0.8
+  minrate: null                 # optional; same class as bps
+  maxrate: null                 # optional; same class as bps
 
   min_compression_ratio: 0.1    # Minimum savings required (0.0-1.0)
                                 # If compression < 10%, keep original
@@ -442,6 +446,34 @@ Dashboard display settings.
   ```
 - **Priority**: First match wins (order matters in YAML)
 
+#### `quality_mode`
+- **Type**: String
+- **Default**: `cq`
+- **Values**: `cq`, `rate`
+- **Description**:
+  - `cq`: use encoder quality args (`-cq` on GPU, `-crf` on CPU)
+  - `rate`: use bitrate target (`bps`) with optional `minrate`/`maxrate`
+
+#### `bps`
+- **Type**: String or null
+- **Default**: `null`
+- **Description**: Target bitrate for `quality_mode=rate`.
+- **Accepted formats**:
+  - Absolute: `200000000`, `200000k`, `200M`, `200Mbps`
+  - Relative: `0.8` (input bitrate × 0.8)
+
+#### `minrate`
+- **Type**: String or null
+- **Default**: `null`
+- **Description**: Optional lower bitrate bound in `rate` mode.
+- **Rule**: Must use the same numeric class as `bps` (all absolute or all relative).
+
+#### `maxrate`
+- **Type**: String or null
+- **Default**: `null`
+- **Description**: Optional upper bitrate bound in `rate` mode.
+- **Rule**: Must use the same numeric class as `bps` and `minrate`.
+
 #### `min_compression_ratio`
 - **Type**: Float (0.0-1.0)
 - **Default**: 0.1 (10%)
@@ -539,8 +571,9 @@ VBC scans input directories for `VBC.YAML` and applies the **nearest ancestor** 
 **Allowed root keys:** `general`, `gpu_encoder`, `cpu_encoder`, `autorotate`, `cq`.
 
 **Allowed `general` keys:** `gpu`, `cpu_fallback`, `ffmpeg_cpu_threads`, `copy_metadata`,
-`use_exif`, `filter_cameras`, `dynamic_cq`, `extensions`, `min_size_bytes`, `clean_errors`,
-`skip_av1`, `manual_rotation`, `min_compression_ratio`, `debug`.
+`use_exif`, `filter_cameras`, `dynamic_cq`, `quality_mode`, `bps`, `minrate`, `maxrate`,
+`extensions`, `min_size_bytes`, `clean_errors`, `skip_av1`, `manual_rotation`,
+`min_compression_ratio`, `debug`.
 
 **Special key:** `cq` (int 0–63) overrides quality for both GPU and CPU encoder args.
 

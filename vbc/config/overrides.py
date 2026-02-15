@@ -30,6 +30,10 @@ _ALLOWED_GENERAL_KEYS = {
     "manual_rotation",
     "min_compression_ratio",
     "debug",
+    "quality_mode",
+    "bps",
+    "minrate",
+    "maxrate",
 }
 
 _logger = logging.getLogger(__name__)
@@ -39,6 +43,10 @@ _logger = logging.getLogger(__name__)
 class CliConfigOverrides:
     threads: Optional[int] = None
     quality: Optional[int] = None
+    quality_mode: Optional[str] = None
+    bps: Optional[str] = None
+    minrate: Optional[str] = None
+    maxrate: Optional[str] = None
     gpu: Optional[bool] = None
     queue_sort: Optional[str] = None
     queue_seed: Optional[int] = None
@@ -58,6 +66,10 @@ class CliConfigOverrides:
             for value in (
                 self.threads,
                 self.quality,
+                self.quality_mode,
+                self.bps,
+                self.minrate,
+                self.maxrate,
                 self.gpu,
                 self.queue_sort,
                 self.queue_seed,
@@ -71,7 +83,15 @@ class CliConfigOverrides:
     def apply(self, config: AppConfig) -> None:
         if self.threads is not None:
             config.general.threads = self.threads
-        if self.quality is not None:
+        if self.quality_mode is not None:
+            config.general.quality_mode = self.quality_mode
+        if self.bps is not None:
+            config.general.bps = self.bps
+        if self.minrate is not None:
+            config.general.minrate = self.minrate
+        if self.maxrate is not None:
+            config.general.maxrate = self.maxrate
+        if self.quality is not None and config.general.quality_mode == "cq":
             config.gpu_encoder.common_args = replace_quality_value(config.gpu_encoder.common_args, self.quality)
             config.gpu_encoder.advanced_args = replace_quality_value(config.gpu_encoder.advanced_args, self.quality)
             config.cpu_encoder.common_args = replace_quality_value(config.cpu_encoder.common_args, self.quality)

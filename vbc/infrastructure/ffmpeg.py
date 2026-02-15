@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List, Optional
 from vbc.domain.models import CompressionJob, JobStatus
 from vbc.config.models import AppConfig
+from vbc.config.rate_control import ResolvedRateControl
 from vbc.infrastructure.event_bus import EventBus
 from vbc.domain.events import JobProgressUpdated, JobFailed, HardwareCapabilityExceeded
 
@@ -83,6 +84,42 @@ def replace_quality_value(args: List[str], quality: int) -> List[str]:
             updated.append(f"-crf {quality}")
             continue
         updated.append(arg)
+    return updated
+
+
+def _remove_flags(args: List[str], flags: set[str]) -> List[str]:
+    updated: List[str] = []
+    skip_next = False
+    for idx, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+        stripped = arg.strip()
+        if stripped in flags:
+            if idx + 1 < len(args):
+                skip_next = True
+            continue
+        if any(arg.startswith(f"{flag} ") for flag in flags):
+            continue
+        updated.append(arg)
+    return updated
+
+
+def apply_rate_control_args(
+    args: List[str],
+    *,
+    use_gpu: bool,
+    rate_control: ResolvedRateControl,
+) -> List[str]:
+    updated = _remove_flags(args, {"-cq", "-crf", "-b:v", "-minrate", "-maxrate", "-bufsize"})
+    updated.append(f"-b:v {rate_control.target_bps}")
+    if rate_control.minrate_bps is not None:
+        updated.append(f"-minrate {rate_control.minrate_bps}")
+    if rate_control.maxrate_bps is not None:
+        updated.append(f"-maxrate {rate_control.maxrate_bps}")
+        updated.append(f"-bufsize {rate_control.maxrate_bps * 2}")
+    if use_gpu and _extract_flag_value(updated, "-rc") is None:
+        updated.append("-rc vbr")
     return updated
 
 
@@ -314,6 +351,7 @@ class FFmpegAdapter:
         config: AppConfig,
         use_gpu: bool,
         quality: Optional[int] = None,
+        rate_control: Optional[ResolvedRateControl] = None,
         rotate: Optional[int] = None,
         shutdown_event=None,
         input_path: Optional[Path] = None,
@@ -333,6 +371,7 @@ class FFmpegAdapter:
             config: AppConfig with encoder settings and flags.
             use_gpu: Whether the GPU encoder is active.
             quality: Optional quality override (CQ/CRF) for this job.
+            rate_control: Optional bitrate control override for rate mode.
             rotate: Optional rotation angle (degrees).
             shutdown_event: Threading.Event to signal interruption.
             input_path: Override input path (used for color fix retry).
@@ -347,7 +386,15 @@ class FFmpegAdapter:
         start_time = time.monotonic() if config.general.debug else None
 
         encoder_args = select_encoder_args(config, use_gpu)
-        if quality is not None:
+        if config.general.quality_mode == "rate":
+            if rate_control is None:
+                raise ValueError("Missing resolved rate control for quality_mode=rate.")
+            encoder_args = apply_rate_control_args(
+                encoder_args,
+                use_gpu=use_gpu,
+                rate_control=rate_control,
+            )
+        elif quality is not None:
             encoder_args = replace_quality_value(encoder_args, quality)
         if not use_gpu:
             encoder_args = apply_cpu_thread_overrides(encoder_args, config.general.ffmpeg_cpu_threads)
@@ -358,10 +405,13 @@ class FFmpegAdapter:
                 encoder_args = apply_pix_fmt_arg(encoder_args, pix_fmt)
 
         if config.general.debug:
-            quality_value = extract_quality_value(encoder_args)
-            quality_flag = extract_quality_flag(encoder_args)
-            quality_label = "CQ" if quality_flag == "-cq" else "CRF" if quality_flag == "-crf" else "Q"
-            quality_text = f"{quality_label}={quality_value}" if quality_value is not None else "quality=unknown"
+            if config.general.quality_mode == "rate":
+                quality_text = f"RATE={_extract_flag_value(encoder_args, '-b:v')}"
+            else:
+                quality_value = extract_quality_value(encoder_args)
+                quality_flag = extract_quality_flag(encoder_args)
+                quality_label = "CQ" if quality_flag == "-cq" else "CRF" if quality_flag == "-crf" else "Q"
+                quality_text = f"{quality_label}={quality_value}" if quality_value is not None else "quality=unknown"
             self.logger.info(f"FFMPEG_START: {filename} (gpu={use_gpu}, {quality_text})")
 
         if config.general.debug:
@@ -490,7 +540,15 @@ class FFmpegAdapter:
             # Re-run with color fix remux (recursive call sets final status)
             if config.general.debug:
                 self.logger.info(f"FFMPEG_COLORFIX: {filename} (applying color space fix)")
-            self._apply_color_fix(job, config, use_gpu, quality, rotate, shutdown_event=shutdown_event)
+            self._apply_color_fix(
+                job,
+                config,
+                use_gpu,
+                quality,
+                rate_control,
+                rotate,
+                shutdown_event=shutdown_event,
+            )
             # Status is now set by recursive compress() call, don't override
             if config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
@@ -520,6 +578,7 @@ class FFmpegAdapter:
         config: AppConfig,
         use_gpu: bool,
         quality: Optional[int],
+        rate_control: Optional[ResolvedRateControl],
         rotate: Optional[int],
         shutdown_event=None,
     ):
@@ -537,6 +596,8 @@ class FFmpegAdapter:
         Args:
             job: Compression job (source_file.path modified and restored).
             config: Compression configuration.
+            quality: CQ/CRF override for cq mode.
+            rate_control: Bitrate override for rate mode.
             rotate: Rotation angle.
             shutdown_event: Shutdown signal from orchestrator.
 
@@ -571,6 +632,7 @@ class FFmpegAdapter:
                     config,
                     use_gpu,
                     quality=quality,
+                    rate_control=rate_control,
                     rotate=rotate,
                     shutdown_event=shutdown_event,
                 )

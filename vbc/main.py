@@ -48,6 +48,7 @@ from vbc.config.input_dirs import (
     can_write_output_dir_path,
 )
 from vbc.config.models import validate_queue_sort, DemoInputFolder
+from vbc.config.rate_control import validate_rate_control_inputs, describe_rate_target
 
 # Silence all warnings (especially from pyexiftool) to prevent UI glitches
 warnings.filterwarnings("ignore")
@@ -64,7 +65,15 @@ def compress(
     demo: bool = typer.Option(False, "--demo", help="Run in demo mode (simulate processing, no file IO)"),
     demo_config_path: Optional[Path] = typer.Option(Path("conf/demo.yaml"), "--demo-config", help="Path to demo YAML config"),
     threads: Optional[int] = typer.Option(None, "--threads", "-t", help="Override number of threads"),
+    quality_mode: Optional[str] = typer.Option(
+        None,
+        "--quality-mode",
+        help="Quality mode: cq (default) or rate (bitrate target mode)",
+    ),
     quality: Optional[int] = typer.Option(None, "--quality", help="Override quality (GPU CQ / CPU CRF, 0-63)"),
+    bps: Optional[str] = typer.Option(None, "--bps", help="Target video bitrate (e.g. 200M, 200Mbps, 0.8)"),
+    minrate: Optional[str] = typer.Option(None, "--minrate", help="Minimum video bitrate (same class as bps)"),
+    maxrate: Optional[str] = typer.Option(None, "--maxrate", help="Maximum video bitrate (same class as bps)"),
     gpu: Optional[bool] = typer.Option(None, "--gpu/--cpu", help="Enable/disable GPU acceleration"),
     queue_sort: Optional[str] = typer.Option(
         None,
@@ -103,10 +112,50 @@ def compress(
                 typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
                 raise typer.Exit(code=1)
 
+        validated_quality_mode = None
+        if quality_mode is not None:
+            validated_quality_mode = quality_mode.strip().lower()
+            if validated_quality_mode not in {"cq", "rate"}:
+                typer.secho("Error: --quality-mode must be 'cq' or 'rate'.", fg=typer.colors.RED, err=True)
+                raise typer.Exit(code=1)
+
+        effective_quality_mode = validated_quality_mode or config.general.quality_mode
+        effective_bps = bps if bps is not None else config.general.bps
+        effective_minrate = minrate if minrate is not None else config.general.minrate
+        effective_maxrate = maxrate if maxrate is not None else config.general.maxrate
+
+        if quality is not None and effective_quality_mode == "rate":
+            typer.secho("Error: --quality cannot be used with quality mode 'rate'.", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1)
+
+        if any(val is not None for val in (bps, minrate, maxrate)) and effective_quality_mode != "rate":
+            typer.secho(
+                "Error: --bps/--minrate/--maxrate require --quality-mode rate.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+        try:
+            validate_rate_control_inputs(
+                effective_quality_mode,
+                effective_bps,
+                effective_minrate,
+                effective_maxrate,
+                allow_values_when_non_rate=True,
+            )
+        except ValueError as exc:
+            typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1)
+
         # Create CLI overrides object (for per-job config resolution)
         cli_overrides = CliConfigOverrides(
             threads=threads,
             quality=quality,
+            quality_mode=validated_quality_mode,
+            bps=bps,
+            minrate=minrate,
+            maxrate=maxrate,
             gpu=gpu,
             queue_sort=validated_queue_sort,
             queue_seed=queue_seed,
@@ -123,7 +172,15 @@ def compress(
         # Apply CLI overrides to global config
         if threads:
             config.general.threads = threads
-        if quality is not None:
+        if validated_quality_mode is not None:
+            config.general.quality_mode = validated_quality_mode
+        if bps is not None:
+            config.general.bps = bps
+        if minrate is not None:
+            config.general.minrate = minrate
+        if maxrate is not None:
+            config.general.maxrate = maxrate
+        if quality is not None and config.general.quality_mode == "cq":
             config.gpu_encoder.common_args = replace_quality_value(config.gpu_encoder.common_args, quality)
             config.gpu_encoder.advanced_args = replace_quality_value(config.gpu_encoder.advanced_args, quality)
             config.cpu_encoder.common_args = replace_quality_value(config.cpu_encoder.common_args, quality)
@@ -290,10 +347,13 @@ def compress(
         else:
             logger.info(f"VBC started: input_folders={len(input_dirs)}, folders={input_dirs}")
         encoder_args = select_encoder_args(config, config.general.gpu)
-        quality_value = extract_quality_value(encoder_args)
-        quality_flag = extract_quality_flag(encoder_args)
-        quality_label = "CQ" if quality_flag == "-cq" else "CRF" if quality_flag == "-crf" else "Q"
-        quality_display = f"{quality_label}{quality_value}" if quality_value is not None else "unknown"
+        if config.general.quality_mode == "rate":
+            quality_display = describe_rate_target(config.general.bps)
+        else:
+            quality_value = extract_quality_value(encoder_args)
+            quality_flag = extract_quality_flag(encoder_args)
+            quality_label = "CQ" if quality_flag == "-cq" else "CRF" if quality_flag == "-crf" else "Q"
+            quality_display = f"{quality_label}{quality_value}" if quality_value is not None else "unknown"
         logger.info(
             f"Config: threads={config.general.threads}, quality={quality_display}, "
             f"gpu={config.general.gpu}, debug={config.general.debug}"

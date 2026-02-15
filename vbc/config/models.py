@@ -13,8 +13,9 @@ Key models:
 Configuration precedence: CLI args > YAML > defaults
 """
 
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
+from vbc.config.rate_control import validate_rate_control_inputs
 
 QUEUE_SORT_CHOICES = ("name", "rand", "dir", "size", "size-asc", "size-desc", "ext")
 QUEUE_SORT_ALIASES = {"size": "size-asc"}
@@ -162,7 +163,7 @@ class GeneralConfig(BaseModel):
     """Core compression and processing configuration.
 
     Controls threading, GPU/CPU selection, file filtering, and metadata handling.
-    Quality targets are defined in encoder args and overridden via dynamic_cq/CLI.
+    Quality targets can be controlled by CQ/CRF (default) or bitrate mode.
 
     Attributes:
         threads: Max concurrent compression jobs (default 1, min 1).
@@ -178,6 +179,10 @@ class GeneralConfig(BaseModel):
         use_exif: Extract camera model from EXIF for dynamic_cq matching.
         filter_cameras: Only process videos from these camera models (empty = all).
         dynamic_cq: Override quality per camera model (e.g., {"ILCE-7RM5": 38}).
+        quality_mode: Rate control mode: "cq" (default) or "rate" (bitrate).
+        bps: Target bitrate value for rate mode (absolute or ratio).
+        minrate: Optional minimum bitrate for rate mode (same class as bps).
+        maxrate: Optional maximum bitrate for rate mode (same class as bps).
         extensions: Video file extensions to process.
         min_size_bytes: Skip files smaller than this (default 1MiB).
         clean_errors: Remove .err markers and retry failed jobs.
@@ -201,6 +206,10 @@ class GeneralConfig(BaseModel):
     use_exif: bool = True
     filter_cameras: List[str] = Field(default_factory=list)
     dynamic_cq: Dict[str, int] = Field(default_factory=dict)
+    quality_mode: Literal["cq", "rate"] = "cq"
+    bps: Optional[str] = None
+    minrate: Optional[str] = None
+    maxrate: Optional[str] = None
     extensions: List[str] = Field(default_factory=lambda: [".mp4", ".mov", ".avi", ".flv", ".webm"])
     min_size_bytes: int = Field(default=1048576)
     clean_errors: bool = False
@@ -216,6 +225,11 @@ class GeneralConfig(BaseModel):
     def validate_queue_sort_mode(cls, v: Optional[str]) -> str:
         return normalize_queue_sort(v)
 
+    @field_validator("quality_mode", mode="before")
+    @classmethod
+    def normalize_quality_mode(cls, v: str) -> str:
+        return str(v).strip().lower()
+
     @field_validator("log_path")
     @classmethod
     def normalize_log_path(cls, v: Optional[str]) -> Optional[str]:
@@ -224,9 +238,24 @@ class GeneralConfig(BaseModel):
         cleaned = str(v).strip()
         return cleaned or None
 
+    @field_validator("bps", "minrate", "maxrate")
+    @classmethod
+    def normalize_rate_value(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = str(v).strip()
+        return cleaned or None
+
     @model_validator(mode="after")
     def validate_queue_sort_dependencies(self):
         self.queue_sort = validate_queue_sort(self.queue_sort, self.extensions)
+        validate_rate_control_inputs(
+            self.quality_mode,
+            self.bps,
+            self.minrate,
+            self.maxrate,
+            allow_values_when_non_rate=True,
+        )
         return self
 
 class AutoRotateConfig(BaseModel):

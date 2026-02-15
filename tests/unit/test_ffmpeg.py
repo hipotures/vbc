@@ -8,11 +8,13 @@ from vbc.infrastructure.ffmpeg import (
     FFmpegAdapter,
     select_encoder_args,
     apply_cpu_thread_overrides,
+    apply_rate_control_args,
 )
 from vbc.infrastructure.ffprobe import FFprobeAdapter
 from vbc.domain.models import VideoFile, CompressionJob, JobStatus
 from vbc.domain.models import VideoMetadata
 from vbc.config.models import AppConfig, GeneralConfig
+from vbc.config.rate_control import ResolvedRateControl
 
 def test_ffmpeg_command_generation_gpu():
     config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
@@ -67,6 +69,25 @@ def test_ffmpeg_rotation():
     encoder_args = select_encoder_args(config, use_gpu=True)
     cmd = adapter._build_command(job, config, encoder_args, use_gpu=True, rotate=180)
     assert "transpose=2,transpose=2" in cmd
+
+
+def test_apply_rate_control_args_replaces_quality_flags():
+    args = [
+        "-c:v av1_nvenc",
+        "-b:v 0",
+        "-cq 45",
+        "-f mp4",
+    ]
+    rate = ResolvedRateControl(target_bps=200000000, minrate_bps=150000000, maxrate_bps=220000000)
+    updated = apply_rate_control_args(args, use_gpu=True, rate_control=rate)
+
+    joined = " ".join(updated)
+    assert "-cq" not in joined
+    assert "-crf" not in joined
+    assert "-b:v 200000000" in updated
+    assert "-minrate 150000000" in updated
+    assert "-maxrate 220000000" in updated
+    assert "-bufsize 440000000" in updated
 
 def test_audio_codec_detection_drives_audio_options():
     mock_output = {
@@ -271,7 +292,10 @@ def test_ffmpeg_compress_color_error_triggers_fix(tmp_path):
     with patch("subprocess.Popen", return_value=process_instance):
         adapter = FFmpegAdapter(event_bus=MagicMock())
         adapter._apply_color_fix = MagicMock()
-        adapter._apply_color_fix.side_effect = lambda job, config, use_gpu, quality, rotate, shutdown_event=None: setattr(job, "status", JobStatus.COMPLETED)
+        adapter._apply_color_fix.side_effect = (
+            lambda job, config, use_gpu, quality, rate_control, rotate, shutdown_event=None:
+            setattr(job, "status", JobStatus.COMPLETED)
+        )
         adapter.compress(job, config, use_gpu=True)
 
     adapter._apply_color_fix.assert_called_once()
@@ -298,7 +322,7 @@ def test_apply_color_fix_remux_fallback(tmp_path):
             colorfix_path.write_bytes(b"fixed")
         return result
 
-    def fake_compress(job, _config, _use_gpu, quality=None, rotate=None, shutdown_event=None):
+    def fake_compress(job, _config, _use_gpu, quality=None, rate_control=None, rotate=None, shutdown_event=None):
         recorded_path["value"] = job.source_file.path
         job.status = JobStatus.COMPLETED
 
@@ -306,7 +330,7 @@ def test_apply_color_fix_remux_fallback(tmp_path):
     adapter.compress = MagicMock(side_effect=fake_compress)
 
     with patch("subprocess.run", side_effect=fake_run):
-        adapter._apply_color_fix(job, config, use_gpu=True, quality=None, rotate=None)
+        adapter._apply_color_fix(job, config, use_gpu=True, quality=None, rate_control=None, rotate=None)
 
     assert calls["count"] == 2
     assert recorded_path["value"] == colorfix_path

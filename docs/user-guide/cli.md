@@ -68,6 +68,47 @@ uv run vbc /videos --quality 38
 - 48-52: Good quality
 - 55+: Low quality
 
+#### `--quality-mode TEXT`
+
+Select quality control mode: `cq` (default) or `rate`.
+
+**Default:** `cq`
+
+```bash
+# Default behavior (CQ/CRF from encoder args)
+uv run vbc /videos --quality-mode cq --quality 38
+
+# Bitrate target mode
+uv run vbc /videos --quality-mode rate --bps 200Mbps
+```
+
+#### `--bps TEXT`
+
+Target video bitrate used when `--quality-mode rate`.
+
+Accepted formats:
+- Absolute: `200000000`, `200000k`, `200M`, `200Mbps`
+- Relative: `0.8` (input bitrate × 0.8)
+
+```bash
+uv run vbc /videos --quality-mode rate --bps 200Mbps
+uv run vbc /videos --quality-mode rate --bps 0.8
+```
+
+#### `--minrate TEXT`
+
+Optional minimum bitrate clamp for `rate` mode.
+Must be the same numeric class as `--bps` (all absolute or all relative).
+
+```bash
+uv run vbc /videos --quality-mode rate --bps 0.8 --minrate 0.7 --maxrate 0.9
+```
+
+#### `--maxrate TEXT`
+
+Optional maximum bitrate clamp for `rate` mode.
+Must be the same numeric class as `--bps` and `--minrate`.
+
 ### Encoder
 
 #### `--gpu` / `--cpu`

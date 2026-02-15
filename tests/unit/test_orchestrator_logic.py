@@ -363,7 +363,7 @@ def test_build_vbc_tag_args(orchestrator_basic, tmp_path):
 
     args = orchestrator_basic._build_vbc_tag_args(
         source_path=source,
-        cq=45,
+        quality_label="45",
         encoder="NVENC AV1 (GPU)",
         original_size=1000000,
         finished_at="2025-01-01T12:00:00"

@@ -152,6 +152,8 @@ class FFprobeAdapter:
             if vbc_encoded:
                 break
 
+        bitrate_bps = self._to_float(fmt.get("bit_rate") or video_stream.get("bit_rate"))
+
         return {
             "width": int(video_stream.get("width", 0)),
             "height": int(video_stream.get("height", 0)),
@@ -159,6 +161,7 @@ class FFprobeAdapter:
             "audio_codec": audio_codec,
             "fps": fps,
             "duration": duration,
+            "bitrate_kbps": (bitrate_bps / 1000.0) if bitrate_bps > 0 else None,
             "color_space": video_stream.get("color_space"),
             "pix_fmt": video_stream.get("pix_fmt"),
             "vbc_encoded": vbc_encoded,
