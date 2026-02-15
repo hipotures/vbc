@@ -487,12 +487,12 @@ class Dashboard:
                 l2 = f"  [green]{q_val}{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
                 return Group(l1, l2)
             else: # B: 1 line
-                # ✓ filename  |  size → size (ratio%) • duration (right-aligned)
+                # ✓ filename  |  size → size (ratio%) • duration (left-aligned)
                 filename_max = max(20, panel_w - 42)  # Reserve for icon + stats
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
-                grid = Table.grid(padding=(0, 1), expand=True)
-                grid.add_column(ratio=1)  # Filename (left, flex)
-                grid.add_column(justify="right")  # Stats (right-aligned)
+                grid = Table.grid(padding=(0, 1), expand=False)
+                grid.add_column()
+                grid.add_column(justify="left")
                 grid.add_row(
                     f"{icon} {filename}",
                     f"[green]{q_val}{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
@@ -522,9 +522,9 @@ class Dashboard:
             else:
                 filename_max = max(20, panel_w - 15)
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
-                grid = Table.grid(padding=(0, 1), expand=True)
-                grid.add_column(ratio=1)
-                grid.add_column(justify="right")
+                grid = Table.grid(padding=(0, 1), expand=False)
+                grid.add_column()
+                grid.add_column(justify="left")
                 grid.add_row(f"{icon} {filename}", f"[dim]{reason}[/]")
                 return grid
 
@@ -538,9 +538,9 @@ class Dashboard:
             else:
                 filename_max = max(20, panel_w - 15)
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
-                grid = Table.grid(padding=(0, 1), expand=True)
-                grid.add_column(ratio=1)
-                grid.add_column(justify="right")
+                grid = Table.grid(padding=(0, 1), expand=False)
+                grid.add_column()
+                grid.add_column(justify="left")
                 grid.add_row(f"{icon} {filename}", "[red]err[/]")
                 return grid
 
@@ -549,9 +549,9 @@ class Dashboard:
              icon = "[red]⚡[/]"
              filename_max = max(25, panel_w - 15)
              filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
-             grid = Table.grid(padding=(0, 1), expand=True)
-             grid.add_column(ratio=1)
-             grid.add_column(justify="right")
+             grid = Table.grid(padding=(0, 1), expand=False)
+             grid.add_column()
+             grid.add_column(justify="left")
              grid.add_row(f"{icon}{filename}", "[red]INTERRUPTED[/]")
              return grid
 
