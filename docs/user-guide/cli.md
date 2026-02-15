@@ -475,5 +475,5 @@ eval "$(uv run vbc --show-completion zsh)"
 ## Next Steps
 
 - [Runtime Controls](runtime-controls.md) - Keyboard shortcuts
-- [Advanced Features](advanced.md) - Dynamic CQ, auto-rotation
+- [Advanced Features](advanced.md) - Dynamic Quality, auto-rotation
 - [Configuration](../getting-started/configuration.md) - YAML settings

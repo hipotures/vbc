@@ -402,9 +402,9 @@ def compress(
             "Deep (ExifTool + XMP)" if (config.general.use_exif and config.general.copy_metadata)
             else ("Basic (FFmpeg)" if config.general.copy_metadata else "None")
         )
-        dynamic_cq_info = (
-            ", ".join([f"{k}:{v}" for k, v in config.general.dynamic_cq.items()])
-            if config.general.dynamic_cq else "None"
+        dynamic_quality_info = (
+            ", ".join([f"{k}:{v}" for k, v in config.general.dynamic_quality.items()])
+            if config.general.dynamic_quality else "None"
         )
         camera_filter_info = ", ".join(config.general.filter_cameras) if config.general.filter_cameras else "None"
         manual_rotation = f"{config.general.manual_rotation}°" if config.general.manual_rotation is not None else "None"
@@ -506,7 +506,7 @@ def compress(
                 f"Encoder: {encoder_name} | Preset: {preset_value}",
                 "Audio: Auto (lossless->AAC 256k, AAC/MP3 copy, other->AAC 192k)",
                 f"Quality: {quality_display} (Default)",
-                f"Dynamic CQ: {dynamic_cq_info}",
+                f"Dynamic Quality: {dynamic_quality_info}",
                 f"Camera Filter: {camera_filter_info}",
                 f"Metadata: {metadata_method} (Analysis: {config.general.use_exif})",
                 f"Autorotate: {len(config.autorotate.patterns)} rules loaded",
@@ -531,7 +531,7 @@ def compress(
                 f"Encoder: {encoder_name} | Preset: {preset_value}",
                 "Audio: Auto (lossless->AAC 256k, AAC/MP3 copy, other->AAC 192k)",
                 f"Quality: {quality_display} (Default)",
-                f"Dynamic CQ: {dynamic_cq_info}",
+                f"Dynamic Quality: {dynamic_quality_info}",
                 f"Camera Filter: {camera_filter_info}",
                 f"Metadata: {metadata_method} (Analysis: {config.general.use_exif})",
                 f"Autorotate: {len(config.autorotate.patterns)} rules loaded",

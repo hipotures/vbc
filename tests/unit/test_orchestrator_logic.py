@@ -63,11 +63,11 @@ def test_determine_cq_custom_from_metadata(orchestrator_basic):
 
 
 def test_determine_cq_dynamic_match():
-    """Test CQ determination with dynamic_cq config."""
+    """Test CQ determination with dynamic_quality config."""
     config = AppConfig(
         general=GeneralConfig(
             threads=2, gpu=False,
-            dynamic_cq={"DC-GH7": 30, "ILCE-7RM5": 35}
+            dynamic_quality={"DC-GH7": 30, "ILCE-7RM5": 35}
         ),
         autorotate=AutoRotateConfig(patterns={})
     )
@@ -91,7 +91,7 @@ def test_determine_cq_dynamic_match():
     )
 
     cq = orch._determine_cq(vf)
-    assert cq == 30  # Matched from dynamic_cq
+    assert cq == 30  # Matched from dynamic_quality
 
 
 def test_determine_cq_no_metadata(orchestrator_basic):

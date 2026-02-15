@@ -22,7 +22,7 @@ def sample_config():
             "extensions": [".mp4", ".mov", ".avi"],
             "min_size_bytes": 1024,
             "filter_cameras": [],
-            "dynamic_cq": {},
+            "dynamic_quality": {},
             "prefetch_factor": 1,
             "clean_errors": False,
             "skip_av1": False,
@@ -37,8 +37,8 @@ def sample_config():
     )
 
 @pytest.fixture
-def config_with_dynamic_cq():
-    """Returns config with dynamic CQ rules."""
+def config_with_dynamic_quality():
+    """Returns config with dynamic quality rules."""
     return AppConfig(
         general={
             "threads": 2,
@@ -48,7 +48,7 @@ def config_with_dynamic_cq():
             "extensions": [".mp4"],
             "min_size_bytes": 0,
             "filter_cameras": [],
-            "dynamic_cq": {
+            "dynamic_quality": {
                 "DC-GH7": 30,
                 "ILCE-7RM5": 35,
                 "DJI OsmoPocket3": 35
@@ -84,7 +84,7 @@ def config_yaml_path(tmp_path):
             'extensions': ['mp4', 'mov'],
             'min_size_bytes': 0,
             'filter_cameras': [],
-            'dynamic_cq': {
+            'dynamic_quality': {
                 'DC-GH7': 30,
                 'ILCE-7RM5': 35,
             },

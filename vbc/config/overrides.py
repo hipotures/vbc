@@ -22,7 +22,7 @@ _ALLOWED_GENERAL_KEYS = {
     "copy_metadata",
     "use_exif",
     "filter_cameras",
-    "dynamic_cq",
+    "dynamic_quality",
     "extensions",
     "min_size_bytes",
     "clean_errors",

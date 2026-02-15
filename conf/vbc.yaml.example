@@ -63,7 +63,7 @@ general:
   # Copy EXIF/XMP/GPS tags from source to output.
   copy_metadata: true
 
-  # Use ExifTool for deep metadata analysis (required for dynamic_cq/filtering).
+  # Use ExifTool for deep metadata analysis (required for dynamic_quality/filtering).
   use_exif: true
 
   # Only process specific camera models (substring match, case-insensitive).
@@ -72,7 +72,7 @@ general:
 
   # Camera-specific CQ values (First match wins).
   # Example: {"ILCE-7RM5": 38, "Sony": 40}
-  dynamic_cq: {}
+  dynamic_quality: {}
 
   # Quality control mode:
   # - "cq": uses encoder args -cq/-crf (default behavior)

@@ -93,8 +93,8 @@ class ExifToolAdapter:
             bitrate_kbps=float(bitrate) / 1000 if bitrate else None
         )
 
-    def extract_exif_info(self, file: VideoFile, dynamic_cq: Dict[str, int]) -> Dict[str, Optional[object]]:
-        """Extracts camera info and dynamic CQ using full ExifTool tags."""
+    def extract_exif_info(self, file: VideoFile, dynamic_quality: Dict[str, int]) -> Dict[str, Optional[object]]:
+        """Extracts camera info and dynamic quality using full ExifTool tags."""
         if not self.et.running:
             self.et.run()
 
@@ -117,7 +117,7 @@ class ExifToolAdapter:
         
         # 1. Prioritize matching against the extracted camera model/make
         if camera_raw:
-            for pattern, cq_value in dynamic_cq.items():
+            for pattern, cq_value in dynamic_quality.items():
                 if pattern in camera_raw:
                     camera_model = camera_raw
                     custom_cq = cq_value
@@ -126,7 +126,7 @@ class ExifToolAdapter:
         
         # 2. Fallback: Search in all exif values
         if custom_cq is None:
-            for pattern, cq_value in dynamic_cq.items():
+            for pattern, cq_value in dynamic_quality.items():
                 if pattern in full_metadata_text:
                     camera_model = pattern
                     custom_cq = cq_value

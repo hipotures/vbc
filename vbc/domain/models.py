@@ -53,9 +53,9 @@ class VideoMetadata(BaseModel):
         codec: Primary video codec name (h264, hevc, av1, etc.).
         audio_codec: Primary audio codec name (pcm_s16le, aac, etc.).
         fps: Frames per second.
-        camera_model: Inferred camera model from EXIF (for dynamic_cq matching).
+        camera_model: Inferred camera model from EXIF (for dynamic_quality matching).
         camera_raw: Raw EXIF camera string before normalization.
-        custom_cq: Camera-specific CQ override from dynamic_cq config.
+        custom_cq: Camera-specific CQ override from dynamic_quality config.
         bitrate_kbps: Input stream bitrate.
         megapixels: Estimated megapixel value (for reference).
         color_space: FFmpeg color space (e.g., "bt709", "yuv420p").

@@ -184,7 +184,7 @@ Toggles full configuration display.
 │ Threads: 8 (Prefetch: 1x)                    │
 │ Encoder: NVENC AV1 | Preset: p7 (Slow/HQ)    │
 │ Quality: CQ45 (Global Default)                │
-│ Dynamic CQ: ILCE-7RM5:38, DC-GH7:40           │
+│ Dynamic Quality: ILCE-7RM5:38, DC-GH7:40           │
 │ Camera Filter: None                           │
 │ ... (full config)                             │
 │                                               │
@@ -357,6 +357,6 @@ Feedback expires after 60 seconds.
 
 ## Next Steps
 
-- [Advanced Features](advanced.md) - Dynamic CQ, auto-rotation
+- [Advanced Features](advanced.md) - Dynamic Quality, auto-rotation
 - [CLI Reference](cli.md) - Command-line arguments
 - [Architecture](../architecture/overview.md) - How controls work internally

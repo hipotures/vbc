@@ -93,7 +93,7 @@ Lower quality value (CQ/CRF) = higher quality (range: 0-63)
 If you have videos from specific cameras (e.g., Sony, DJI):
 
 ```bash
-# First, create conf/vbc.yaml with dynamic_cq settings
+# First, create conf/vbc.yaml with dynamic_quality settings
 # Then run with camera filtering
 uv run vbc ~/Videos/raw --camera "Sony,DJI"
 ```
@@ -123,7 +123,7 @@ general:
   extensions: [".mp4", ".mov", ".avi", ".flv"]
   min_size_bytes: 1048576  # 1 MiB
   # Camera-specific quality
-  dynamic_cq:
+  dynamic_quality:
     "ILCE-7RM5": 38      # Sony A7R V
     "DC-GH7": 40         # Panasonic GH7
     "DJI OsmoPocket3": 45
@@ -174,4 +174,4 @@ By default, outputs are `.mp4`. If encoder args include `-f matroska` or `-f mov
 
 - [Configuration Guide](configuration.md) - Deep dive into all settings
 - [Runtime Controls](../user-guide/runtime-controls.md) - Master keyboard shortcuts
-- [Advanced Features](../user-guide/advanced.md) - Dynamic CQ, auto-rotation, filtering
+- [Advanced Features](../user-guide/advanced.md) - Dynamic Quality, auto-rotation, filtering

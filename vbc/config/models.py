@@ -176,9 +176,9 @@ class GeneralConfig(BaseModel):
         cpu_fallback: Retry with CPU if GPU hardware capability exceeded.
         ffmpeg_cpu_threads: Limit threads per FFmpeg worker (None = FFmpeg decides).
         copy_metadata: Preserve EXIF/XMP metadata from source video.
-        use_exif: Extract camera model from EXIF for dynamic_cq matching.
+        use_exif: Extract camera model from EXIF for dynamic_quality matching.
         filter_cameras: Only process videos from these camera models (empty = all).
-        dynamic_cq: Override quality per camera model (e.g., {"ILCE-7RM5": 38}).
+        dynamic_quality: Override quality per camera model (e.g., {"ILCE-7RM5": 38}).
         quality_mode: Rate control mode: "cq" (default) or "rate" (bitrate).
         bps: Target bitrate value for rate mode (absolute or ratio).
         minrate: Optional minimum bitrate for rate mode (same class as bps).
@@ -205,7 +205,7 @@ class GeneralConfig(BaseModel):
     copy_metadata: bool = True
     use_exif: bool = True
     filter_cameras: List[str] = Field(default_factory=list)
-    dynamic_cq: Dict[str, int] = Field(default_factory=dict)
+    dynamic_quality: Dict[str, int] = Field(default_factory=dict)
     quality_mode: Literal["cq", "rate"] = "cq"
     bps: Optional[str] = None
     minrate: Optional[str] = None

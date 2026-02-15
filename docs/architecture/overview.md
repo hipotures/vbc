@@ -137,7 +137,7 @@ vbc/
 #### ExifToolAdapter
 - Wraps `pyexiftool` library
 - Extracts camera model, GPS, metadata
-- Enables dynamic CQ matching
+- Enables dynamic quality matching
 - Thread-safe (uses lock)
 
 #### FFprobeAdapter

@@ -245,7 +245,7 @@ state.config_lines = [
     "Threads: 8 (Prefetch: 1x)",
     "Encoder: NVENC AV1 | Preset: p7 (Slow/HQ)",
     "Quality: CQ45 (Global Default)",
-    "Dynamic CQ: ILCE-7RM5:38, DC-GH7:40",
+    "Dynamic Quality: ILCE-7RM5:38, DC-GH7:40",
 ]
 
 # Create dashboard
@@ -321,7 +321,7 @@ Toggle with `C` key:
 │ Encoder: NVENC AV1 | Preset: p7 (Slow/HQ)    │
 │ Audio: Auto (lossless->AAC 256k, AAC/MP3 copy, other->AAC 192k) │
 │ Quality: CQ45 (Global Default)                │
-│ Dynamic CQ: ILCE-7RM5:38, DC-GH7:40           │
+│ Dynamic Quality: ILCE-7RM5:38, DC-GH7:40           │
 │ Camera Filter: None                           │
 │ Metadata: Deep (ExifTool + XMP)              │
 │ Autorotate: 3 rules loaded                   │

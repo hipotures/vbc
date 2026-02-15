@@ -67,7 +67,7 @@ general:
                                 # Example: ["Sony", "DJI OsmoPocket3"]
 
   # === Quality Control ===
-  dynamic_cq:                   # Camera-specific CQ values
+  dynamic_quality:                   # Camera-specific CQ values
     "ILCE-7RM5": 38            # Sony A7R V - higher quality
     "DC-GH7": 40               # Panasonic GH7
     "DJI OsmoPocket3": 45      # DJI Pocket 3 - lower quality
@@ -163,7 +163,7 @@ autorotate:
 
 #### Quality Defaults
 - **Source**: Encoder args (`gpu_encoder`/`cpu_encoder`) via `-cq` (GPU) or `-crf` (CPU)
-- **Override**: `--quality` CLI flag or `general.dynamic_cq` mappings
+- **Override**: `--quality` CLI flag or `general.dynamic_quality` mappings
 - **Recommendation ranges** (0-63, lower = better quality):
   - 35-38: Archival quality
   - 40-45: High quality daily use
@@ -411,7 +411,7 @@ Dashboard display settings.
 - **Default**: true
 - **Description**: Enable deep metadata analysis with ExifTool
 - **Required for**:
-  - `dynamic_cq` (camera-specific quality)
+  - `dynamic_quality` (camera-specific quality)
   - `filter_cameras` (camera filtering)
   - GPS and camera model extraction
 
@@ -432,14 +432,14 @@ Dashboard display settings.
 
 ### Quality Control
 
-#### `dynamic_cq`
+#### `dynamic_quality`
 - **Type**: Dictionary (string -> integer)
 - **Default**: `{}` (empty)
 - **Description**: Camera model -> quality value mapping (applies to `-cq`/`-crf`)
 - **Matching**: Full-text search in all EXIF metadata
 - **Example**:
   ```yaml
-  dynamic_cq:
+  dynamic_quality:
     "ILCE-7RM5": 38      # Exact model match
     "Sony": 40           # Brand match (all Sony cameras)
     "DJI OsmoPocket3": 45
@@ -571,7 +571,7 @@ VBC scans input directories for `VBC.YAML` and applies the **nearest ancestor** 
 **Allowed root keys:** `general`, `gpu_encoder`, `cpu_encoder`, `autorotate`, `cq`.
 
 **Allowed `general` keys:** `gpu`, `cpu_fallback`, `ffmpeg_cpu_threads`, `copy_metadata`,
-`use_exif`, `filter_cameras`, `dynamic_cq`, `quality_mode`, `bps`, `minrate`, `maxrate`,
+`use_exif`, `filter_cameras`, `dynamic_quality`, `quality_mode`, `bps`, `minrate`, `maxrate`,
 `extensions`, `min_size_bytes`, `clean_errors`, `skip_av1`, `manual_rotation`,
 `min_compression_ratio`, `debug`.
 
@@ -622,5 +622,5 @@ Error: Invalid rotation angle 45. Must be 0, 90, 180, or 270.
 ## Next Steps
 
 - [Runtime Controls](../user-guide/runtime-controls.md) - Keyboard shortcuts
-- [Advanced Features](../user-guide/advanced.md) - Dynamic CQ, auto-rotation
+- [Advanced Features](../user-guide/advanced.md) - Dynamic Quality, auto-rotation
 - [Architecture Overview](../architecture/overview.md) - How config is loaded

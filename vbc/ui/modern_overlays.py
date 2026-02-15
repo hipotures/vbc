@@ -177,7 +177,7 @@ class SettingsOverlay:
     Karty:
     - ENCODING: encoder, preset, quality, audio, fallback
     - PROCESSING: threads, prefetch, queue sort, cpu threads
-    - QUALITY & FILTERS: dynamic CQ, camera filter, skip AV1, rotation
+    - QUALITY & FILTERS: dynamic quality, camera filter, skip AV1, rotation
     - LOGGING: log path, debug flags
     - METADATA & CLEANUP: exiftool, analysis, autorotate, cleanup flags
     """
@@ -254,20 +254,20 @@ class SettingsOverlay:
         )
         
         # === QUALITY & FILTERS CARD ===
-        dynamic_cq = self._get("dynamic_cq", "None")
+        dynamic_quality = self._get("dynamic_quality", "None")
         camera_filter = self._get("camera_filter", "None")
         skip_av1 = self._get("min_size", "").split("Skip AV1: ")[-1] if "Skip AV1:" in self._get("min_size", "") else "False"
         manual_rotation = self._get("manual_rotation", "None")
         
         quality_data = [
-            ("Dynamic CQ", dynamic_cq if dynamic_cq else "None"),
+            ("Dynamic Quality", dynamic_quality if dynamic_quality else "None"),
             ("Camera Filter", camera_filter),
             ("Skip AV1", skip_av1),
             ("Rotation", manual_rotation),
         ]
         quality_card = make_card(
             "QUALITY & FILTERS",
-            make_kv_table(quality_data, {"Dynamic CQ"}),
+            make_kv_table(quality_data, {"Dynamic Quality"}),
             icon=ICONS['quality'],
             title_color=COLORS['accent_blue']
         )
@@ -1212,7 +1212,7 @@ if __name__ == "__main__":
         "Encoder: NVENC AV1 (GPU) | Preset: p7 (Slow/HQ)",
         "Audio: Auto (lossless->AAC 256k, AAC/MP3 copy, other->AAC 192k)",
         "Quality: CQ44 (Global Default)",
-        "Dynamic CQ: DJI OsmoPocket3:40, DC-GH7:35, ILCE-7RM5:35",
+        "Dynamic Quality: DJI OsmoPocket3:40, DC-GH7:35, ILCE-7RM5:35",
         "Camera Filter: None",
         "Metadata: Deep (ExifTool + XMP) (Analysis: True)",
         "Autorotate: 1 rules loaded",

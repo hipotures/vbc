@@ -52,7 +52,7 @@ Modern video libraries grow fast. Raw 4K footage from cameras and drones consume
 
 ### Compression & Quality
 - ✅ **AV1 Encoding**: GPU (NVENC) for speed or CPU (SVT-AV1) for maximum quality
-- ✅ **Dynamic CQ**: Camera-specific quality presets (e.g., Sony A7RV at CQ38, DJI at CQ45)
+- ✅ **Dynamic Quality**: Camera-specific quality presets (e.g., Sony A7RV at CQ38, DJI at CQ45)
 - ✅ **Smart Filtering**: Skip AV1-already-encoded files, filter by camera model, size thresholds
 - ✅ **Min Ratio Check**: Keep original if compression savings below threshold (default 10%)
 - ✅ **Color Space Fixes**: Automatic recovery for FFmpeg 7.x "reserved" color space bugs
@@ -431,7 +431,7 @@ general:
   # Copy EXIF/XMP/GPS tags from source to output.
   copy_metadata: true
 
-  # Use ExifTool for deep metadata analysis (required for dynamic_cq/filtering).
+  # Use ExifTool for deep metadata analysis (required for dynamic_quality/filtering).
   use_exif: true
 
   # Only process specific camera models (substring match, case-insensitive).
@@ -440,7 +440,7 @@ general:
 
   # Camera-specific CQ values (First match wins).
   # Example: {"ILCE-7RM5": 38, "Sony": 40}
-  dynamic_cq: {}
+  dynamic_quality: {}
 
   # File extensions to scan and process.
   extensions:
@@ -767,7 +767,7 @@ Architecture deep dive: [docs/architecture/overview.md](docs/architecture/overvi
 
 ## Advanced Features
 
-### Dynamic CQ (Camera-Specific Quality)
+### Dynamic Quality (Camera-Specific Quality)
 
 Apply different quality settings per camera model:
 
@@ -777,7 +777,7 @@ gpu_encoder:
     - "-cq 45"  # Default for unknown cameras
 
 general:
-  dynamic_cq:
+  dynamic_quality:
     "ILCE-7RM5": 38      # Sony A7R V - highest quality
     "DC-GH7": 40         # Panasonic GH7 - high quality
     "DJI OsmoPocket3": 48  # DJI Pocket 3 - standard quality

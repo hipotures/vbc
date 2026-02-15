@@ -249,7 +249,7 @@ def _get_metadata(video_file: VideoFile) -> VideoMetadata:
 
 ## Decision Logic
 
-### Dynamic CQ
+### Dynamic Quality
 
 ```python
 def _determine_cq(self, file: VideoFile) -> int:
@@ -264,9 +264,9 @@ def _determine_cq(self, file: VideoFile) -> int:
     if file.metadata.custom_cq is not None:
         return file.metadata.custom_cq
 
-    # Check dynamic_cq mapping
+    # Check dynamic_quality mapping
     if file.metadata.camera_model:
-        for pattern, cq_value in self.config.general.dynamic_cq.items():
+        for pattern, cq_value in self.config.general.dynamic_quality.items():
             if pattern in file.metadata.camera_model:
                 return cq_value
 

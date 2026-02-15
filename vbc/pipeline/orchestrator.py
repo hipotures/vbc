@@ -382,7 +382,7 @@ class Orchestrator:
 
         if self.config.general.use_exif:
             try:
-                exif_info = self.exif_adapter.extract_exif_info(video_file, self.config.general.dynamic_cq)
+                exif_info = self.exif_adapter.extract_exif_info(video_file, self.config.general.dynamic_quality)
                 metadata.camera_model = exif_info.get("camera_model")
                 metadata.camera_raw = exif_info.get("camera_raw")
                 metadata.custom_cq = exif_info.get("custom_cq")
@@ -428,7 +428,7 @@ class Orchestrator:
         if not file.metadata.camera_model:
             return default_cq
         model = file.metadata.camera_model
-        for key, cq_value in cfg.general.dynamic_cq.items():
+        for key, cq_value in cfg.general.dynamic_quality.items():
             if key in model:
                 return cq_value
         return default_cq

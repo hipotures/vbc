@@ -1,8 +1,8 @@
 # Advanced Features
 
-This guide covers VBC's advanced features: dynamic CQ, auto-rotation, camera filtering, and more.
+This guide covers VBC's advanced features: dynamic quality, auto-rotation, camera filtering, and more.
 
-## Dynamic CQ (Camera-Specific Quality)
+## Dynamic Quality (Camera-Specific Quality)
 
 Different cameras produce different quality levels. VBC can apply custom CQ values per camera model.
 
@@ -15,7 +15,7 @@ gpu_encoder:
     - "-cq 45"  # Default for unknown cameras
 
 general:
-  dynamic_cq:
+  dynamic_quality:
     "ILCE-7RM5": 38      # Sony A7R V - very high quality
     "DC-GH7": 40         # Panasonic GH7 - high quality
     "DJI OsmoPocket3": 48  # DJI Pocket 3 - standard quality
@@ -31,7 +31,7 @@ general:
 ### Example
 
 ```yaml
-dynamic_cq:
+dynamic_quality:
   "Sony": 40        # Matches all Sony cameras
   "ILCE-7RM5": 38   # Specific model (higher priority if listed first)
 ```
@@ -43,15 +43,15 @@ dynamic_cq:
 ### CLI Override
 
 ```bash
-# Override all CQ (disables dynamic CQ)
+# Override all CQ (disables dynamic quality)
 uv run vbc /videos --quality 40
 
-# Dynamic CQ still active (from config)
+# Dynamic Quality still active (from config)
 uv run vbc /videos --config conf/vbc.yaml
 ```
 
-**Note:** `--quality` overrides the base CQ/CRF value but does **not** disable `dynamic_cq`.
-To disable dynamic CQ, set `general.dynamic_cq: {}` or `general.use_exif: false`.
+**Note:** `--quality` overrides the base CQ/CRF value but does **not** disable `dynamic_quality`.
+To disable dynamic quality, set `general.dynamic_quality: {}` or `general.use_exif: false`.
 
 ### Debugging
 

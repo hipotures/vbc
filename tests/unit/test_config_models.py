@@ -10,7 +10,7 @@ def test_valid_config():
             "copy_metadata": True,
             "use_exif": True,
             "filter_cameras": ["Sony"],
-            "dynamic_cq": {"Sony": 35},
+            "dynamic_quality": {"Sony": 35},
             "extensions": [".mp4"],
             "min_size_bytes": 1024
         },
@@ -30,7 +30,7 @@ def test_config_defaults():
     gen = GeneralConfig(threads=1, extensions=[".mp4"])
     config = AppConfig(general=gen)
     assert gen.filter_cameras == []
-    assert gen.dynamic_cq == {}
+    assert gen.dynamic_quality == {}
     assert gen.min_compression_ratio == 0.1
     assert gen.queue_sort == "name"
     assert gen.log_path == "/tmp/vbc/compression.log"

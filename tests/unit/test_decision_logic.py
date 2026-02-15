@@ -5,12 +5,12 @@ from vbc.pipeline.orchestrator import Orchestrator
 from vbc.config.models import AppConfig, GeneralConfig, AutoRotateConfig
 from vbc.domain.models import VideoFile, VideoMetadata
 
-def test_dynamic_cq_selection():
-    # Config with dynamic CQ
+def test_dynamic_quality_selection():
+    # Config with dynamic quality
     config = AppConfig(
         general=GeneralConfig(
             threads=1,
-            dynamic_cq={"Sony": 35, "DJI": 30}
+            dynamic_quality={"Sony": 35, "DJI": 30}
         )
     )
     

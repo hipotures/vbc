@@ -94,7 +94,7 @@ def test_extract_metadata_unknown_codec_and_missing_fields():
         assert metadata.bitrate_kbps is None
 
 
-def test_extract_exif_info_dynamic_cq_match_and_bitrate():
+def test_extract_exif_info_dynamic_quality_match_and_bitrate():
     mock_exif_data = [{
         "EXIF:Model": "Sony A7",
         "QuickTime:AvgBitrate": 2000

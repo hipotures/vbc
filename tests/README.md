@@ -130,7 +130,7 @@ pytest tests/ -m "not slow"
 - ✅ Housekeeping service (cleanup .tmp, .err, OSError handling)
 
 ### Pipeline Layer (2 tests)
-- ✅ Decision logic (dynamic CQ, auto-rotation)
+- ✅ Decision logic (dynamic quality, auto-rotation)
 - ✅ Orchestrator sequential flow
 
 ### UI Layer (11 tests)
@@ -152,7 +152,7 @@ pytest tests/ -m "not slow"
 ### Shared Fixtures (conftest.py)
 
 - `sample_config` - Default AppConfig for testing
-- `config_with_dynamic_cq` - Config with camera-specific CQ rules
+- `config_with_dynamic_quality` - Config with camera-specific CQ rules
 - `config_yaml_path(tmp_path)` - Creates temporary YAML config
 - `event_bus` - Fresh EventBus instance
 - `test_input_dir(tmp_path)` - Temporary input directory

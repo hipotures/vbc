@@ -131,9 +131,9 @@ print(f"Camera: {metadata.camera_model}")
 print(f"Resolution: {metadata.width}x{metadata.height}")
 print(f"Codec: {metadata.codec}")
 
-# Extract EXIF info with dynamic CQ
-dynamic_cq = {"ILCE-7RM5": 38, "DC-GH7": 40}
-exif_info = exif.extract_exif_info(video, dynamic_cq)
+# Extract EXIF info with dynamic quality
+dynamic_quality = {"ILCE-7RM5": 38, "DC-GH7": 40}
+exif_info = exif.extract_exif_info(video, dynamic_quality)
 
 if exif_info["custom_cq"]:
     print(f"Using custom CQ: {exif_info['custom_cq']}")

@@ -1,5 +1,5 @@
 """
-Integration tests with real video files: dynamic CQ behavior.
+Integration tests with real video files: dynamic quality behavior.
 """
 import pytest
 import shutil
@@ -14,8 +14,8 @@ from vbc.pipeline.orchestrator import Orchestrator
 
 @pytest.mark.slow
 @pytest.mark.integration
-def test_real_file_dynamic_cq(real_test_videos):
-    """Test that dynamic CQ is applied based on camera model."""
+def test_real_file_dynamic_quality(real_test_videos):
+    """Test that dynamic quality is applied based on camera model."""
     input_dir, files = real_test_videos
 
     dynamic_only = input_dir / "dynamic_only"
@@ -31,7 +31,7 @@ def test_real_file_dynamic_cq(real_test_videos):
             extensions=[".mp4"],
             min_size_bytes=0,
             filter_cameras=[],
-            dynamic_cq={
+            dynamic_quality={
                 "DC-GH7": 30,  # Lower CQ (better quality) for GH7
                 "ILCE-7RM5": 35,  # For Sony
             },
@@ -62,7 +62,7 @@ def test_real_file_dynamic_cq(real_test_videos):
 
         output_dir = dynamic_only.with_name(f"{dynamic_only.name}_out")
 
-        # Check log for dynamic CQ detection
+        # Check log for dynamic quality detection
         log_file = output_dir / "compression.log"
         if log_file.exists():
             log_content = log_file.read_text()
