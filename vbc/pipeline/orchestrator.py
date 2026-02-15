@@ -386,7 +386,9 @@ class Orchestrator:
                 metadata.camera_model = exif_info.get("camera_model")
                 metadata.camera_raw = exif_info.get("camera_raw")
                 metadata.custom_cq = exif_info.get("custom_cq")
-                metadata.bitrate_kbps = exif_info.get("bitrate_kbps")
+                exif_bitrate_kbps = exif_info.get("bitrate_kbps")
+                if exif_bitrate_kbps is not None:
+                    metadata.bitrate_kbps = exif_bitrate_kbps
                 # Merge vbc_encoded from ExifTool (more reliable for XMP)
                 if exif_info.get("vbc_encoded"):
                     metadata.vbc_encoded = True

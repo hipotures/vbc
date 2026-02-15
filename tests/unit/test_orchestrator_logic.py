@@ -307,6 +307,34 @@ def test_build_metadata_with_exif(orchestrator_basic):
     assert metadata.bitrate_kbps == 100000
 
 
+def test_build_metadata_keeps_ffprobe_bitrate_when_exif_missing(orchestrator_basic):
+    """Test that EXIF bitrate=None does not clobber bitrate from ffprobe."""
+    orchestrator_basic.config.general.use_exif = True
+
+    vf = VideoFile(path=Path("test.mp4"), size_bytes=1000)
+    stream_info = {
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "fps": 30.0,
+        "color_space": "bt709",
+        "bitrate_kbps": 603979.776,
+    }
+
+    orchestrator_basic.exif_adapter.extract_exif_info.return_value = {
+        "camera_model": "DC-GH7",
+        "camera_raw": "DC-GH7",
+        "custom_cq": 30,
+        "bitrate_kbps": None,
+    }
+
+    metadata = orchestrator_basic._build_metadata(vf, stream_info)
+
+    assert metadata.camera_model == "DC-GH7"
+    assert metadata.custom_cq == 30
+    assert metadata.bitrate_kbps == 603979.776
+
+
 def test_build_metadata_exif_failure(orchestrator_basic):
     """Test metadata building when ExifTool fails."""
     orchestrator_basic.config.general.use_exif = True
