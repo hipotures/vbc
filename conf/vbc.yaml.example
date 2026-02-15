@@ -81,6 +81,7 @@ general:
         bps: "0.8"
         minrate: "0.7"
         maxrate: "0.9"
+        rate_target_max_bps: "95M"
     "DJI":
       cq: 40
       rate:
@@ -101,17 +102,24 @@ general:
   minrate: null
   maxrate: null
 
+  # Optional hard cap applied after bps/minrate/maxrate resolution.
+  # Absolute only (e.g. 95M, 100Mbps, 100000k, 100000000).
+  # NOTE: Caps target bitrate, not instantaneous peak bitrate.
+  rate_target_max_bps: null
+
   # Example rate mode (global absolute):
   # quality_mode: "rate"
   # bps: "200Mbps"
   # minrate: "180Mbps"
   # maxrate: "220Mbps"
+  # rate_target_max_bps: "95Mbps"
 
   # Example rate mode (global relative):
   # quality_mode: "rate"
   # bps: "0.8"
   # minrate: "0.7"
   # maxrate: "0.9"
+  # rate_target_max_bps: "95Mbps"
 
   # File extensions to scan and process.
   extensions:

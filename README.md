@@ -66,7 +66,7 @@ Modern video libraries grow fast. Raw 4K footage from cameras and drones consume
 
 ### Intelligence & Automation
 - ✅ **Auto-Rotation**: Regex-based filename pattern matching (GoPro, DJI, iPhone patterns)
-- ✅ **Deep Metadata**: EXIF/XMP/GPS preservation + custom VBC tags (original size, quality, encoder)
+- ✅ **Deep Metadata**: EXIF/XMP/GPS preservation + custom VBC tags (original size, quality, encoder, rate-control notes)
 - ✅ **Queue Refresh**: Re-scan directory mid-run to pick up new files
 - ✅ **Error Markers**: `.err` files track failures with optional cleanup/retry
 - ✅ **Resume Capability**: Automatically skip already-compressed files
@@ -448,10 +448,16 @@ general:
         bps: "0.8"
         minrate: "0.7"
         maxrate: "0.9"
+        rate_target_max_bps: "95M"
     "DJI":
       cq: 40
       rate:
         bps: "180M"
+
+  # Optional global hard cap for rate-mode resolved target bitrate.
+  # Absolute only (e.g. 95M, 100Mbps, 100000k, 100000000).
+  # Note: this caps target bitrate, not instantaneous peak bitrate.
+  rate_target_max_bps: null
 
   # File extensions to scan and process.
   extensions:
@@ -795,6 +801,7 @@ general:
         bps: "0.8"
         minrate: "0.7"
         maxrate: "0.9"
+        rate_target_max_bps: "95M"
     "DC-GH7":
       cq: 40
     "DJI OsmoPocket3":
@@ -808,6 +815,10 @@ general:
 2. Searches all metadata fields for camera model strings
 3. First match wins (order matters in YAML)
 4. Uses `cq` in `quality_mode=cq`, or `rate` when `quality_mode=rate` (if present)
+
+`rate_target_max_bps` can be set globally (`general.rate_target_max_bps`) or per camera
+(`general.dynamic_quality.<pattern>.rate.rate_target_max_bps`) to hard-cap resolved rate targets.
+For `libsvtav1`, VBC also enforces encoder-safe limits and records applied decisions in `XMP:VBCJsonNotes`.
 
 **Example**:
 - File: `IMG_1234.MOV`
