@@ -16,6 +16,7 @@ Key responsibilities:
 
 import re
 import hashlib
+import json
 import threading
 import concurrent.futures
 import shutil
@@ -30,6 +31,9 @@ from vbc.config.rate_control import (
     ResolvedRateControl,
     resolve_rate_control_values,
     format_bps_human,
+    parse_rate_cap_bps,
+    SVT_AV1_TARGET_MAX_BPS,
+    SVT_AV1_TARGET_MAX_KBPS,
 )
 
 if TYPE_CHECKING:
@@ -439,12 +443,14 @@ class Orchestrator:
         self,
         file: VideoFile,
         cfg: AppConfig,
-    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
-        """Return effective rate config (bps/minrate/maxrate) and source label."""
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], str, str]:
+        """Return effective rate config and source labels."""
         bps = cfg.general.bps
         minrate = cfg.general.minrate
         maxrate = cfg.general.maxrate
+        rate_target_max_bps = cfg.general.rate_target_max_bps
         rate_source = "global"
+        cap_source = "global" if rate_target_max_bps is not None else "none"
 
         if file.metadata and file.metadata.camera_model:
             model = file.metadata.camera_model
@@ -453,18 +459,39 @@ class Orchestrator:
                     bps = rule.rate.bps
                     minrate = rule.rate.minrate
                     maxrate = rule.rate.maxrate
+                    if rule.rate.rate_target_max_bps is not None:
+                        rate_target_max_bps = rule.rate.rate_target_max_bps
+                        cap_source = f"dynamic_quality:{key}"
                     rate_source = f"dynamic_quality:{key}"
                     break
 
-        return bps, minrate, maxrate, rate_source
+        return bps, minrate, maxrate, rate_target_max_bps, rate_source, cap_source
 
-    def _determine_rate_control(self, file: VideoFile, config: Optional[AppConfig] = None) -> ResolvedRateControl:
+    @staticmethod
+    def _extract_encoder_codec(args: List[str]) -> str:
+        for idx, arg in enumerate(args):
+            stripped = str(arg).strip()
+            if stripped == "-c:v" and idx + 1 < len(args):
+                return str(args[idx + 1]).strip().lower()
+            if stripped.startswith("-c:v "):
+                return stripped.split(None, 1)[1].strip().lower()
+        return "unknown"
+
+    def _determine_rate_control(
+        self,
+        file: VideoFile,
+        config: Optional[AppConfig] = None,
+        use_gpu: Optional[bool] = None,
+    ) -> ResolvedRateControl:
         cfg = config if config is not None else self.config
+        use_gpu = cfg.general.gpu if use_gpu is None else use_gpu
         source_bps = None
         if file.metadata and file.metadata.bitrate_kbps and file.metadata.bitrate_kbps > 0:
             source_bps = file.metadata.bitrate_kbps * 1000.0
 
-        bps, minrate, maxrate, rate_source = self._select_rate_config_for_file(file, cfg)
+        bps, minrate, maxrate, rate_target_max_bps, rate_source, cap_source = self._select_rate_config_for_file(
+            file, cfg
+        )
 
         if cfg.general.debug:
             source_bitrate_text = (
@@ -475,23 +502,109 @@ class Orchestrator:
             self.logger.info(
                 f"RATE_CONFIG: {file.path.name} "
                 f"source_bitrate={source_bitrate_text} "
-                f"source={rate_source} bps={bps} minrate={minrate} maxrate={maxrate}"
+                f"source={rate_source} bps={bps} minrate={minrate} maxrate={maxrate} "
+                f"rate_target_max_bps={rate_target_max_bps}"
             )
 
-        resolved = resolve_rate_control_values(
+        base_resolved = resolve_rate_control_values(
             bps,
             minrate,
             maxrate,
             source_bps,
         )
+        resolved_target_bps = base_resolved.target_bps
+        applied_target_bps = resolved_target_bps
+        applied_minrate_bps = base_resolved.minrate_bps
+        applied_maxrate_bps = base_resolved.maxrate_bps
+
+        config_cap_bps = (
+            parse_rate_cap_bps(rate_target_max_bps, field_name="rate_target_max_bps")
+            if rate_target_max_bps is not None
+            else None
+        )
+        encoder_args = select_encoder_args(cfg, use_gpu)
+        encoder_codec = self._extract_encoder_codec(encoder_args)
+        encoder_cap_bps = SVT_AV1_TARGET_MAX_BPS if encoder_codec == "libsvtav1" else None
+
+        effective_cap_bps = None
+        final_cap_source = None
+        if config_cap_bps is not None and encoder_cap_bps is not None:
+            if encoder_cap_bps <= config_cap_bps:
+                effective_cap_bps = encoder_cap_bps
+                final_cap_source = "encoder:libsvtav1_limit"
+            else:
+                effective_cap_bps = config_cap_bps
+                final_cap_source = f"config:{cap_source}"
+        elif encoder_cap_bps is not None:
+            effective_cap_bps = encoder_cap_bps
+            final_cap_source = "encoder:libsvtav1_limit"
+        elif config_cap_bps is not None:
+            effective_cap_bps = config_cap_bps
+            final_cap_source = f"config:{cap_source}"
+
+        if effective_cap_bps is not None:
+            applied_target_bps = min(applied_target_bps, effective_cap_bps)
+            if applied_maxrate_bps is not None:
+                applied_maxrate_bps = min(applied_maxrate_bps, effective_cap_bps)
+
+        if applied_minrate_bps is not None and applied_minrate_bps > applied_target_bps:
+            applied_minrate_bps = applied_target_bps
+        if applied_maxrate_bps is not None and applied_target_bps > applied_maxrate_bps:
+            applied_target_bps = applied_maxrate_bps
+        if (
+            applied_minrate_bps is not None
+            and applied_maxrate_bps is not None
+            and applied_minrate_bps > applied_maxrate_bps
+        ):
+            applied_minrate_bps = applied_maxrate_bps
+
+        applied_target_kbps = None
+        if encoder_codec == "libsvtav1":
+            applied_target_kbps = min(
+                SVT_AV1_TARGET_MAX_KBPS,
+                max(1, applied_target_bps // 1000),
+            )
+            applied_target_bps = applied_target_kbps * 1000
+            if applied_minrate_bps is not None and applied_minrate_bps > applied_target_bps:
+                applied_minrate_bps = applied_target_bps
+
+        was_capped = applied_target_bps < resolved_target_bps
+        source_bps_int = int(round(source_bps)) if source_bps is not None else None
+        resolved = ResolvedRateControl(
+            target_bps=applied_target_bps,
+            minrate_bps=applied_minrate_bps,
+            maxrate_bps=applied_maxrate_bps,
+            resolved_target_bps=resolved_target_bps,
+            config_cap_bps=config_cap_bps,
+            encoder_cap_bps=encoder_cap_bps,
+            effective_cap_bps=effective_cap_bps,
+            applied_target_kbps=applied_target_kbps,
+            was_capped=was_capped,
+            cap_source=final_cap_source,
+            source_bps=source_bps_int,
+            target_expr=str(bps) if bps is not None else None,
+            rate_source=rate_source,
+        )
 
         if cfg.general.debug:
             resolved_text = (
-                f"target={resolved.target_bps} bps ({format_bps_human(resolved.target_bps)}) "
+                f"resolved_target={resolved_target_bps} bps ({format_bps_human(resolved_target_bps)}) "
+                f"applied_target={resolved.target_bps} bps ({format_bps_human(resolved.target_bps)}) "
+                f"effective_cap={resolved.effective_cap_bps if resolved.effective_cap_bps is not None else 'none'} "
+                f"cap_source={resolved.cap_source or 'none'} "
+                f"was_capped={resolved.was_capped} "
                 f"minrate={resolved.minrate_bps if resolved.minrate_bps is not None else 'none'} "
                 f"maxrate={resolved.maxrate_bps if resolved.maxrate_bps is not None else 'none'}"
             )
+            if resolved.applied_target_kbps is not None:
+                resolved_text += f" applied_target_kbps={resolved.applied_target_kbps}"
             self.logger.info(f"RATE_RESOLVED: {file.path.name} {resolved_text}")
+            if resolved.was_capped:
+                self.logger.info(
+                    f"RATE_CAP_APPLIED: {file.path.name} "
+                    f"resolved={resolved_target_bps} applied={resolved.target_bps} "
+                    f"cap={resolved.effective_cap_bps} source={resolved.cap_source}"
+                )
 
         return resolved
 
@@ -502,7 +615,7 @@ class Orchestrator:
     ) -> str:
         """Return the configured rate target value to persist in VBCQuality tag."""
         cfg = config if config is not None else self.config
-        bps, _, _, _ = self._select_rate_config_for_file(file, cfg)
+        bps, _, _, _, _, _ = self._select_rate_config_for_file(file, cfg)
         if bps is None:
             return "unknown"
         return str(bps)
@@ -606,6 +719,28 @@ class Orchestrator:
         self.logger.warning(f"Failed to fix color space for {input_path.name}, proceeding with original file")
         return input_path, None
 
+    @staticmethod
+    def _rate_json_notes_for_tags(rate_control: Optional[ResolvedRateControl]) -> Optional[str]:
+        if rate_control is None:
+            return None
+        payload = {
+            "rate_control": {
+                "mode": "rate",
+                "target_expr": rate_control.target_expr,
+                "source_bitrate_bps": rate_control.source_bps,
+                "resolved_target_bps": rate_control.resolved_target_bps,
+                "config_cap_bps": rate_control.config_cap_bps,
+                "encoder_cap_bps": rate_control.encoder_cap_bps,
+                "effective_cap_bps": rate_control.effective_cap_bps,
+                "applied_target_bps": rate_control.target_bps,
+                "applied_target_kbps": rate_control.applied_target_kbps,
+                "was_capped": rate_control.was_capped,
+                "cap_source": rate_control.cap_source,
+                "rate_source": rate_control.rate_source,
+            }
+        }
+        return json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
+
     def _build_vbc_tag_args(
         self,
         source_path: Path,
@@ -613,9 +748,10 @@ class Orchestrator:
         original_bitrate_label: str,
         encoder: str,
         original_size: int,
-        finished_at: str
+        finished_at: str,
+        vbc_json_notes: Optional[str] = None,
     ) -> List[str]:
-        return [
+        tags = [
             f"-XMP:VBCOriginalName={source_path.name}",
             f"-XMP:VBCOriginalSize={original_size}",
             f"-XMP:VBCQuality={quality_label}",
@@ -623,6 +759,9 @@ class Orchestrator:
             f"-XMP:VBCEncoder={encoder}",
             f"-XMP:VBCFinishedAt={finished_at}",
         ]
+        if vbc_json_notes:
+            tags.append(f"-XMP:VBCJsonNotes={vbc_json_notes}")
+        return tags
 
     def _copy_deep_metadata(
         self,
@@ -633,7 +772,8 @@ class Orchestrator:
         original_bitrate_label: str,
         encoder: str,
         original_size: int,
-        finished_at: str
+        finished_at: str,
+        vbc_json_notes: Optional[str] = None,
     ) -> None:
         """Copy full metadata from source to output using ExifTool (legacy behavior)."""
         config_path = Path(__file__).resolve().parents[2] / "conf" / "exiftool.conf"
@@ -644,6 +784,7 @@ class Orchestrator:
             encoder,
             original_size,
             finished_at,
+            vbc_json_notes=vbc_json_notes,
         )
 
         exiftool_cmd = ["exiftool"]
@@ -771,7 +912,8 @@ class Orchestrator:
         original_bitrate_label: str,
         encoder: str,
         original_size: int,
-        finished_at: str
+        finished_at: str,
+        vbc_json_notes: Optional[str] = None,
     ) -> None:
         """Write VBC tags only (no metadata copy)."""
         config_path = Path(__file__).resolve().parents[2] / "conf" / "exiftool.conf"
@@ -792,6 +934,7 @@ class Orchestrator:
                 encoder,
                 original_size,
                 finished_at,
+                vbc_json_notes=vbc_json_notes,
             )
         )
         exiftool_cmd.append(str(output_path))
@@ -1156,15 +1299,21 @@ class Orchestrator:
             quality_tag_label = "unknown"
             original_bitrate_label = self._original_bitrate_label_for_tags(video_file)
             rate_control: Optional[ResolvedRateControl] = None
+            vbc_json_notes: Optional[str] = None
 
             try:
                 if job_config.general.quality_mode == "rate":
-                    rate_control = self._determine_rate_control(video_file, config=job_config)
+                    rate_control = self._determine_rate_control(
+                        video_file,
+                        config=job_config,
+                        use_gpu=use_gpu,
+                    )
                     quality_display = format_bps_human(rate_control.target_bps)
                     quality_tag_label = self._quality_label_for_rate_tags(
                         video_file,
                         config=job_config,
                     )
+                    vbc_json_notes = self._rate_json_notes_for_tags(rate_control)
                 else:
                     quality_value = self._determine_cq(video_file, use_gpu=use_gpu, config=job_config)
                     quality_display = self._quality_display_for_cq(
@@ -1217,13 +1366,18 @@ class Orchestrator:
                 self.logger.info(f"FFMPEG_FALLBACK: {filename} (hw_cap -> CPU)")
                 use_gpu = False
                 if job_config.general.quality_mode == "rate":
-                    rate_control = self._determine_rate_control(video_file, config=job_config)
+                    rate_control = self._determine_rate_control(
+                        video_file,
+                        config=job_config,
+                        use_gpu=False,
+                    )
                     quality_value = None
                     quality_display = format_bps_human(rate_control.target_bps)
                     quality_tag_label = self._quality_label_for_rate_tags(
                         video_file,
                         config=job_config,
                     )
+                    vbc_json_notes = self._rate_json_notes_for_tags(rate_control)
                 else:
                     quality_value = self._determine_cq(video_file, use_gpu=False, config=job_config)
                     quality_display = self._quality_display_for_cq(
@@ -1269,7 +1423,8 @@ class Orchestrator:
                             original_bitrate_label,
                             encoder_label,
                             video_file.size_bytes,
-                            finished_at
+                            finished_at,
+                            vbc_json_notes=vbc_json_notes,
                         )
                     else:
                         self._write_vbc_tags(
@@ -1279,7 +1434,8 @@ class Orchestrator:
                             original_bitrate_label,
                             encoder_label,
                             video_file.size_bytes,
-                            finished_at
+                            finished_at,
+                            vbc_json_notes=vbc_json_notes,
                         )
 
                     out_size = job.output_path.stat().st_size

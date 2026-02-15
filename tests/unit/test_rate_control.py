@@ -2,6 +2,7 @@ import pytest
 
 from vbc.config.rate_control import (
     parse_rate_value,
+    parse_rate_cap_bps,
     validate_rate_control_inputs,
     resolve_rate_control_values,
     format_bps_human,
@@ -28,6 +29,15 @@ def test_parse_rate_value_ratio():
     parsed = parse_rate_value("0.8")
     assert parsed.value_class == "ratio"
     assert parsed.value == 0.8
+
+
+def test_parse_rate_cap_bps_accepts_absolute():
+    assert parse_rate_cap_bps("95M", field_name="rate_target_max_bps") == 95_000_000
+
+
+def test_parse_rate_cap_bps_rejects_ratio():
+    with pytest.raises(ValueError):
+        parse_rate_cap_bps("0.8", field_name="rate_target_max_bps")
 
 
 def test_validate_rate_control_rejects_mixed_numeric_classes():

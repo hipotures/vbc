@@ -344,6 +344,7 @@ VBC uses `conf/exiftool.conf` to define custom VBC tags:
     VBCOriginalSize => { },
     VBCQuality => { },
     VBCOriginalBitrate => { },
+    VBCJsonNotes => { },
     VBCEncoder => { },
     VBCFinishedAt => { },
 );
@@ -361,6 +362,7 @@ VBC Original Name       : original_video.mp4
 VBC Original Size       : 125829120
 VBC Original Bitrate    : 35.9 Mbps
 VBC Quality             : 0.2
+VBC Json Notes          : {"rate_control":{"mode":"rate","target_expr":"0.2"}}
 VBC Encoder             : NVENC AV1 (GPU)
 VBC Finished At         : 2025-12-21T15:30:45+01:00
 ```

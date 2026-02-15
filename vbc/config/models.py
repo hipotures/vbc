@@ -15,7 +15,7 @@ Configuration precedence: CLI args > YAML > defaults
 
 from typing import List, Dict, Optional, Union, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
-from vbc.config.rate_control import validate_rate_control_inputs
+from vbc.config.rate_control import validate_rate_control_inputs, parse_rate_cap_bps
 
 QUEUE_SORT_CHOICES = ("name", "rand", "dir", "size", "size-asc", "size-desc", "ext")
 QUEUE_SORT_ALIASES = {"size": "size-asc"}
@@ -166,8 +166,9 @@ class DynamicRateConfig(BaseModel):
     bps: str
     minrate: Optional[str] = None
     maxrate: Optional[str] = None
+    rate_target_max_bps: Optional[str] = None
 
-    @field_validator("bps", "minrate", "maxrate")
+    @field_validator("bps", "minrate", "maxrate", "rate_target_max_bps")
     @classmethod
     def normalize_rate_value(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
@@ -184,6 +185,8 @@ class DynamicRateConfig(BaseModel):
             self.maxrate,
             allow_values_when_non_rate=False,
         )
+        if self.rate_target_max_bps is not None:
+            parse_rate_cap_bps(self.rate_target_max_bps, field_name="rate_target_max_bps")
         return self
 
 
@@ -218,6 +221,7 @@ class GeneralConfig(BaseModel):
         bps: Target bitrate value for rate mode (absolute or ratio).
         minrate: Optional minimum bitrate for rate mode (same class as bps).
         maxrate: Optional maximum bitrate for rate mode (same class as bps).
+        rate_target_max_bps: Optional hard upper cap for resolved target bitrate in rate mode.
         extensions: Video file extensions to process.
         min_size_bytes: Skip files smaller than this (default 1MiB).
         clean_errors: Remove .err markers and retry failed jobs.
@@ -245,6 +249,7 @@ class GeneralConfig(BaseModel):
     bps: Optional[str] = None
     minrate: Optional[str] = None
     maxrate: Optional[str] = None
+    rate_target_max_bps: Optional[str] = None
     extensions: List[str] = Field(default_factory=lambda: [".mp4", ".mov", ".avi", ".flv", ".webm"])
     min_size_bytes: int = Field(default=1048576)
     clean_errors: bool = False
@@ -273,7 +278,7 @@ class GeneralConfig(BaseModel):
         cleaned = str(v).strip()
         return cleaned or None
 
-    @field_validator("bps", "minrate", "maxrate")
+    @field_validator("bps", "minrate", "maxrate", "rate_target_max_bps")
     @classmethod
     def normalize_rate_value(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
@@ -315,6 +320,8 @@ class GeneralConfig(BaseModel):
             self.maxrate,
             allow_values_when_non_rate=True,
         )
+        if self.rate_target_max_bps is not None:
+            parse_rate_cap_bps(self.rate_target_max_bps, field_name="rate_target_max_bps")
         return self
 
 class AutoRotateConfig(BaseModel):

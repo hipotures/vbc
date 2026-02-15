@@ -7,6 +7,8 @@ import re
 from typing import Any, Dict, Literal, Optional
 
 RateValueClass = Literal["absolute", "ratio"]
+SVT_AV1_TARGET_MAX_KBPS = 100_000
+SVT_AV1_TARGET_MAX_BPS = SVT_AV1_TARGET_MAX_KBPS * 1000
 
 _RATE_PATTERN = re.compile(r"^(?P<number>\d+(?:\.\d+)?)(?P<suffix>[A-Za-z]*)$")
 _SUFFIX_MULTIPLIERS: Dict[str, float] = {
@@ -33,6 +35,16 @@ class ResolvedRateControl:
     target_bps: int
     minrate_bps: Optional[int] = None
     maxrate_bps: Optional[int] = None
+    resolved_target_bps: Optional[int] = None
+    config_cap_bps: Optional[int] = None
+    encoder_cap_bps: Optional[int] = None
+    effective_cap_bps: Optional[int] = None
+    applied_target_kbps: Optional[int] = None
+    was_capped: bool = False
+    cap_source: Optional[str] = None
+    source_bps: Optional[int] = None
+    target_expr: Optional[str] = None
+    rate_source: Optional[str] = None
 
 
 def _format_float(value: float) -> str:
@@ -82,6 +94,15 @@ def parse_rate_value(raw_value: Any) -> ParsedRateValue:
     if bitrate_bps <= 0:
         raise ValueError(f"Bitrate must be > 0 (got '{text}').")
     return ParsedRateValue(raw=text, value_class="absolute", value=bitrate_bps)
+
+
+def parse_rate_cap_bps(raw_value: Any, *, field_name: str) -> int:
+    parsed = parse_rate_value(raw_value)
+    if parsed.value_class != "absolute":
+        raise ValueError(
+            f"{field_name} must be an absolute bitrate value (e.g. 95M, 100Mbps)."
+        )
+    return max(1, int(round(parsed.value)))
 
 
 def parse_rate_fields(

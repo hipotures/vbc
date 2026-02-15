@@ -84,6 +84,7 @@ general:
   bps: null                     # e.g. 200Mbps, 200M, 200000k, 0.8
   minrate: null                 # optional; same class as bps
   maxrate: null                 # optional; same class as bps
+  rate_target_max_bps: null     # optional hard cap for resolved target bitrate (absolute only)
 
   min_compression_ratio: 0.1    # Minimum savings required (0.0-1.0)
                                 # If compression < 10%, keep original
@@ -455,6 +456,7 @@ Dashboard display settings.
         bps: "0.8"
         minrate: "0.7"
         maxrate: "0.9"
+        rate_target_max_bps: "95M"
     "Sony":
       cq: 40
     "DJI OsmoPocket3":
@@ -492,6 +494,16 @@ Dashboard display settings.
 - **Default**: `null`
 - **Description**: Optional upper bitrate bound in `rate` mode.
 - **Rule**: Must use the same numeric class as `bps` and `minrate`.
+
+#### `rate_target_max_bps`
+- **Type**: String or null
+- **Default**: `null`
+- **Description**: Optional hard cap applied after `bps/minrate/maxrate` resolution in `rate` mode.
+- **Accepted formats**: Absolute only (`95M`, `100Mbps`, `100000k`, `100000000`).
+- **Scope**:
+  - Global: `general.rate_target_max_bps`
+  - Per camera override: `general.dynamic_quality.<pattern>.rate.rate_target_max_bps`
+- **Note**: This caps target bitrate; it does not guarantee peak bitrate.
 
 #### `min_compression_ratio`
 - **Type**: Float (0.0-1.0)
@@ -590,7 +602,7 @@ VBC scans input directories for `VBC.YAML` and applies the **nearest ancestor** 
 **Allowed root keys:** `general`, `gpu_encoder`, `cpu_encoder`, `autorotate`, `cq`.
 
 **Allowed `general` keys:** `gpu`, `cpu_fallback`, `ffmpeg_cpu_threads`, `copy_metadata`,
-`use_exif`, `filter_cameras`, `dynamic_quality`, `quality_mode`, `bps`, `minrate`, `maxrate`,
+`use_exif`, `filter_cameras`, `dynamic_quality`, `quality_mode`, `bps`, `minrate`, `maxrate`, `rate_target_max_bps`,
 `extensions`, `min_size_bytes`, `clean_errors`, `skip_av1`, `manual_rotation`,
 `min_compression_ratio`, `debug`.
 

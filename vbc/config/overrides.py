@@ -34,6 +34,7 @@ _ALLOWED_GENERAL_KEYS = {
     "bps",
     "minrate",
     "maxrate",
+    "rate_target_max_bps",
 }
 
 _logger = logging.getLogger(__name__)

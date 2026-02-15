@@ -140,9 +140,12 @@ def test_determine_rate_control_dynamic_override():
     )
 
     resolved = orch._determine_rate_control(vf)
-    assert resolved.target_bps == 160000000
-    assert resolved.minrate_bps == 140000000
-    assert resolved.maxrate_bps == 180000000
+    assert resolved.target_bps == 100000000
+    assert resolved.minrate_bps == 100000000
+    assert resolved.maxrate_bps == 100000000
+    assert resolved.resolved_target_bps == 160000000
+    assert resolved.was_capped is True
+    assert resolved.cap_source == "encoder:libsvtav1_limit"
 
 
 def test_quality_label_for_rate_tags_uses_global_bps_when_no_dynamic_rate():
@@ -251,11 +254,13 @@ def test_select_rate_config_for_file_uses_global_when_camera_has_no_rate():
         ),
     )
 
-    bps, minrate, maxrate, source = orch._select_rate_config_for_file(vf, config)
+    bps, minrate, maxrate, rate_target_max_bps, source, cap_source = orch._select_rate_config_for_file(vf, config)
     assert bps == "0.25"
     assert minrate == "0.2"
     assert maxrate == "0.3"
+    assert rate_target_max_bps is None
     assert source == "global"
+    assert cap_source == "none"
 
 
 def test_select_rate_config_for_file_uses_dynamic_rate_when_available():
@@ -294,11 +299,85 @@ def test_select_rate_config_for_file_uses_dynamic_rate_when_available():
         ),
     )
 
-    bps, minrate, maxrate, source = orch._select_rate_config_for_file(vf, config)
+    bps, minrate, maxrate, rate_target_max_bps, source, cap_source = orch._select_rate_config_for_file(vf, config)
     assert bps == "0.2"
     assert minrate == "0.15"
     assert maxrate == "0.25"
+    assert rate_target_max_bps is None
     assert source == "dynamic_quality:ILCE-7RM5"
+    assert cap_source == "none"
+
+
+def test_select_rate_config_for_file_uses_dynamic_rate_cap_when_available():
+    config = AppConfig(
+        general=GeneralConfig(
+            threads=1,
+            gpu=False,
+            quality_mode="rate",
+            bps="0.25",
+            rate_target_max_bps="95M",
+            dynamic_quality={
+                "ILCE-7RM5": {
+                    "cq": 35,
+                    "rate": {"bps": "0.2", "rate_target_max_bps": "90M"},
+                }
+            },
+        ),
+        autorotate=AutoRotateConfig(patterns={}),
+    )
+    orch = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+    vf = VideoFile(
+        path=Path("test.mp4"),
+        size_bytes=1000,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=30,
+            camera_model="ILCE-7RM5",
+        ),
+    )
+
+    _, _, _, rate_target_max_bps, _, cap_source = orch._select_rate_config_for_file(vf, config)
+    assert rate_target_max_bps == "90M"
+    assert cap_source == "dynamic_quality:ILCE-7RM5"
+
+
+def test_rate_json_notes_for_tags_contains_cap_details():
+    empty_notes = Orchestrator._rate_json_notes_for_tags(None)
+    assert empty_notes is None
+
+    from vbc.config.rate_control import ResolvedRateControl
+
+    payload = Orchestrator._rate_json_notes_for_tags(
+        ResolvedRateControl(
+            target_bps=100000000,
+            minrate_bps=100000000,
+            maxrate_bps=100000000,
+            resolved_target_bps=160000000,
+            config_cap_bps=95000000,
+            encoder_cap_bps=100000000,
+            effective_cap_bps=95000000,
+            applied_target_kbps=95000,
+            was_capped=True,
+            cap_source="config:global",
+            source_bps=200000000,
+            target_expr="0.8",
+            rate_source="global",
+        )
+    )
+
+    assert payload is not None
+    assert "\"was_capped\":true" in payload
+    assert "\"cap_source\":\"config:global\"" in payload
+    assert "\"target_expr\":\"0.8\"" in payload
 
 
 def test_determine_cq_no_metadata(orchestrator_basic):
