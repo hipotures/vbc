@@ -453,3 +453,18 @@ def test_build_vbc_tag_args(orchestrator_basic, tmp_path):
     assert "-XMP:VBCQuality=45" in args
     assert "-XMP:VBCEncoder=NVENC AV1 (GPU)" in args
     assert "-XMP:VBCFinishedAt=2025-01-01T12:00:00" in args
+
+
+def test_build_vbc_tag_args_accepts_text_quality_label(orchestrator_basic, tmp_path):
+    """Rate mode may use human-readable quality labels (e.g. Mbps)."""
+    source = tmp_path / "source.mp4"
+
+    args = orchestrator_basic._build_vbc_tag_args(
+        source_path=source,
+        quality_label="20.791 Mbps",
+        encoder="SVT-AV1 (CPU)",
+        original_size=1000000,
+        finished_at="2025-01-01T12:00:00",
+    )
+
+    assert "-XMP:VBCQuality=20.791 Mbps" in args
