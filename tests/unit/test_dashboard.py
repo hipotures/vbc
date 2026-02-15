@@ -54,7 +54,7 @@ def test_dashboard_format_helpers():
     vf = VideoFile(path=Path("sample.mp4"), size_bytes=1024, metadata=metadata)
     cq_job = CompressionJob(source_file=vf, status=JobStatus.PROCESSING, quality_display="CQ40")
     rate_job = CompressionJob(source_file=vf, status=JobStatus.PROCESSING, quality_display="95 Mbps")
-    assert dashboard._active_quality_meta_suffix(cq_job) == " → cq40 (stosowany cq)"
+    assert dashboard._active_quality_meta_suffix(cq_job) == " → cq40"
     assert dashboard._active_quality_meta_suffix(rate_job) == " → 95Mbps"
 
 

@@ -232,7 +232,7 @@ class Dashboard:
 
         cq_match = re.fullmatch(r"cq(\d+)", quality_text, flags=re.IGNORECASE)
         if cq_match:
-            return f" → cq{cq_match.group(1)} (stosowany cq)"
+            return f" → cq{cq_match.group(1)}"
         return f" → {quality_text}"
         
     def _sanitize_filename(self, filename: str, max_len: int = 30) -> str:
