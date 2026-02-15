@@ -210,11 +210,30 @@ class Dashboard:
     def _format_quality_display_for_ui(self, quality_display: str) -> str:
         """Normalize quality display text for compact UI readability."""
         text = str(quality_display).strip()
-        mbps_match = re.fullmatch(r"(\d+(?:\.\d+)?)\s+Mbps", text, flags=re.IGNORECASE)
+        mbps_match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*Mbps", text, flags=re.IGNORECASE)
         if mbps_match:
             rounded = int(round(float(mbps_match.group(1))))
-            return f"{rounded} Mbps"
+            return f"{rounded}Mbps"
+        quality_match = re.fullmatch(r"(cq|crf|q)\s*(\d+)", text, flags=re.IGNORECASE)
+        if quality_match:
+            return f"{quality_match.group(1).lower()}{quality_match.group(2)}"
         return text
+
+    def _active_quality_meta_suffix(self, job) -> str:
+        """Return quality suffix shown in active-jobs metadata line."""
+        quality_text = ""
+        if job.quality_display:
+            quality_text = self._format_quality_display_for_ui(job.quality_display)
+        elif job.quality_value is not None:
+            quality_text = f"cq{job.quality_value}"
+
+        if not quality_text or quality_text.lower() == "unknown":
+            return ""
+
+        cq_match = re.fullmatch(r"cq(\d+)", quality_text, flags=re.IGNORECASE)
+        if cq_match:
+            return f" → cq{cq_match.group(1)} (stosowany cq)"
+        return f" → {quality_text}"
         
     def _sanitize_filename(self, filename: str, max_len: int = 30) -> str:
         """Sanitize and truncate filename: prefix...suffix."""
@@ -344,7 +363,7 @@ class Dashboard:
         spinner = use_spinner[(self._spinner_frame + hash(filename)) % len(use_spinner)]
 
         name_line = f"[green]{spinner}[/] {filename}"
-        meta_text = f"dur {dur} • {fps} • in {size}"
+        meta_text = f"dur {dur} • {fps} • in {size}{self._active_quality_meta_suffix(job)}"
 
         # Calculate widths for layout decision
         # panel_w already accounts for borders/spacing, use directly
@@ -451,7 +470,7 @@ class Dashboard:
                 quality_text = self._format_quality_display_for_ui(job.quality_display)
                 q_val = f"{source_prefix} • {quality_text} • "
             elif job.quality_value is not None:
-                q_val = f"{source_prefix} • Q{job.quality_value} • "
+                q_val = f"{source_prefix} • cq{job.quality_value} • "
             else:
                 q_val = f"{source_prefix} • "
 

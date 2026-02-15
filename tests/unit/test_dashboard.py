@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 from rich.layout import Layout
@@ -45,9 +46,16 @@ def test_dashboard_format_helpers():
     state.strip_unicode_display = False
     assert dashboard._sanitize_filename("cafe\u00e9") == "cafe\u00e9"
 
-    assert dashboard._format_quality_display_for_ui("44.758 Mbps") == "45 Mbps"
-    assert dashboard._format_quality_display_for_ui("200 Mbps") == "200 Mbps"
-    assert dashboard._format_quality_display_for_ui("CQ35") == "CQ35"
+    assert dashboard._format_quality_display_for_ui("44.758 Mbps") == "45Mbps"
+    assert dashboard._format_quality_display_for_ui("200 Mbps") == "200Mbps"
+    assert dashboard._format_quality_display_for_ui("CQ35") == "cq35"
+    assert dashboard._format_quality_display_for_ui("CRF32") == "crf32"
+
+    vf = VideoFile(path=Path("sample.mp4"), size_bytes=1024, metadata=metadata)
+    cq_job = CompressionJob(source_file=vf, status=JobStatus.PROCESSING, quality_display="CQ40")
+    rate_job = CompressionJob(source_file=vf, status=JobStatus.PROCESSING, quality_display="95 Mbps")
+    assert dashboard._active_quality_meta_suffix(cq_job) == " → cq40 (stosowany cq)"
+    assert dashboard._active_quality_meta_suffix(rate_job) == " → 95Mbps"
 
 
 def test_dashboard_panels_with_state(tmp_path):
