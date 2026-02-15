@@ -45,6 +45,10 @@ def test_dashboard_format_helpers():
     state.strip_unicode_display = False
     assert dashboard._sanitize_filename("cafe\u00e9") == "cafe\u00e9"
 
+    assert dashboard._format_quality_display_for_ui("44.758 Mbps") == "45 Mbps"
+    assert dashboard._format_quality_display_for_ui("200 Mbps") == "200 Mbps"
+    assert dashboard._format_quality_display_for_ui("CQ35") == "CQ35"
+
 
 def test_dashboard_panels_with_state(tmp_path):
     state = UIState()

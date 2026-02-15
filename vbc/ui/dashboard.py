@@ -206,6 +206,15 @@ class Dashboard:
         if metadata and metadata.fps:
             return f"{int(metadata.fps)}fps"
         return ""
+
+    def _format_quality_display_for_ui(self, quality_display: str) -> str:
+        """Normalize quality display text for compact UI readability."""
+        text = str(quality_display).strip()
+        mbps_match = re.fullmatch(r"(\d+(?:\.\d+)?)\s+Mbps", text, flags=re.IGNORECASE)
+        if mbps_match:
+            rounded = int(round(float(mbps_match.group(1))))
+            return f"{rounded} Mbps"
+        return text
         
     def _sanitize_filename(self, filename: str, max_len: int = 30) -> str:
         """Sanitize and truncate filename: prefix...suffix."""
@@ -439,7 +448,8 @@ class Dashboard:
             # Show config source prefix (G/L/C)
             source_prefix = job.config_source.value if job.config_source else "G"
             if job.quality_display:
-                q_val = f"{source_prefix} • {job.quality_display} • "
+                quality_text = self._format_quality_display_for_ui(job.quality_display)
+                q_val = f"{source_prefix} • {quality_text} • "
             elif job.quality_value is not None:
                 q_val = f"{source_prefix} • Q{job.quality_value} • "
             else:
