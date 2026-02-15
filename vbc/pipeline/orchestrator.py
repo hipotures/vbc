@@ -24,7 +24,7 @@ import time
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Union, TYPE_CHECKING
+from typing import Optional, List, Dict, Any, Union, TYPE_CHECKING, Tuple
 from vbc.config.models import AppConfig
 from vbc.config.rate_control import (
     ResolvedRateControl,
@@ -435,15 +435,16 @@ class Orchestrator:
                 return rule.cq
         return default_cq
 
-    def _determine_rate_control(self, file: VideoFile, config: Optional[AppConfig] = None) -> ResolvedRateControl:
-        cfg = config if config is not None else self.config
-        source_bps = None
-        if file.metadata and file.metadata.bitrate_kbps and file.metadata.bitrate_kbps > 0:
-            source_bps = file.metadata.bitrate_kbps * 1000.0
-
+    def _select_rate_config_for_file(
+        self,
+        file: VideoFile,
+        cfg: AppConfig,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """Return effective rate config (bps/minrate/maxrate) and source label."""
         bps = cfg.general.bps
         minrate = cfg.general.minrate
         maxrate = cfg.general.maxrate
+        rate_source = "global"
 
         if file.metadata and file.metadata.camera_model:
             model = file.metadata.camera_model
@@ -452,14 +453,47 @@ class Orchestrator:
                     bps = rule.rate.bps
                     minrate = rule.rate.minrate
                     maxrate = rule.rate.maxrate
+                    rate_source = f"dynamic_quality:{key}"
                     break
 
-        return resolve_rate_control_values(
+        return bps, minrate, maxrate, rate_source
+
+    def _determine_rate_control(self, file: VideoFile, config: Optional[AppConfig] = None) -> ResolvedRateControl:
+        cfg = config if config is not None else self.config
+        source_bps = None
+        if file.metadata and file.metadata.bitrate_kbps and file.metadata.bitrate_kbps > 0:
+            source_bps = file.metadata.bitrate_kbps * 1000.0
+
+        bps, minrate, maxrate, rate_source = self._select_rate_config_for_file(file, cfg)
+
+        if cfg.general.debug:
+            source_bitrate_text = (
+                f"{int(round(source_bps))} bps ({format_bps_human(int(round(source_bps)))})"
+                if source_bps is not None
+                else "unavailable"
+            )
+            self.logger.info(
+                f"RATE_CONFIG: {file.path.name} "
+                f"source_bitrate={source_bitrate_text} "
+                f"source={rate_source} bps={bps} minrate={minrate} maxrate={maxrate}"
+            )
+
+        resolved = resolve_rate_control_values(
             bps,
             minrate,
             maxrate,
             source_bps,
         )
+
+        if cfg.general.debug:
+            resolved_text = (
+                f"target={resolved.target_bps} bps ({format_bps_human(resolved.target_bps)}) "
+                f"minrate={resolved.minrate_bps if resolved.minrate_bps is not None else 'none'} "
+                f"maxrate={resolved.maxrate_bps if resolved.maxrate_bps is not None else 'none'}"
+            )
+            self.logger.info(f"RATE_RESOLVED: {file.path.name} {resolved_text}")
+
+        return resolved
 
     def _quality_display_for_cq(self, cq_value: int, use_gpu: bool, config: Optional[AppConfig] = None) -> str:
         cfg = config if config is not None else self.config
@@ -1214,6 +1248,25 @@ class Orchestrator:
                             f"MIN_RATIO_SKIP: {filename} ratio={ratio:.2f} "
                             f"threshold={job_config.general.min_compression_ratio:.2f} kept_original=True"
                         )
+
+                    if job_config.general.debug and job_config.general.quality_mode == "rate":
+                        try:
+                            output_info = self.ffprobe_adapter.get_stream_info(job.output_path)
+                            output_bitrate_kbps = output_info.get("bitrate_kbps")
+                            if output_bitrate_kbps and output_bitrate_kbps > 0:
+                                output_bps = int(round(output_bitrate_kbps * 1000))
+                                self.logger.info(
+                                    f"RATE_OUTPUT: {filename} "
+                                    f"final_bitrate={output_bps} bps ({format_bps_human(output_bps)})"
+                                )
+                            else:
+                                self.logger.info(
+                                    f"RATE_OUTPUT: {filename} final_bitrate=unavailable"
+                                )
+                        except Exception as exc:
+                            self.logger.warning(
+                                f"RATE_OUTPUT: {filename} failed to probe output bitrate: {exc}"
+                            )
 
                 self.event_bus.publish(JobCompleted(job=job))
                 if self.config.general.debug and start_time:

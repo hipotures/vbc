@@ -145,6 +145,89 @@ def test_determine_rate_control_dynamic_override():
     assert resolved.maxrate_bps == 180000000
 
 
+def test_select_rate_config_for_file_uses_global_when_camera_has_no_rate():
+    config = AppConfig(
+        general=GeneralConfig(
+            threads=1,
+            gpu=False,
+            quality_mode="rate",
+            bps="0.25",
+            minrate="0.2",
+            maxrate="0.3",
+            dynamic_quality={"ILCE-7RM5": {"cq": 35}},
+        ),
+        autorotate=AutoRotateConfig(patterns={}),
+    )
+    orch = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+    vf = VideoFile(
+        path=Path("test.mp4"),
+        size_bytes=1000,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=30,
+            camera_model="ILCE-7RM5",
+        ),
+    )
+
+    bps, minrate, maxrate, source = orch._select_rate_config_for_file(vf, config)
+    assert bps == "0.25"
+    assert minrate == "0.2"
+    assert maxrate == "0.3"
+    assert source == "global"
+
+
+def test_select_rate_config_for_file_uses_dynamic_rate_when_available():
+    config = AppConfig(
+        general=GeneralConfig(
+            threads=1,
+            gpu=False,
+            quality_mode="rate",
+            bps="0.25",
+            dynamic_quality={
+                "ILCE-7RM5": {
+                    "cq": 35,
+                    "rate": {"bps": "0.2", "minrate": "0.15", "maxrate": "0.25"},
+                }
+            },
+        ),
+        autorotate=AutoRotateConfig(patterns={}),
+    )
+    orch = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+    vf = VideoFile(
+        path=Path("test.mp4"),
+        size_bytes=1000,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=30,
+            camera_model="ILCE-7RM5",
+        ),
+    )
+
+    bps, minrate, maxrate, source = orch._select_rate_config_for_file(vf, config)
+    assert bps == "0.2"
+    assert minrate == "0.15"
+    assert maxrate == "0.25"
+    assert source == "dynamic_quality:ILCE-7RM5"
+
+
 def test_determine_cq_no_metadata(orchestrator_basic):
     """Test CQ determination when no metadata available."""
     vf = VideoFile(path=Path("test.mp4"), size_bytes=1000, metadata=None)
