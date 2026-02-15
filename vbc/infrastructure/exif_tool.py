@@ -3,6 +3,7 @@ import threading
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from vbc.domain.models import VideoFile, VideoMetadata
+from vbc.config.models import DynamicQualityRule
 
 class ExifToolAdapter:
     """Wrapper around pyexiftool for metadata extraction and manipulation."""
@@ -93,7 +94,11 @@ class ExifToolAdapter:
             bitrate_kbps=float(bitrate) / 1000 if bitrate else None
         )
 
-    def extract_exif_info(self, file: VideoFile, dynamic_quality: Dict[str, int]) -> Dict[str, Optional[object]]:
+    def extract_exif_info(
+        self,
+        file: VideoFile,
+        dynamic_quality: Dict[str, DynamicQualityRule],
+    ) -> Dict[str, Optional[object]]:
         """Extracts camera info and dynamic quality using full ExifTool tags."""
         if not self.et.running:
             self.et.run()
@@ -114,10 +119,20 @@ class ExifToolAdapter:
         camera_model = None
         custom_cq = None
         matched_pattern = None
+
+        def _rule_cq(rule: Any) -> Optional[int]:
+            if isinstance(rule, DynamicQualityRule):
+                return rule.cq
+            if isinstance(rule, dict):
+                cq_value = rule.get("cq")
+                if isinstance(cq_value, int):
+                    return cq_value
+            return None
         
         # 1. Prioritize matching against the extracted camera model/make
         if camera_raw:
-            for pattern, cq_value in dynamic_quality.items():
+            for pattern, rule in dynamic_quality.items():
+                cq_value = _rule_cq(rule)
                 if pattern in camera_raw:
                     camera_model = camera_raw
                     custom_cq = cq_value
@@ -126,7 +141,8 @@ class ExifToolAdapter:
         
         # 2. Fallback: Search in all exif values
         if custom_cq is None:
-            for pattern, cq_value in dynamic_quality.items():
+            for pattern, rule in dynamic_quality.items():
+                cq_value = _rule_cq(rule)
                 if pattern in full_metadata_text:
                     camera_model = pattern
                     custom_cq = cq_value

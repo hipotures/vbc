@@ -266,9 +266,9 @@ def _determine_cq(self, file: VideoFile) -> int:
 
     # Check dynamic_quality mapping
     if file.metadata.camera_model:
-        for pattern, cq_value in self.config.general.dynamic_quality.items():
+        for pattern, rule in self.config.general.dynamic_quality.items():
             if pattern in file.metadata.camera_model:
-                return cq_value
+                return rule.cq
 
     return default_cq
 ```

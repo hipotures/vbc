@@ -70,9 +70,21 @@ general:
   # Example: ["Sony", "DJI"]
   filter_cameras: []
 
-  # Camera-specific CQ values (First match wins).
-  # Example: {"ILCE-7RM5": 38, "Sony": 40}
-  dynamic_quality: {}
+  # Camera-specific quality rules (first match wins).
+  # NOTE: Legacy scalar format is NOT supported:
+  #   dynamic_quality: {"Sony": 35}
+  # Use object format with explicit cq and optional rate settings:
+  dynamic_quality:
+    "ILCE-7RM5":
+      cq: 35
+      rate:
+        bps: "0.8"
+        minrate: "0.7"
+        maxrate: "0.9"
+    "DJI":
+      cq: 40
+      rate:
+        bps: "180M"
 
   # Quality control mode:
   # - "cq": uses encoder args -cq/-crf (default behavior)
@@ -89,13 +101,13 @@ general:
   minrate: null
   maxrate: null
 
-  # Example rate mode (absolute):
+  # Example rate mode (global absolute):
   # quality_mode: "rate"
   # bps: "200Mbps"
   # minrate: "180Mbps"
   # maxrate: "220Mbps"
 
-  # Example rate mode (relative):
+  # Example rate mode (global relative):
   # quality_mode: "rate"
   # bps: "0.8"
   # minrate: "0.7"

@@ -428,9 +428,9 @@ class Orchestrator:
         if not file.metadata.camera_model:
             return default_cq
         model = file.metadata.camera_model
-        for key, cq_value in cfg.general.dynamic_quality.items():
+        for key, rule in cfg.general.dynamic_quality.items():
             if key in model:
-                return cq_value
+                return rule.cq
         return default_cq
 
     def _determine_rate_control(self, file: VideoFile, config: Optional[AppConfig] = None) -> ResolvedRateControl:
@@ -438,10 +438,24 @@ class Orchestrator:
         source_bps = None
         if file.metadata and file.metadata.bitrate_kbps and file.metadata.bitrate_kbps > 0:
             source_bps = file.metadata.bitrate_kbps * 1000.0
+
+        bps = cfg.general.bps
+        minrate = cfg.general.minrate
+        maxrate = cfg.general.maxrate
+
+        if file.metadata and file.metadata.camera_model:
+            model = file.metadata.camera_model
+            for key, rule in cfg.general.dynamic_quality.items():
+                if key in model and rule.rate is not None:
+                    bps = rule.rate.bps
+                    minrate = rule.rate.minrate
+                    maxrate = rule.rate.maxrate
+                    break
+
         return resolve_rate_control_values(
-            cfg.general.bps,
-            cfg.general.minrate,
-            cfg.general.maxrate,
+            bps,
+            minrate,
+            maxrate,
             source_bps,
         )
 

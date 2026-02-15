@@ -55,7 +55,7 @@ class VideoMetadata(BaseModel):
         fps: Frames per second.
         camera_model: Inferred camera model from EXIF (for dynamic_quality matching).
         camera_raw: Raw EXIF camera string before normalization.
-        custom_cq: Camera-specific CQ override from dynamic_quality config.
+        custom_cq: Camera-specific CQ override from dynamic_quality[camera].cq.
         bitrate_kbps: Input stream bitrate.
         megapixels: Estimated megapixel value (for reference).
         color_space: FFmpeg color space (e.g., "bt709", "yuv420p").

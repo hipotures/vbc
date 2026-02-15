@@ -132,7 +132,10 @@ print(f"Resolution: {metadata.width}x{metadata.height}")
 print(f"Codec: {metadata.codec}")
 
 # Extract EXIF info with dynamic quality
-dynamic_quality = {"ILCE-7RM5": 38, "DC-GH7": 40}
+dynamic_quality = {
+    "ILCE-7RM5": {"cq": 38, "rate": {"bps": "0.8", "minrate": "0.7", "maxrate": "0.9"}},
+    "DC-GH7": {"cq": 40},
+}
 exif_info = exif.extract_exif_info(video, dynamic_quality)
 
 if exif_info["custom_cq"]:

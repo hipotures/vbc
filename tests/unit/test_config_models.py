@@ -10,7 +10,7 @@ def test_valid_config():
             "copy_metadata": True,
             "use_exif": True,
             "filter_cameras": ["Sony"],
-            "dynamic_quality": {"Sony": 35},
+            "dynamic_quality": {"Sony": {"cq": 35}},
             "extensions": [".mp4"],
             "min_size_bytes": 1024
         },
@@ -129,6 +129,35 @@ def test_rate_mode_accepts_absolute_values():
     )
     assert config.quality_mode == "rate"
     assert config.bps == "200Mbps"
+
+
+def test_dynamic_quality_rejects_legacy_scalar_format():
+    with pytest.raises(ValidationError):
+        GeneralConfig(
+            threads=1,
+            extensions=[".mp4"],
+            dynamic_quality={"Sony": 35},
+        )
+
+
+def test_dynamic_quality_accepts_rate_rule():
+    config = GeneralConfig(
+        threads=1,
+        extensions=[".mp4"],
+        dynamic_quality={
+            "Sony": {
+                "cq": 35,
+                "rate": {
+                    "bps": "0.8",
+                    "minrate": "0.7",
+                    "maxrate": "0.9",
+                },
+            }
+        },
+    )
+    assert config.dynamic_quality["Sony"].cq == 35
+    assert config.dynamic_quality["Sony"].rate is not None
+    assert config.dynamic_quality["Sony"].rate.bps == "0.8"
 
 def test_load_config(tmp_path):
     d = tmp_path / "conf"

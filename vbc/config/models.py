@@ -159,6 +159,41 @@ class GpuConfig(BaseModel):
     nvtop_device_name: Optional[str] = None
     nvtop_path: Optional[str] = None
 
+
+class DynamicRateConfig(BaseModel):
+    """Per-camera bitrate rule for quality_mode='rate'."""
+
+    bps: str
+    minrate: Optional[str] = None
+    maxrate: Optional[str] = None
+
+    @field_validator("bps", "minrate", "maxrate")
+    @classmethod
+    def normalize_rate_value(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = str(v).strip()
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def validate_rate_fields(self):
+        validate_rate_control_inputs(
+            "rate",
+            self.bps,
+            self.minrate,
+            self.maxrate,
+            allow_values_when_non_rate=False,
+        )
+        return self
+
+
+class DynamicQualityRule(BaseModel):
+    """Per-camera dynamic quality rule."""
+
+    cq: int = Field(ge=0, le=63)
+    rate: Optional[DynamicRateConfig] = None
+
+
 class GeneralConfig(BaseModel):
     """Core compression and processing configuration.
 
@@ -178,7 +213,7 @@ class GeneralConfig(BaseModel):
         copy_metadata: Preserve EXIF/XMP metadata from source video.
         use_exif: Extract camera model from EXIF for dynamic_quality matching.
         filter_cameras: Only process videos from these camera models (empty = all).
-        dynamic_quality: Override quality per camera model (e.g., {"ILCE-7RM5": 38}).
+        dynamic_quality: Per-camera rules (e.g., {"ILCE-7RM5": {"cq": 38}}).
         quality_mode: Rate control mode: "cq" (default) or "rate" (bitrate).
         bps: Target bitrate value for rate mode (absolute or ratio).
         minrate: Optional minimum bitrate for rate mode (same class as bps).
@@ -205,7 +240,7 @@ class GeneralConfig(BaseModel):
     copy_metadata: bool = True
     use_exif: bool = True
     filter_cameras: List[str] = Field(default_factory=list)
-    dynamic_quality: Dict[str, int] = Field(default_factory=dict)
+    dynamic_quality: Dict[str, DynamicQualityRule] = Field(default_factory=dict)
     quality_mode: Literal["cq", "rate"] = "cq"
     bps: Optional[str] = None
     minrate: Optional[str] = None
@@ -245,6 +280,30 @@ class GeneralConfig(BaseModel):
             return None
         cleaned = str(v).strip()
         return cleaned or None
+
+    @field_validator("dynamic_quality", mode="before")
+    @classmethod
+    def validate_dynamic_quality_schema(cls, v):
+        if v is None:
+            return {}
+        if not isinstance(v, dict):
+            raise ValueError("dynamic_quality must be a mapping of camera pattern -> rule.")
+
+        for pattern, rule in v.items():
+            if isinstance(rule, DynamicQualityRule):
+                continue
+            if isinstance(rule, int):
+                raise ValueError(
+                    f"Legacy dynamic_quality format is not supported for '{pattern}'. "
+                    "Use object format: {\"pattern\": {\"cq\": 35}}."
+                )
+            if not isinstance(rule, dict):
+                raise ValueError(
+                    f"Invalid dynamic_quality rule for '{pattern}'. "
+                    "Expected mapping with required 'cq' and optional 'rate'."
+                )
+
+        return v
 
     @model_validator(mode="after")
     def validate_queue_sort_dependencies(self):

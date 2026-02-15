@@ -49,9 +49,9 @@ def config_with_dynamic_quality():
             "min_size_bytes": 0,
             "filter_cameras": [],
             "dynamic_quality": {
-                "DC-GH7": 30,
-                "ILCE-7RM5": 35,
-                "DJI OsmoPocket3": 35
+                "DC-GH7": {"cq": 30},
+                "ILCE-7RM5": {"cq": 35},
+                "DJI OsmoPocket3": {"cq": 35},
             },
             "prefetch_factor": 1,
             "clean_errors": False,
@@ -85,8 +85,8 @@ def config_yaml_path(tmp_path):
             'min_size_bytes': 0,
             'filter_cameras': [],
             'dynamic_quality': {
-                'DC-GH7': 30,
-                'ILCE-7RM5': 35,
+                'DC-GH7': {'cq': 30},
+                'ILCE-7RM5': {'cq': 35},
             },
             'prefetch_factor': 1,
             'clean_errors': False,

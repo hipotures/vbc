@@ -67,7 +67,7 @@ def test_determine_cq_dynamic_match():
     config = AppConfig(
         general=GeneralConfig(
             threads=2, gpu=False,
-            dynamic_quality={"DC-GH7": 30, "ILCE-7RM5": 35}
+            dynamic_quality={"DC-GH7": {"cq": 30}, "ILCE-7RM5": {"cq": 35}}
         ),
         autorotate=AutoRotateConfig(patterns={})
     )
@@ -92,6 +92,57 @@ def test_determine_cq_dynamic_match():
 
     cq = orch._determine_cq(vf)
     assert cq == 30  # Matched from dynamic_quality
+
+
+def test_determine_rate_control_dynamic_override():
+    config = AppConfig(
+        general=GeneralConfig(
+            threads=2,
+            gpu=False,
+            quality_mode="rate",
+            bps="200M",
+            minrate="180M",
+            maxrate="220M",
+            dynamic_quality={
+                "DC-GH7": {
+                    "cq": 30,
+                    "rate": {
+                        "bps": "0.8",
+                        "minrate": "0.7",
+                        "maxrate": "0.9",
+                    },
+                }
+            },
+        ),
+        autorotate=AutoRotateConfig(patterns={}),
+    )
+
+    orch = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+
+    vf = VideoFile(
+        path=Path("test.mp4"),
+        size_bytes=1000,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=30,
+            camera_model="DC-GH7",
+            bitrate_kbps=200000,
+        ),
+    )
+
+    resolved = orch._determine_rate_control(vf)
+    assert resolved.target_bps == 160000000
+    assert resolved.minrate_bps == 140000000
+    assert resolved.maxrate_bps == 180000000
 
 
 def test_determine_cq_no_metadata(orchestrator_basic):

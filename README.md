@@ -438,9 +438,20 @@ general:
   # Example: ["Sony", "DJI"]
   filter_cameras: []
 
-  # Camera-specific CQ values (First match wins).
-  # Example: {"ILCE-7RM5": 38, "Sony": 40}
-  dynamic_quality: {}
+  # Camera-specific quality rules (first match wins).
+  # Legacy scalar format is not supported:
+  #   dynamic_quality: {"Sony": 35}
+  dynamic_quality:
+    "ILCE-7RM5":
+      cq: 38
+      rate:
+        bps: "0.8"
+        minrate: "0.7"
+        maxrate: "0.9"
+    "DJI":
+      cq: 40
+      rate:
+        bps: "180M"
 
   # File extensions to scan and process.
   extensions:
@@ -778,16 +789,25 @@ gpu_encoder:
 
 general:
   dynamic_quality:
-    "ILCE-7RM5": 38      # Sony A7R V - highest quality
-    "DC-GH7": 40         # Panasonic GH7 - high quality
-    "DJI OsmoPocket3": 48  # DJI Pocket 3 - standard quality
+    "ILCE-7RM5":
+      cq: 38            # CQ mode override
+      rate:             # Optional rate mode override
+        bps: "0.8"
+        minrate: "0.7"
+        maxrate: "0.9"
+    "DC-GH7":
+      cq: 40
+    "DJI OsmoPocket3":
+      cq: 48
+      rate:
+        bps: "180M"
 ```
 
 **How it works**:
 1. VBC extracts full EXIF metadata via ExifTool
 2. Searches all metadata fields for camera model strings
 3. First match wins (order matters in YAML)
-4. Applies custom quality value instead of default
+4. Uses `cq` in `quality_mode=cq`, or `rate` when `quality_mode=rate` (if present)
 
 **Example**:
 - File: `IMG_1234.MOV`

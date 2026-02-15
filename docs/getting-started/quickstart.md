@@ -122,11 +122,18 @@ general:
   use_exif: true
   extensions: [".mp4", ".mov", ".avi", ".flv"]
   min_size_bytes: 1048576  # 1 MiB
-  # Camera-specific quality
+  # Camera-specific quality rules
   dynamic_quality:
-    "ILCE-7RM5": 38      # Sony A7R V
-    "DC-GH7": 40         # Panasonic GH7
-    "DJI OsmoPocket3": 45
+    "ILCE-7RM5":
+      cq: 38             # Sony A7R V
+      rate:
+        bps: "0.8"
+        minrate: "0.7"
+        maxrate: "0.9"
+    "DC-GH7":
+      cq: 40             # Panasonic GH7
+    "DJI OsmoPocket3":
+      cq: 45
 
   # Camera filtering (empty = all cameras)
   filter_cameras: []

@@ -10,7 +10,7 @@ def test_dynamic_quality_selection():
     config = AppConfig(
         general=GeneralConfig(
             threads=1,
-            dynamic_quality={"Sony": 35, "DJI": 30}
+            dynamic_quality={"Sony": {"cq": 35}, "DJI": {"cq": 30}}
         )
     )
     

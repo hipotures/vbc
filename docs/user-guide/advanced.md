@@ -4,7 +4,7 @@ This guide covers VBC's advanced features: dynamic quality, auto-rotation, camer
 
 ## Dynamic Quality (Camera-Specific Quality)
 
-Different cameras produce different quality levels. VBC can apply custom CQ values per camera model.
+Different cameras produce different quality levels. VBC can apply per-camera rules with explicit `cq` and optional `rate`.
 
 ### Configuration
 
@@ -16,29 +16,44 @@ gpu_encoder:
 
 general:
   dynamic_quality:
-    "ILCE-7RM5": 38      # Sony A7R V - very high quality
-    "DC-GH7": 40         # Panasonic GH7 - high quality
-    "DJI OsmoPocket3": 48  # DJI Pocket 3 - standard quality
+    "ILCE-7RM5":
+      cq: 38
+      rate:
+        bps: "0.8"
+        minrate: "0.7"
+        maxrate: "0.9"
+    "DC-GH7":
+      cq: 40
+    "DJI OsmoPocket3":
+      cq: 48
+      rate:
+        bps: "180M"
 ```
 
 ### How It Works
 
 1. **ExifTool analysis**: VBC extracts full EXIF metadata
 2. **Pattern matching**: Searches all metadata for camera model strings
-3. **Quality override**: If match found, uses custom value instead of default
+3. **Mode-aware override**:
+   - `quality_mode=cq` uses `dynamic_quality.<pattern>.cq`
+   - `quality_mode=rate` uses `dynamic_quality.<pattern>.rate` (if provided)
 4. **First match wins**: Patterns are checked in config file order
 
 ### Example
 
 ```yaml
 dynamic_quality:
-  "Sony": 40        # Matches all Sony cameras
-  "ILCE-7RM5": 38   # Specific model (higher priority if listed first)
+  "Sony":
+    cq: 40
+  "ILCE-7RM5":
+    cq: 38
 ```
 
 **File:** `IMG_1234.MOV`
 **EXIF:** `EXIF:Model = "ILCE-7RM5"`
 **Result:** CQ = 38 (specific match beats generic)
+
+**Schema note:** legacy scalar format is rejected, e.g. `"Sony": 40` is invalid.
 
 ### CLI Override
 

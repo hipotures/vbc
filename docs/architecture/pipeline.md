@@ -224,7 +224,7 @@ if config.general.filter_cameras:
 ```python
 # Determine quality (dynamic or default)
 target_cq = _determine_cq(video_file, use_gpu=config.general.gpu)
-# Checks: CLI override → custom_cq from EXIF → dynamic_quality mapping → default from encoder args
+# Checks: CLI override → custom_cq from EXIF → dynamic_quality[pattern].cq → default from encoder args
 
 # Determine rotation (manual or pattern-based)
 rotation = _determine_rotation(video_file)

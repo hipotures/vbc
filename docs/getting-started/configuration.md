@@ -67,10 +67,19 @@ general:
                                 # Example: ["Sony", "DJI OsmoPocket3"]
 
   # === Quality Control ===
-  dynamic_quality:                   # Camera-specific CQ values
-    "ILCE-7RM5": 38            # Sony A7R V - higher quality
-    "DC-GH7": 40               # Panasonic GH7
-    "DJI OsmoPocket3": 45      # DJI Pocket 3 - lower quality
+  dynamic_quality:             # Camera-specific quality rules
+    "ILCE-7RM5":
+      cq: 38                   # CQ mode override
+      rate:                    # Optional rate override
+        bps: "0.8"
+        minrate: "0.7"
+        maxrate: "0.9"
+    "DC-GH7":
+      cq: 40
+    "DJI OsmoPocket3":
+      cq: 45
+      rate:
+        bps: "180M"
   quality_mode: cq              # cq (default) or rate
   bps: null                     # e.g. 200Mbps, 200M, 200000k, 0.8
   minrate: null                 # optional; same class as bps
@@ -433,18 +442,28 @@ Dashboard display settings.
 ### Quality Control
 
 #### `dynamic_quality`
-- **Type**: Dictionary (string -> integer)
+- **Type**: Dictionary (string -> object)
 - **Default**: `{}` (empty)
-- **Description**: Camera model -> quality value mapping (applies to `-cq`/`-crf`)
+- **Description**: Camera model -> quality rule mapping.
 - **Matching**: Full-text search in all EXIF metadata
 - **Example**:
   ```yaml
   dynamic_quality:
-    "ILCE-7RM5": 38      # Exact model match
-    "Sony": 40           # Brand match (all Sony cameras)
-    "DJI OsmoPocket3": 45
+    "ILCE-7RM5":
+      cq: 38
+      rate:
+        bps: "0.8"
+        minrate: "0.7"
+        maxrate: "0.9"
+    "Sony":
+      cq: 40
+    "DJI OsmoPocket3":
+      cq: 45
+      rate:
+        bps: "180M"
   ```
 - **Priority**: First match wins (order matters in YAML)
+- **Required schema**: each entry must be an object with `cq`; legacy scalar format (`"Sony": 40`) is rejected.
 
 #### `quality_mode`
 - **Type**: String

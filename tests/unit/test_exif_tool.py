@@ -107,7 +107,7 @@ def test_extract_exif_info_dynamic_quality_match_and_bitrate():
 
         adapter = ExifToolAdapter()
         vf = VideoFile(path=Path("test.mp4"), size_bytes=1000)
-        info = adapter.extract_exif_info(vf, {"Sony": 33})
+        info = adapter.extract_exif_info(vf, {"Sony": {"cq": 33}})
 
         assert info["camera_model"] == "Sony A7"
         assert info["camera_raw"] == "Sony A7"
@@ -128,7 +128,7 @@ def test_extract_exif_info_fallback_to_camera_raw():
 
         adapter = ExifToolAdapter()
         vf = VideoFile(path=Path("test.mp4"), size_bytes=1000)
-        info = adapter.extract_exif_info(vf, {"Sony": 33})
+        info = adapter.extract_exif_info(vf, {"Sony": {"cq": 33}})
 
         assert info["camera_model"] == "Canon R5"
         assert info["custom_cq"] is None

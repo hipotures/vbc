@@ -32,8 +32,8 @@ def test_real_file_dynamic_quality(real_test_videos):
             min_size_bytes=0,
             filter_cameras=[],
             dynamic_quality={
-                "DC-GH7": 30,  # Lower CQ (better quality) for GH7
-                "ILCE-7RM5": 35,  # For Sony
+                "DC-GH7": {"cq": 30},  # Lower CQ (better quality) for GH7
+                "ILCE-7RM5": {"cq": 35},  # For Sony
             },
             debug=True,  # Enable debug logging
         ),

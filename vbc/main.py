@@ -402,8 +402,19 @@ def compress(
             "Deep (ExifTool + XMP)" if (config.general.use_exif and config.general.copy_metadata)
             else ("Basic (FFmpeg)" if config.general.copy_metadata else "None")
         )
+
+        def _format_dynamic_quality_rule(rule) -> str:
+            if getattr(rule, "rate", None) is None:
+                return f"cq={rule.cq}"
+            parts = [f"cq={rule.cq}", f"bps={rule.rate.bps}"]
+            if rule.rate.minrate is not None:
+                parts.append(f"minrate={rule.rate.minrate}")
+            if rule.rate.maxrate is not None:
+                parts.append(f"maxrate={rule.rate.maxrate}")
+            return ", ".join(parts)
+
         dynamic_quality_info = (
-            ", ".join([f"{k}:{v}" for k, v in config.general.dynamic_quality.items()])
+            ", ".join([f"{k}:({_format_dynamic_quality_rule(v)})" for k, v in config.general.dynamic_quality.items()])
             if config.general.dynamic_quality else "None"
         )
         camera_filter_info = ", ".join(config.general.filter_cameras) if config.general.filter_cameras else "None"

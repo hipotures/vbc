@@ -14,7 +14,7 @@ These settings can **only** be modified via the YAML file.
 | `copy_metadata` | True | Boolean flag to toggle metadata copying. |
 | `use_exif` | True | Boolean flag to toggle ExifTool analysis. |
 | `filter_cameras` | [] | List of camera models to process (also available via `--camera`). |
-| `dynamic_quality` | {} | Mapping of camera models to specific CQ values. |
+| `dynamic_quality` | {} | Mapping of camera models to rule objects (`cq` + optional `rate`). |
 | `extensions` | [...] | List of allowed input file extensions. |
 | `strip_unicode_display`| True | Clean UI filenames from special characters. |
 | `min_compression_ratio`| 0.1 | Minimum required savings (also available via `--min-ratio`). |
