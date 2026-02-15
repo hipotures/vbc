@@ -277,6 +277,35 @@ def test_ffmpeg_compress_hw_cap_error(tmp_path):
     assert bus.publish.called
 
 
+def test_ffmpeg_compress_gpu_unavailable_error_is_clear(tmp_path):
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
+    vf = VideoFile(path=tmp_path / "input.mp4", size_bytes=1000)
+    vf.path.write_bytes(b"x" * 10)
+    job = CompressionJob(source_file=vf, output_path=tmp_path / "output.mp4")
+
+    tmp_output = job.output_path.with_suffix(".tmp")
+    tmp_output.write_bytes(b"tmp")
+
+    process_instance = MagicMock()
+    process_instance.stdout = [
+        "[av1_nvenc @ 0x123] dl_fn->cuda_dl->cuInit(0) failed -> CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected"
+    ]
+    process_instance.poll.return_value = None
+    process_instance.wait.return_value = 255
+    process_instance.returncode = 255
+
+    bus = MagicMock()
+    with patch("subprocess.Popen", return_value=process_instance):
+        adapter = FFmpegAdapter(event_bus=bus)
+        adapter.compress(job, config, use_gpu=True)
+
+    assert job.status == JobStatus.HW_CAP_LIMIT
+    assert "GPU AV1 encode unavailable" in job.error_message
+    assert "Use --cpu or enable cpu_fallback." in job.error_message
+    assert not tmp_output.exists()
+    assert bus.publish.called
+
+
 def test_ffmpeg_compress_color_error_triggers_fix(tmp_path):
     config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
     vf = VideoFile(path=tmp_path / "input.mp4", size_bytes=1000)

@@ -405,6 +405,7 @@ class FFmpegAdapter:
                 encoder_args = apply_pix_fmt_arg(encoder_args, pix_fmt)
 
         if config.general.debug:
+            encoder_name = _extract_flag_value(encoder_args, "-c:v") or "unknown"
             if config.general.quality_mode == "rate":
                 quality_text = f"RATE={_extract_flag_value(encoder_args, '-b:v')}"
             else:
@@ -412,7 +413,9 @@ class FFmpegAdapter:
                 quality_flag = extract_quality_flag(encoder_args)
                 quality_label = "CQ" if quality_flag == "-cq" else "CRF" if quality_flag == "-crf" else "Q"
                 quality_text = f"{quality_label}={quality_value}" if quality_value is not None else "quality=unknown"
-            self.logger.info(f"FFMPEG_START: {filename} (gpu={use_gpu}, {quality_text})")
+            self.logger.info(
+                f"FFMPEG_START: {filename} (gpu={use_gpu}, encoder={encoder_name}, {quality_text})"
+            )
 
         if config.general.debug:
             _, audio_mode, audio_codec = self._select_audio_options(job)
@@ -437,6 +440,8 @@ class FFmpegAdapter:
         # Regex to parse 'time=00:00:00.00' from ffmpeg output
         time_regex = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
         hw_cap_error = False
+        gpu_unavailable_error = False
+        gpu_unavailable_detail: Optional[str] = None
         color_error = False
 
         output_queue: "queue.Queue[Optional[str]]" = queue.Queue()
@@ -484,12 +489,29 @@ class FFmpegAdapter:
                 if line is None:
                     break
 
+                line_stripped = line.strip()
+                line_lower = line.lower()
+
                 if (
                     "Hardware is lacking required capabilities" in line
                     or "No capable devices found" in line
                     or "not supported" in line and "nvenc" in line.lower()
                 ):
                     hw_cap_error = True
+                if use_gpu:
+                    is_gpu_unavailable = (
+                        "cuda_error_no_device" in line_lower
+                        or "no cuda-capable device is detected" in line_lower
+                        or "no nvenc capable devices found" in line_lower
+                        or "cannot load libcuda" in line_lower
+                        or "driver does not support the required nvenc api version" in line_lower
+                        or "openencodesessionex failed" in line_lower
+                    )
+                    if is_gpu_unavailable:
+                        gpu_unavailable_error = True
+                        hw_cap_error = True
+                        if gpu_unavailable_detail is None and line_stripped:
+                            gpu_unavailable_detail = line_stripped
                 if "is not a valid value for color_primaries" in line or "is not a valid value for color_trc" in line:
                     color_error = True
 
@@ -528,7 +550,14 @@ class FFmpegAdapter:
         # Check for hardware capability error (code 187 or text match)
         if hw_cap_error or process.returncode == 187:
             job.status = JobStatus.HW_CAP_LIMIT
-            job.error_message = "Hardware is lacking required capabilities"
+            if gpu_unavailable_error:
+                detail = gpu_unavailable_detail or "GPU encoder initialization failed"
+                job.error_message = (
+                    f"GPU AV1 encode unavailable: {detail}. "
+                    "Use --cpu or enable cpu_fallback."
+                )
+            else:
+                job.error_message = "Hardware is lacking required capabilities"
             # Cleanup tmp file on error
             if tmp_path.exists():
                 tmp_path.unlink()
