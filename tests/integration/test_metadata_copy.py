@@ -235,6 +235,8 @@ def test_vbc_custom_tags_written(tmp_path):
                 assert "original_file.mp4" in args_str or "VBCOriginalName" in args_str
                 # Should have quality tag
                 assert "VBCQuality" in args_str
+                # Should have original bitrate tag
+                assert "VBCOriginalBitrate" in args_str
                 break
 
         # VBC tags only written if exiftool.conf exists

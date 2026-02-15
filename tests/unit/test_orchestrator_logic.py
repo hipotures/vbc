@@ -145,6 +145,79 @@ def test_determine_rate_control_dynamic_override():
     assert resolved.maxrate_bps == 180000000
 
 
+def test_quality_label_for_rate_tags_uses_global_bps_when_no_dynamic_rate():
+    config = AppConfig(
+        general=GeneralConfig(
+            threads=1,
+            gpu=False,
+            quality_mode="rate",
+            bps="20M",
+            dynamic_quality={"ILCE-7RM5": {"cq": 35}},
+        ),
+        autorotate=AutoRotateConfig(patterns={}),
+    )
+    orch = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+    vf = VideoFile(
+        path=Path("test.mp4"),
+        size_bytes=1000,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=30,
+            camera_model="ILCE-7RM5",
+        ),
+    )
+
+    assert orch._quality_label_for_rate_tags(vf) == "20M"
+
+
+def test_quality_label_for_rate_tags_uses_dynamic_ratio_bps():
+    config = AppConfig(
+        general=GeneralConfig(
+            threads=1,
+            gpu=False,
+            quality_mode="rate",
+            bps="20M",
+            dynamic_quality={
+                "ILCE-7RM5": {
+                    "cq": 35,
+                    "rate": {"bps": "0.2"},
+                }
+            },
+        ),
+        autorotate=AutoRotateConfig(patterns={}),
+    )
+    orch = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+    vf = VideoFile(
+        path=Path("test.mp4"),
+        size_bytes=1000,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=30,
+            camera_model="ILCE-7RM5",
+        ),
+    )
+
+    assert orch._quality_label_for_rate_tags(vf) == "0.2"
+
+
 def test_select_rate_config_for_file_uses_global_when_camera_has_no_rate():
     config = AppConfig(
         general=GeneralConfig(
@@ -526,6 +599,7 @@ def test_build_vbc_tag_args(orchestrator_basic, tmp_path):
     args = orchestrator_basic._build_vbc_tag_args(
         source_path=source,
         quality_label="45",
+        original_bitrate_label="35.9 Mbps",
         encoder="NVENC AV1 (GPU)",
         original_size=1000000,
         finished_at="2025-01-01T12:00:00"
@@ -534,20 +608,45 @@ def test_build_vbc_tag_args(orchestrator_basic, tmp_path):
     assert "-XMP:VBCOriginalName=source.mp4" in args
     assert "-XMP:VBCOriginalSize=1000000" in args
     assert "-XMP:VBCQuality=45" in args
+    assert "-XMP:VBCOriginalBitrate=35.9 Mbps" in args
     assert "-XMP:VBCEncoder=NVENC AV1 (GPU)" in args
     assert "-XMP:VBCFinishedAt=2025-01-01T12:00:00" in args
 
 
 def test_build_vbc_tag_args_accepts_text_quality_label(orchestrator_basic, tmp_path):
-    """Rate mode may use human-readable quality labels (e.g. Mbps)."""
+    """Rate mode should keep the configured rate target for VBCQuality."""
     source = tmp_path / "source.mp4"
 
     args = orchestrator_basic._build_vbc_tag_args(
         source_path=source,
-        quality_label="20.791 Mbps",
+        quality_label="0.2",
+        original_bitrate_label="35.9 Mbps",
         encoder="SVT-AV1 (CPU)",
         original_size=1000000,
         finished_at="2025-01-01T12:00:00",
     )
 
-    assert "-XMP:VBCQuality=20.791 Mbps" in args
+    assert "-XMP:VBCQuality=0.2" in args
+    assert "-XMP:VBCOriginalBitrate=35.9 Mbps" in args
+
+
+def test_original_bitrate_label_for_tags_formats_mbps(orchestrator_basic):
+    vf = VideoFile(
+        path=Path("source.mp4"),
+        size_bytes=1000,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=30,
+            bitrate_kbps=35890,
+        ),
+    )
+
+    assert orchestrator_basic._original_bitrate_label_for_tags(vf) == "35.89 Mbps"
+
+
+def test_original_bitrate_label_for_tags_unknown_when_missing(orchestrator_basic):
+    vf = VideoFile(path=Path("source.mp4"), size_bytes=1000, metadata=None)
+
+    assert orchestrator_basic._original_bitrate_label_for_tags(vf) == "unknown"

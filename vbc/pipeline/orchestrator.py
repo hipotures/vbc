@@ -495,6 +495,30 @@ class Orchestrator:
 
         return resolved
 
+    def _quality_label_for_rate_tags(
+        self,
+        file: VideoFile,
+        config: Optional[AppConfig] = None,
+    ) -> str:
+        """Return the configured rate target value to persist in VBCQuality tag."""
+        cfg = config if config is not None else self.config
+        bps, _, _, _ = self._select_rate_config_for_file(file, cfg)
+        if bps is None:
+            return "unknown"
+        return str(bps)
+
+    @staticmethod
+    def _format_mbps_label_from_bps(bps: float) -> str:
+        mbps = bps / 1_000_000.0
+        value = f"{mbps:.3f}".rstrip("0").rstrip(".")
+        return f"{value} Mbps"
+
+    def _original_bitrate_label_for_tags(self, file: VideoFile) -> str:
+        """Return source bitrate label used by VBCOriginalBitrate tag."""
+        if file.metadata and file.metadata.bitrate_kbps and file.metadata.bitrate_kbps > 0:
+            return self._format_mbps_label_from_bps(file.metadata.bitrate_kbps * 1000.0)
+        return "unknown"
+
     def _quality_display_for_cq(self, cq_value: int, use_gpu: bool, config: Optional[AppConfig] = None) -> str:
         cfg = config if config is not None else self.config
         encoder_args = select_encoder_args(cfg, use_gpu)
@@ -586,6 +610,7 @@ class Orchestrator:
         self,
         source_path: Path,
         quality_label: str,
+        original_bitrate_label: str,
         encoder: str,
         original_size: int,
         finished_at: str
@@ -594,6 +619,7 @@ class Orchestrator:
             f"-XMP:VBCOriginalName={source_path.name}",
             f"-XMP:VBCOriginalSize={original_size}",
             f"-XMP:VBCQuality={quality_label}",
+            f"-XMP:VBCOriginalBitrate={original_bitrate_label}",
             f"-XMP:VBCEncoder={encoder}",
             f"-XMP:VBCFinishedAt={finished_at}",
         ]
@@ -604,6 +630,7 @@ class Orchestrator:
         output_path: Path,
         err_path: Path,
         quality_label: str,
+        original_bitrate_label: str,
         encoder: str,
         original_size: int,
         finished_at: str
@@ -613,6 +640,7 @@ class Orchestrator:
         vbc_tags = self._build_vbc_tag_args(
             source_path,
             quality_label,
+            original_bitrate_label,
             encoder,
             original_size,
             finished_at,
@@ -740,6 +768,7 @@ class Orchestrator:
         source_path: Path,
         output_path: Path,
         quality_label: str,
+        original_bitrate_label: str,
         encoder: str,
         original_size: int,
         finished_at: str
@@ -759,6 +788,7 @@ class Orchestrator:
             self._build_vbc_tag_args(
                 source_path,
                 quality_label,
+                original_bitrate_label,
                 encoder,
                 original_size,
                 finished_at,
@@ -1123,12 +1153,18 @@ class Orchestrator:
             rotation = self._determine_rotation(video_file, config=job_config)
             quality_value: Optional[int] = None
             quality_display = "unknown"
+            quality_tag_label = "unknown"
+            original_bitrate_label = self._original_bitrate_label_for_tags(video_file)
             rate_control: Optional[ResolvedRateControl] = None
 
             try:
                 if job_config.general.quality_mode == "rate":
                     rate_control = self._determine_rate_control(video_file, config=job_config)
                     quality_display = format_bps_human(rate_control.target_bps)
+                    quality_tag_label = self._quality_label_for_rate_tags(
+                        video_file,
+                        config=job_config,
+                    )
                 else:
                     quality_value = self._determine_cq(video_file, use_gpu=use_gpu, config=job_config)
                     quality_display = self._quality_display_for_cq(
@@ -1136,6 +1172,7 @@ class Orchestrator:
                         use_gpu=use_gpu,
                         config=job_config,
                     )
+                    quality_tag_label = quality_display
             except ValueError as exc:
                 err_msg = str(exc)
                 failed_job = CompressionJob(
@@ -1183,6 +1220,10 @@ class Orchestrator:
                     rate_control = self._determine_rate_control(video_file, config=job_config)
                     quality_value = None
                     quality_display = format_bps_human(rate_control.target_bps)
+                    quality_tag_label = self._quality_label_for_rate_tags(
+                        video_file,
+                        config=job_config,
+                    )
                 else:
                     quality_value = self._determine_cq(video_file, use_gpu=False, config=job_config)
                     quality_display = self._quality_display_for_cq(
@@ -1190,6 +1231,7 @@ class Orchestrator:
                         use_gpu=False,
                         config=job_config,
                     )
+                    quality_tag_label = quality_display
                 output_suffix = self._output_suffix_for_mode(use_gpu=False)
                 output_path_cpu = output_dir / rel_path.with_suffix(output_suffix)
                 output_path_cpu.parent.mkdir(parents=True, exist_ok=True)
@@ -1217,13 +1259,14 @@ class Orchestrator:
                     encoder_args = select_encoder_args(job_config, use_gpu)
                     encoder_label = infer_encoder_label(encoder_args, use_gpu)
                     finished_at = datetime.now().astimezone().isoformat(timespec="seconds")
-                    quality_label = job.quality_display or quality_display
+                    quality_label = quality_tag_label
                     if job_config.general.copy_metadata:
                         self._copy_deep_metadata(
                             video_file.path,
                             job.output_path,
                             err_path,
                             quality_label,
+                            original_bitrate_label,
                             encoder_label,
                             video_file.size_bytes,
                             finished_at
@@ -1233,6 +1276,7 @@ class Orchestrator:
                             video_file.path,
                             job.output_path,
                             quality_label,
+                            original_bitrate_label,
                             encoder_label,
                             video_file.size_bytes,
                             finished_at

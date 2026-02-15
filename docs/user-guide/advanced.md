@@ -318,7 +318,7 @@ general:
 - **Camera**: Model, lens, focal length, ISO, aperture
 - **XMP**: All XMP tags (Adobe, vendor-specific)
 - **QuickTime**: All QuickTime metadata
-- **Custom VBC tags**: Original filename, size, quality, encoder, timestamp
+- **Custom VBC tags**: Original filename, size, original bitrate, quality target, encoder, timestamp
 
 ### ExifTool Config
 
@@ -343,6 +343,7 @@ VBC uses `conf/exiftool.conf` to define custom VBC tags:
     VBCOriginalName => { },
     VBCOriginalSize => { },
     VBCQuality => { },
+    VBCOriginalBitrate => { },
     VBCEncoder => { },
     VBCFinishedAt => { },
 );
@@ -358,10 +359,15 @@ Output:
 ```
 VBC Original Name       : original_video.mp4
 VBC Original Size       : 125829120
-VBC Quality             : 45
+VBC Original Bitrate    : 35.9 Mbps
+VBC Quality             : 0.2
 VBC Encoder             : NVENC AV1 (GPU)
 VBC Finished At         : 2025-12-21T15:30:45+01:00
 ```
+
+`VBC Quality` stores the configured compression target:
+- `cq` mode: quality parameter label (e.g. `CQ45`)
+- `rate` mode: configured `bps` value (e.g. `20M` or `0.2`)
 
 ## Hardware Capability Detection
 
