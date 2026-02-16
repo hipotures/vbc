@@ -14,18 +14,20 @@ from vbc.domain.events import (
     ActionMessage,
     DiscoveryFinished,
     HardwareCapabilityExceeded,
+    InterruptRequested,
     JobCompleted,
     JobFailed,
     JobProgressUpdated,
     JobStarted,
     ProcessingFinished,
     QueueUpdated,
+    RequestShutdown,
     RefreshRequested,
     RefreshFinished,
+    ThreadControlEvent,
 )
 from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
 from vbc.infrastructure.event_bus import EventBus
-from vbc.ui.keyboard import InterruptRequested, RequestShutdown, ThreadControlEvent
 
 ADJECTIVES = [
     "amber", "ancient", "azure", "brisk", "calm", "cedar", "clean", "clear",

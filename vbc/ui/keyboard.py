@@ -5,15 +5,14 @@ import tty
 import select
 from typing import Optional
 from vbc.infrastructure.event_bus import EventBus
-from vbc.domain.events import Event
-
-class RequestShutdown(Event):
-    """Event emitted when user requests graceful shutdown (Key 'S')."""
-    pass
-
-class InterruptRequested(Event):
-    """Event emitted when user requests immediate interrupt (Ctrl+C)."""
-    pass
+from vbc.domain.events import (
+    ActionMessage,
+    Event,
+    InterruptRequested,
+    RefreshRequested,
+    RequestShutdown,
+    ThreadControlEvent,
+)
 
 # Deprecated overlay events (kept for compatibility)
 class ToggleConfig(Event):
@@ -65,10 +64,6 @@ class CycleSparklinePalette(Event):
     """Event emitted to cycle GPU sparkline palette (Key 'P')."""
     direction: int = 1  # 1=next, -1=previous
 
-class ThreadControlEvent(Event):
-    """Event emitted to adjust thread count (Keys '<' or '>')."""
-    change: int # +1 or -1
-
 class KeyboardListener:
     """Listens for keyboard input in a background thread."""
     
@@ -97,7 +92,6 @@ class KeyboardListener:
                     elif key in ('S', 's'):
                         self.event_bus.publish(RequestShutdown())
                     elif key in ('R', 'r'):
-                        from vbc.domain.events import RefreshRequested, ActionMessage
                         self.event_bus.publish(RefreshRequested())
                         # Immediate feedback (like old vbc.py line 787)
                         self.event_bus.publish(ActionMessage(message="REFRESH requested"))

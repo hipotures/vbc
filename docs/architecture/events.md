@@ -150,8 +150,8 @@ class RefreshFinished(Event):
 
 ### Control Events
 
-!!! note "UI/Keyboard Events Location"
-    The control events below are defined in `vbc/ui/keyboard.py` rather than `vbc/domain/events.py` because they are UI-layer concerns. They still use the EventBus for communication.
+!!! note "Control Events Location"
+    The control events below are defined in `vbc/domain/events.py` so pipeline and UI can depend on the same domain-level contracts. They are published by `KeyboardListener` in `vbc/ui/keyboard.py`.
 
 #### ThreadControlEvent
 ```python
@@ -162,7 +162,7 @@ class ThreadControlEvent(Event):
 **Publisher:** KeyboardListener
 **Subscribers:** Orchestrator, UIManager
 **Purpose:** Adjust max concurrent threads
-**Location:** `vbc/ui/keyboard.py`
+**Location:** `vbc/domain/events.py` (published by `vbc/ui/keyboard.py`)
 
 #### RequestShutdown
 ```python
@@ -173,7 +173,7 @@ class RequestShutdown(Event):
 **Publisher:** KeyboardListener
 **Subscribers:** Orchestrator, UIManager
 **Purpose:** Graceful shutdown (finish active jobs)
-**Location:** `vbc/ui/keyboard.py`
+**Location:** `vbc/domain/events.py` (published by `vbc/ui/keyboard.py`)
 
 #### InterruptRequested
 ```python
@@ -184,7 +184,7 @@ class InterruptRequested(Event):
 **Publisher:** KeyboardListener
 **Subscribers:** Orchestrator, UIManager
 **Purpose:** Immediate interrupt (Ctrl+C)
-**Location:** `vbc/ui/keyboard.py`
+**Location:** `vbc/domain/events.py` (published by `vbc/ui/keyboard.py`)
 
 ### UI Events
 

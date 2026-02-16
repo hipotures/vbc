@@ -52,8 +52,19 @@ from vbc.infrastructure.ffmpeg import (
     infer_encoder_label,
 )
 from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
-from vbc.domain.events import DiscoveryStarted, DiscoveryFinished, JobStarted, JobCompleted, JobFailed, QueueUpdated, ProcessingFinished, RefreshFinished
-from vbc.ui.keyboard import RequestShutdown, ThreadControlEvent, InterruptRequested
+from vbc.domain.events import (
+    DiscoveryStarted,
+    DiscoveryFinished,
+    JobStarted,
+    JobCompleted,
+    JobFailed,
+    QueueUpdated,
+    ProcessingFinished,
+    RefreshFinished,
+    RequestShutdown,
+    ThreadControlEvent,
+    InterruptRequested,
+)
 from vbc.pipeline.queue_sorting import sort_files
 
 

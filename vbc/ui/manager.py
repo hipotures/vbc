@@ -6,7 +6,8 @@ from vbc.domain.events import (
     DiscoveryStarted, DiscoveryFinished,
     JobStarted, JobCompleted, JobFailed,
     JobProgressUpdated, HardwareCapabilityExceeded, QueueUpdated,
-    ActionMessage, ProcessingFinished, RefreshFinished
+    ActionMessage, ProcessingFinished, RefreshFinished,
+    ThreadControlEvent, RequestShutdown, InterruptRequested,
 )
 from vbc.config.input_dirs import STATUS_OK
 from vbc.ui.gpu_sparkline import (
@@ -17,7 +18,6 @@ from vbc.ui.gpu_sparkline import (
     list_gpu_sparkline_presets,
 )
 from vbc.ui.keyboard import (
-    ThreadControlEvent, RequestShutdown, InterruptRequested,
     ToggleOverlayTab, CycleOverlayTab, CloseOverlay, CycleOverlayDim, RotateGpuMetric,
     CycleSparklinePreset, CycleSparklinePalette, CycleLogsPage,
 )

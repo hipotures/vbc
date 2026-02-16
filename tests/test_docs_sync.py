@@ -162,7 +162,7 @@ class TestEventsDocsSync:
         assert not missing_events, f"Domain events not documented: {missing_events}"
 
     def test_keyboard_events_mentioned(self):
-        """UI/keyboard events should be mentioned in events.md with location info"""
+        """Control events should be mentioned in events.md with location info"""
         events_docs = read_file("docs/architecture/events.md")
 
         # Key UI events that should be documented
@@ -175,9 +175,9 @@ class TestEventsDocsSync:
 
         assert not missing_events, f"UI/keyboard events not mentioned: {missing_events}"
 
-        # Check that location is mentioned
-        assert "vbc/ui/keyboard.py" in events_docs, \
-            "Events docs should mention vbc/ui/keyboard.py as event location"
+        # Check that canonical event location is mentioned
+        assert "vbc/domain/events.py" in events_docs, \
+            "Events docs should mention vbc/domain/events.py as control event location"
 
 
 class TestCanonicalInvocation:

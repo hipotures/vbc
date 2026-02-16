@@ -97,10 +97,31 @@ class RefreshFinished(Event):
     added: int = 0
     removed: int = 0
 
+
+class ThreadControlEvent(Event):
+    """Event emitted to adjust thread count (Keys '<' or '>')."""
+
+    change: int  # +1 or -1
+
+
+class RequestShutdown(Event):
+    """Event emitted when user requests graceful shutdown (Key 'S')."""
+
+    pass
+
+
+class InterruptRequested(Event):
+    """Event emitted when user requests immediate interrupt (Ctrl+C)."""
+
+    pass
+
+
 class ActionMessage(Event):
     """Event for user action feedback (displayed in UI for 60s)."""
     message: str
 
+
 class ProcessingFinished(Event):
     """Event emitted when all tasks finish normally."""
+
     pass

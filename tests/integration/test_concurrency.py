@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from vbc.pipeline.orchestrator import Orchestrator
 from vbc.config.models import AppConfig, GeneralConfig
-from vbc.ui.keyboard import ThreadControlEvent, RequestShutdown
+from vbc.domain.events import ThreadControlEvent, RequestShutdown
 
 def test_concurrency_threads_limit():
     """Test that orchestrator respects thread limits via internal condition variable."""

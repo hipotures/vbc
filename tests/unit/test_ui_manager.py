@@ -8,19 +8,19 @@ from vbc.domain.events import (
     DiscoveryFinished,
     DiscoveryStarted,
     HardwareCapabilityExceeded,
+    InterruptRequested,
     JobCompleted,
     JobFailed,
     JobProgressUpdated,
     JobStarted,
     ProcessingFinished,
     QueueUpdated,
+    RequestShutdown,
+    ThreadControlEvent,
 )
 from vbc.domain.models import VideoFile, CompressionJob, JobStatus
 from vbc.ui.keyboard import (
     CycleLogsPage,
-    InterruptRequested,
-    RequestShutdown,
-    ThreadControlEvent,
     ToggleOverlayTab,
     CloseOverlay,
 )

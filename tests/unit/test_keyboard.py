@@ -1,11 +1,9 @@
 from unittest.mock import MagicMock
 
-from vbc.domain.events import ActionMessage, RefreshRequested
+from vbc.domain.events import ActionMessage, RefreshRequested, RequestShutdown, ThreadControlEvent
 from vbc.ui.keyboard import (
     CycleLogsPage,
     KeyboardListener,
-    RequestShutdown,
-    ThreadControlEvent,
     ToggleOverlayTab,
     CloseOverlay,
 )
