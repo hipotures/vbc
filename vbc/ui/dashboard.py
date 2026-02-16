@@ -267,8 +267,6 @@ class Dashboard:
             meta_parts.append(f"{fps_val}fps")
         if entry.codec:
             meta_parts.append(entry.codec)
-        if entry.audio_codec:
-            meta_parts.append(f"a:{entry.audio_codec}")
         if entry.duration_seconds:
             meta_parts.append(self.format_time(entry.duration_seconds))
         return f"{path_text} • {' • '.join(meta_parts)}"
