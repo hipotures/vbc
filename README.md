@@ -422,7 +422,8 @@ general:
   # Use GPU acceleration (NVENC AV1) if true, otherwise CPU (SVT-AV1).
   gpu: true
 
-  # GPU polling interval in updates per second (legacy, see gpu_config).
+  # [DEPRECATED] GPU polling interval in updates per second.
+  # Use gpu_config.sample_interval_s instead.
   gpu_refresh_rate: 5
 
   # Processing order: name, rand, dir, size, size-asc, size-desc, ext.
@@ -498,12 +499,19 @@ general:
   # If compression < 10%, keep original file instead of compressed version.
   min_compression_ratio: 0.1
 
+  # Attempt repair pass for failed files moved to errors directories.
+  # Runs after processing; useful for corrupted FLV/MP4 stream dumps.
+  repair_corrupted_flv: false
+
   # Enable verbose debug logging.
   debug: false
 
 # --- GPU Monitoring Settings ---
 
 gpu_config:
+  # Preferred GPU monitoring config.
+  # Takes precedence over legacy general.gpu_refresh_rate.
+
   # Enable GPU monitoring panel and sparklines.
   enabled: true
 
@@ -1023,6 +1031,26 @@ uv run vbc /videos --cpu
 ```bash
 uv run vbc /videos --debug
 # Look for: "FFMPEG_COLORFIX" or "Successfully fixed color space"
+```
+
+#### Repairing Failed FLV/MP4 Files
+
+**Symptom**: Failed files are moved to `*_err` and remain unreadable
+
+**Solution**: Enable repair pass in YAML (config-only, no dedicated CLI flag):
+```yaml
+general:
+  repair_corrupted_flv: true
+```
+
+**Behavior**:
+1. After normal processing, VBC moves failed files to error directories.
+2. If `repair_corrupted_flv=true`, VBC runs `process_repairs` on moved files.
+3. Successfully repaired files are restored to source folders (as `.mkv` when re-encoded).
+
+Then rerun VBC to process restored files:
+```bash
+uv run vbc /videos
 ```
 
 #### Files Not Being Processed
