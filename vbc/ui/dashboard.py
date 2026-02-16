@@ -1153,9 +1153,7 @@ class Dashboard:
         full_content = Group(
             tabs_table,
             Rule(style="#30363d"),
-            "",
             content,
-            "",
             Rule(style="#30363d"),
             footer,
         )
@@ -1164,7 +1162,7 @@ class Dashboard:
             full_content,
             border_style="cyan",
             box=ROUNDED,
-            padding=(1, 2),
+            padding=(0, 2),
             width=pw,  # Dynamic width
         )
 

@@ -307,18 +307,18 @@ class SettingsOverlay:
         )
         
         # === LAYOUT ===
-        # Row 1: Encoding + Processing (side by side)
-        row1 = make_two_column_layout(encoding_card, processing_card)
-        # Row 2: Logging + Quality (side by side)
-        row2 = make_two_column_layout(logging_card, quality_card)
-        # Row 3: Metadata (full width)
-        
+        # Left column: Encoding -> Logging -> Processing
+        # Right column: Quality & Filters at top
+        left_column = Group(
+            encoding_card,
+            logging_card,
+            processing_card,
+        )
+        top_row = make_two_column_layout(left_column, quality_card)
+
         # Build content Group
         content = Group(
-            row1,
-            "",
-            row2,
-            "",
+            top_row,
             metadata_card,
         )
 
@@ -474,16 +474,15 @@ class IoOverlay:
 
         content_items: List[RenderableType] = [
             row1,
-            "",
             input_card,
         ]
 
         if output_card and errors_card:
-            content_items.extend(["", make_two_column_layout(output_card, errors_card)])
+            content_items.append(make_two_column_layout(output_card, errors_card))
         elif output_card:
-            content_items.extend(["", output_card])
+            content_items.append(output_card)
         elif errors_card:
-            content_items.extend(["", errors_card])
+            content_items.append(errors_card)
 
         return Group(*content_items)
 
@@ -673,7 +672,6 @@ class ReferenceOverlay:
         # Build content without footer (footer is in tabbed overlay now)
         content = Group(
             status_card,
-            "",
             bottom_row,
         )
 
@@ -819,22 +817,24 @@ class ShortcutsOverlay:
             padding=(0, 1),
         )
         
-        # === JOB CONTROL (full width, 2 columns) ===
-        jobs_table = Table(show_header=False, box=None, padding=(0, 1), expand=True)
+        # === JOB CONTROL (compact, stacked under NAVIGATION) ===
+        jobs_table = Table(show_header=False, box=None, padding=(0, 0))
         jobs_table.add_column(width=14)
-        jobs_table.add_column(ratio=1)
-        jobs_table.add_column(width=14)
-        jobs_table.add_column(ratio=1)
-        
+        jobs_table.add_column()
+
         jobs_table.add_row(
             key_badge("S"),
-            "Shutdown toggle (graceful)",
+            "Shutdown toggle (graceful)"
+        )
+        jobs_table.add_row(
             key_badge("R"),
             "Refresh queue (re-scan)"
         )
         jobs_table.add_row(
             key_badge("< ,"),
-            "Decrease thread count",
+            "Decrease thread count"
+        )
+        jobs_table.add_row(
             key_badge("> ."),
             "Increase thread count"
         )
@@ -872,14 +872,12 @@ class ShortcutsOverlay:
         )
         
         # === LAYOUT ===
-        top_row = make_two_column_layout(nav_card, panels_card)
+        left_column = Group(nav_card, jobs_card)
+        top_row = make_two_column_layout(left_column, panels_card)
 
         # Build content without footer (footer is in tabbed overlay now)
         content = Group(
             top_row,
-            "",
-            jobs_card,
-            "",
             quick_ref_card,
         )
 
@@ -1023,7 +1021,7 @@ class TuiOverlay:
             justify="center",
         )
 
-        return Group(options_card, "", sparkline_card, "", hint)
+        return Group(options_card, sparkline_card, hint)
 
     def render(self) -> Panel:
         """Returns complete Panel with footer (for backward compatibility)."""
