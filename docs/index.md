@@ -84,9 +84,9 @@ While VBC is running, use these keyboard shortcuts:
 | `>` or `.` | Increase active threads |
 | `S` | Graceful shutdown (finish active jobs) |
 | `R` | Refresh file queue (scan for new files) |
-| `C` | Toggle configuration overlay |
+| `C` | Open Prefs tab |
 | `L` | Open Logs tab (session errors) |
-| `E` | Open Reference tab |
+| `E` | Open Ref tab |
 | `[` / `]` | Logs tab page prev/next |
 | `Ctrl+C` | Immediate interrupt (terminate active jobs) |
 

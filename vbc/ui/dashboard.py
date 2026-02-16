@@ -1074,16 +1074,16 @@ class Dashboard:
         reference_text, reference_border, reference_box = tab_style("reference")
         logs_text, logs_border, logs_box = tab_style("logs")
 
-        # Tab order: Shortcuts (M), Settings (C), I/O (F), TUI (T), Reference (E), Logs (L)
+        # Tab order: Keys (M), Prefs (C), I/O (F), TUI (T), Ref (E), Logs (L)
         tabs_table.add_row(
             Panel(
-                f"[{shortcuts_text}]⌨ Shortcuts[/] [{shortcuts_text}][M][/]",
+                f"[{shortcuts_text}]⌨ Keys[/] [{shortcuts_text}][M][/]",
                 border_style=shortcuts_border,
                 box=shortcuts_box,
                 padding=(0, 0),
             ),
             Panel(
-                f"[{settings_text}]⚙ Settings[/] [{settings_text}][C][/]",
+                f"[{settings_text}]⚙ Prefs[/] [{settings_text}][C][/]",
                 border_style=settings_border,
                 box=settings_box,
                 padding=(0, 0),
@@ -1101,7 +1101,7 @@ class Dashboard:
                 padding=(0, 0),
             ),
             Panel(
-                f"[{reference_text}]📖 Reference[/] [{reference_text}][E][/]",
+                f"[{reference_text}]📖 Ref[/] [{reference_text}][E][/]",
                 border_style=reference_border,
                 box=reference_box,
                 padding=(0, 0),

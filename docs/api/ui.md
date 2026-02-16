@@ -303,18 +303,18 @@ display = sanitize(filename)
 | `>` or `.` | `ThreadControlEvent(change=+1)` | Orchestrator increases threads |
 | `S` or `s` | `RequestShutdown()` | Orchestrator graceful shutdown |
 | `R` or `r` | `RefreshRequested()` | Orchestrator re-scans directory |
-| `C` or `c` | `ToggleOverlayTab(tab="settings")` | UIManager toggles Settings tab |
+| `C` or `c` | `ToggleOverlayTab(tab="settings")` | UIManager toggles Prefs tab |
 | `F` or `f` | `ToggleOverlayTab(tab="io")` | UIManager toggles I/O tab |
-| `M` or `m` | `ToggleOverlayTab(tab="shortcuts")` | UIManager toggles Shortcuts tab |
+| `M` or `m` | `ToggleOverlayTab(tab="shortcuts")` | UIManager toggles Keys tab |
 | `T` or `t` | `ToggleOverlayTab(tab="tui")` | UIManager toggles TUI tab |
-| `E` or `e` | `ToggleOverlayTab(tab="reference")` | UIManager toggles Reference tab |
+| `E` or `e` | `ToggleOverlayTab(tab="reference")` | UIManager toggles Ref tab |
 | `L` or `l` | `ToggleOverlayTab(tab="logs")` | UIManager toggles Logs tab |
 | `[` / `]` | `CycleLogsPage(direction=-1/+1)` | UIManager pages Logs tab |
 | `Tab` | `CycleOverlayTab(direction=+1)` | UIManager cycles tabs |
 | `Esc` | `CloseOverlay()` | UIManager closes active overlay |
 | `Ctrl+C` | `InterruptRequested()` | Orchestrator terminates active jobs |
 
-## Configuration Overlay
+## Prefs Overlay
 
 Toggle with `C` key:
 

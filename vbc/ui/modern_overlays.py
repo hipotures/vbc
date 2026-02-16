@@ -5,9 +5,9 @@ Nowoczesny, estetyczny design dla paneli CONFIG, REFERENCE (dawniej LEGEND), SHO
 Używa Rich library z kartami, tabelami i hierarchiczną strukturą.
 
 Koncepcja:
-- Settings (C) - konfiguracja sesji w kartach tematycznych
-- Reference (E) - legenda statusów i symboli
-- Shortcuts (M) - skróty klawiszowe z podziałem funkcjonalnym
+- Prefs (C) - konfiguracja sesji w kartach tematycznych
+- Ref (E) - legenda statusów i symboli
+- Keys (M) - skróty klawiszowe z podziałem funkcjonalnym
 - I/O (F) - foldery i ustawienia kolejki
 - TUI (T) - ustawienia interfejsu terminalowego
 
@@ -328,8 +328,8 @@ class SettingsOverlay:
         """Returns complete Panel with footer (for backward compatibility)."""
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] E [/] Reference • "
-            f"[white on {COLORS['border']}] M [/] Shortcuts[/]",
+            f"[white on {COLORS['border']}] E [/] Ref • "
+            f"[white on {COLORS['border']}] M [/] Keys[/]",
             justify="center"
         )
 
@@ -341,7 +341,7 @@ class SettingsOverlay:
 
         return Panel(
             content_with_footer,
-            title="[bold white]⚙ SETTINGS[/]",
+            title="[bold white]⚙ PREFS[/]",
             subtitle=f"[{COLORS['dim']}][C] to toggle[/]",
             border_style=COLORS['accent_green'],
             box=ROUNDED,
@@ -491,8 +491,8 @@ class IoOverlay:
         """Returns complete Panel with footer (for backward compatibility)."""
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] C [/] Settings • "
-            f"[white on {COLORS['border']}] E [/] Reference[/]",
+            f"[white on {COLORS['border']}] C [/] Prefs • "
+            f"[white on {COLORS['border']}] E [/] Ref[/]",
             justify="center"
         )
 
@@ -683,8 +683,8 @@ class ReferenceOverlay:
         """Returns complete Panel with footer (for backward compatibility)."""
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] C [/] Settings • "
-            f"[white on {COLORS['border']}] M [/] Shortcuts[/]",
+            f"[white on {COLORS['border']}] C [/] Prefs • "
+            f"[white on {COLORS['border']}] M [/] Keys[/]",
             justify="center"
         )
 
@@ -696,7 +696,7 @@ class ReferenceOverlay:
 
         return Panel(
             content_with_footer,
-            title="[bold white]📖 REFERENCE[/]",
+            title="[bold white]📖 REF[/]",
             subtitle=f"[{COLORS['dim']}][E] to toggle[/]",
             border_style=COLORS['accent_orange'],
             box=ROUNDED,
@@ -740,7 +740,7 @@ class ShortcutsOverlay:
         
         nav_table.add_row(
             key_badge("M"),
-            "Toggle this menu"
+            "Toggle Keys tab"
         )
         nav_table.add_row(
             key_badge("Esc"),
@@ -779,7 +779,7 @@ class ShortcutsOverlay:
         )
         panels_table.add_row(
             key_badge("E"),
-            "Legend & reference"
+            "Ref: legend & symbols"
         )
         panels_table.add_row(
             key_badge("L"),
@@ -889,8 +889,8 @@ class ShortcutsOverlay:
         """Returns complete Panel with footer (for backward compatibility)."""
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] C [/] Settings • "
-            f"[white on {COLORS['border']}] E [/] Reference[/]",
+            f"[white on {COLORS['border']}] C [/] Prefs • "
+            f"[white on {COLORS['border']}] E [/] Ref[/]",
             justify="center"
         )
 
@@ -902,7 +902,7 @@ class ShortcutsOverlay:
 
         return Panel(
             content_with_footer,
-            title="[bold white]⌨ SHORTCUTS[/]",
+            title="[bold white]⌨ KEYS[/]",
             subtitle=f"[{COLORS['dim']}][M] to toggle[/]",
             border_style=COLORS['accent_cyan'],
             box=ROUNDED,

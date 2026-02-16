@@ -93,11 +93,11 @@ The dashboard provides real-time visibility into:
 - **Summary**: Overall stats (success, errors, hardware limits, skipped files)
 - **GPU Sparklines** (if enabled): Real-time utilization, memory, temperature, power draw
 
-### Configuration Overlay
+### Prefs Overlay
 
-![Configuration Overlay](assets/images/scr-settings.png)
+![Prefs Overlay](assets/images/scr-settings.png)
 
-Press `C` to toggle configuration view showing:
+Press `C` to toggle Prefs view showing:
 - Input/output directory mappings
 - Encoder settings (GPU/CPU, threads, quality)
 - Camera-specific quality overrides
@@ -118,12 +118,12 @@ Dynamic thread adjustment while processing:
 <table>
   <tr>
     <td width="33%"><img src="assets/images/scr-dashboard.png" alt="Dashboard"/><br/><b>Dashboard</b></td>
-    <td width="33%"><img src="assets/images/scr-settings.png" alt="Settings"/><br/><b>Settings [C]</b></td>
-    <td width="33%"><img src="assets/images/scr-shortcuts.png" alt="Shortcuts"/><br/><b>Shortcuts [M]</b></td>
+    <td width="33%"><img src="assets/images/scr-settings.png" alt="Prefs"/><br/><b>Prefs [C]</b></td>
+    <td width="33%"><img src="assets/images/scr-shortcuts.png" alt="Keys"/><br/><b>Keys [M]</b></td>
   </tr>
   <tr>
     <td><img src="assets/images/scr-folders.png" alt="I/O Folders"/><br/><b>I/O Folders [F]</b></td>
-    <td><img src="assets/images/scr-reference.png" alt="Reference"/><br/><b>Reference [E]</b></td>
+    <td><img src="assets/images/scr-reference.png" alt="Ref"/><br/><b>Ref [E]</b></td>
     <td><img src="assets/images/scr-tui.png" alt="TUI Settings"/><br/><b>TUI Settings [T]</b></td>
   </tr>
   <tr>
@@ -689,10 +689,10 @@ While VBC is running, use these keyboard shortcuts:
 | `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: 8) |
 | `S` or `s` | Graceful shutdown | Stop accepting new jobs, finish active ones (press again to cancel) |
 | `R` or `r` | Refresh queue | Re-scan directory and add new files |
-| `C` or `c` | Toggle config | Show/hide configuration overlay |
+| `C` or `c` | Overlay: Prefs | Open/close Prefs tab |
 | `F` or `f` | Overlay: I/O | Open/close I/O tab |
-| `M` or `m` | Overlay: Shortcuts | Open/close shortcuts tab |
-| `E` or `e` | Overlay: Reference | Open/close reference tab |
+| `M` or `m` | Overlay: Keys | Open/close Keys tab |
+| `E` or `e` | Overlay: Ref | Open/close Ref tab |
 | `L` or `l` | Overlay: Logs | Open/close logs tab (session errors) |
 | `[` / `]` | Logs pagination | Previous / next page in Logs tab |
 | `Tab` | Cycle overlay tabs | Move to next tab |

@@ -10,11 +10,11 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: 8) |
 | `S` or `s` | Graceful shutdown / Cancel | Stop accepting new jobs, finish active compressions. Press again to cancel shutdown |
 | `R` or `r` | Refresh queue | Re-scan input directory and add new files |
-| `C` or `c` | Overlay: Settings | Toggle settings tab |
+| `C` or `c` | Overlay: Prefs | Toggle Prefs tab |
 | `F` or `f` | Overlay: I/O | Toggle I/O tab |
-| `E` or `e` | Overlay: Reference | Toggle reference tab |
+| `E` or `e` | Overlay: Ref | Toggle Ref tab |
 | `L` or `l` | Overlay: Logs | Toggle logs tab (session errors) |
-| `M` or `m` | Overlay: Shortcuts | Toggle shortcuts tab |
+| `M` or `m` | Overlay: Keys | Toggle Keys tab |
 | `T` or `t` | Overlay: TUI | Toggle TUI tab |
 | `Tab` | Cycle overlay tabs | Next tab |
 | `[` | Logs previous page | Previous page in Logs tab |
