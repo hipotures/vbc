@@ -1431,46 +1431,51 @@ class Orchestrator:
             # Check final status after compression
             if job.status == JobStatus.COMPLETED:
                 if job.output_path.exists():
-                    encoder_args = select_encoder_args(job_config, use_gpu)
-                    encoder_label = infer_encoder_label(encoder_args, use_gpu)
-                    finished_at = datetime.now().astimezone().isoformat(timespec="seconds")
-                    quality_label = quality_tag_label
-                    if job_config.general.copy_metadata:
-                        self._copy_deep_metadata(
-                            video_file.path,
-                            job.output_path,
-                            err_path,
-                            quality_label,
-                            original_bitrate_label,
-                            encoder_label,
-                            video_file.size_bytes,
-                            finished_at,
-                            vbc_json_notes=vbc_json_notes,
-                        )
-                    else:
-                        self._write_vbc_tags(
-                            video_file.path,
-                            job.output_path,
-                            quality_label,
-                            original_bitrate_label,
-                            encoder_label,
-                            video_file.size_bytes,
-                            finished_at,
-                            vbc_json_notes=vbc_json_notes,
-                        )
-
                     out_size = job.output_path.stat().st_size
                     in_size = video_file.size_bytes
                     ratio = out_size / in_size
-                    if ratio > (1.0 - job_config.general.min_compression_ratio):
+                    kept_original = ratio > (1.0 - job_config.general.min_compression_ratio)
+                    if kept_original:
                         shutil.copy2(video_file.path, job.output_path)
                         job.error_message = f"Ratio {ratio:.2f} above threshold, kept original: {filename}"
                         self.logger.info(
                             f"MIN_RATIO_SKIP: {filename} ratio={ratio:.2f} "
                             f"threshold={job_config.general.min_compression_ratio:.2f} kept_original=True"
                         )
+                    else:
+                        encoder_args = select_encoder_args(job_config, use_gpu)
+                        encoder_label = infer_encoder_label(encoder_args, use_gpu)
+                        finished_at = datetime.now().astimezone().isoformat(timespec="seconds")
+                        quality_label = quality_tag_label
+                        if job_config.general.copy_metadata:
+                            self._copy_deep_metadata(
+                                video_file.path,
+                                job.output_path,
+                                err_path,
+                                quality_label,
+                                original_bitrate_label,
+                                encoder_label,
+                                video_file.size_bytes,
+                                finished_at,
+                                vbc_json_notes=vbc_json_notes,
+                            )
+                        else:
+                            self._write_vbc_tags(
+                                video_file.path,
+                                job.output_path,
+                                quality_label,
+                                original_bitrate_label,
+                                encoder_label,
+                                video_file.size_bytes,
+                                finished_at,
+                                vbc_json_notes=vbc_json_notes,
+                            )
 
-                    if job_config.general.debug and job_config.general.quality_mode == "rate":
+                    if (
+                        job_config.general.debug
+                        and job_config.general.quality_mode == "rate"
+                        and not kept_original
+                    ):
                         try:
                             output_info = self.ffprobe_adapter.get_stream_info(job.output_path)
                             output_bitrate_kbps = output_info.get("bitrate_kbps")

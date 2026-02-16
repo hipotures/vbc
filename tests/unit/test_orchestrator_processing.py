@@ -378,6 +378,102 @@ def test_process_file_success_ratio_keeps_original(tmp_path):
 
     output_path = input_dir.with_name("input_out") / "video.mp4"
     assert output_path.read_bytes() == source.read_bytes()
+    orchestrator._write_vbc_tags.assert_not_called()
+
+
+def test_process_file_success_ratio_keeps_original_skips_metadata_copy(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    source = input_dir / "video.mp4"
+    source.write_bytes(b"a" * 1000)
+
+    config = _make_config(use_exif=False, copy_metadata=True, min_compression_ratio=0.1)
+    bus = EventBus()
+    events = []
+    bus.subscribe(JobCompleted, lambda e: events.append(e))
+
+    ffprobe = MagicMock()
+    ffprobe.get_stream_info.return_value = {
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "fps": 30.0,
+    }
+
+    ffmpeg = MagicMock()
+
+    def fake_compress(job, job_config, use_gpu=False, rotate=None, shutdown_event=None, input_path=None, **kwargs):
+        job.status = JobStatus.COMPLETED
+        job.output_path.write_bytes(b"b" * 950)
+
+    ffmpeg.compress.side_effect = fake_compress
+
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=FileScanner([".mp4"], 0),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=ffprobe,
+        ffmpeg_adapter=ffmpeg,
+    )
+    orchestrator._check_and_fix_color_space = MagicMock(return_value=(source, None))
+    orchestrator._copy_deep_metadata = MagicMock()
+
+    video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
+    orchestrator._process_file(video_file, input_dir)
+
+    assert events
+    output_path = input_dir.with_name("input_out") / "video.mp4"
+    assert output_path.read_bytes() == source.read_bytes()
+    orchestrator._copy_deep_metadata.assert_not_called()
+
+
+def test_process_file_success_ratio_pass_writes_tags(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    source = input_dir / "video.mp4"
+    source.write_bytes(b"a" * 1000)
+
+    config = _make_config(use_exif=False, copy_metadata=False, min_compression_ratio=0.1)
+    bus = EventBus()
+    events = []
+    bus.subscribe(JobCompleted, lambda e: events.append(e))
+
+    ffprobe = MagicMock()
+    ffprobe.get_stream_info.return_value = {
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "fps": 30.0,
+    }
+
+    ffmpeg = MagicMock()
+
+    def fake_compress(job, job_config, use_gpu=False, rotate=None, shutdown_event=None, input_path=None, **kwargs):
+        job.status = JobStatus.COMPLETED
+        job.output_path.write_bytes(b"b" * 600)
+
+    ffmpeg.compress.side_effect = fake_compress
+
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=FileScanner([".mp4"], 0),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=ffprobe,
+        ffmpeg_adapter=ffmpeg,
+    )
+    orchestrator._check_and_fix_color_space = MagicMock(return_value=(source, None))
+    orchestrator._write_vbc_tags = MagicMock()
+
+    video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
+    orchestrator._process_file(video_file, input_dir)
+
+    assert events
+    job = events[0].job
+    assert job.error_message is None
+    output_path = input_dir.with_name("input_out") / "video.mp4"
+    assert output_path.stat().st_size == 600
     orchestrator._write_vbc_tags.assert_called_once()
 
 

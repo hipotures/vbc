@@ -185,7 +185,8 @@ uv run vbc /videos --min-ratio 0.2  # 20% minimum
 3. **Compare threshold**: If savings < `min_compression_ratio`:
    - Delete compressed file
    - Copy original to output directory
-4. **Log decision**: "MinRatio: kept original (X% < Y% minimum)"
+4. **Write metadata/tags only when accepted**: Deep metadata copy and VBC tags run only if ratio passes.
+5. **Log decision**: "MinRatio: kept original (X% < Y% minimum)"
 
 **Example:**
 
