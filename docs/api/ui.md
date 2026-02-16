@@ -52,7 +52,7 @@ from vbc.ui.keyboard import KeyboardListener
 from vbc.ui.dashboard import Dashboard
 
 # Load config
-config = load_config()
+config = load_config(Path("conf/vbc.yaml"))
 
 # Create UI components
 bus = EventBus()

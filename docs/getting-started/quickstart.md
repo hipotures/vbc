@@ -17,6 +17,8 @@ mkdir ~/Videos/raw
 
 ```bash
 cd ~/DEV/vbc
+# Required on first run
+cp conf/vbc.yaml.example conf/vbc.yaml
 uv run vbc ~/Videos/raw
 ```
 
@@ -58,8 +60,9 @@ While running, press:
 
 ```bash
 ls -lh ~/Videos/raw_out/
-# Compressed .mp4 files
-# *.err - error markers (if any failures)
+# Compressed files
+ls -lh ~/Videos/raw_err/
+# Error markers moved after run completion
 ls -lh /tmp/vbc/compression.log
 # detailed log
 ```
@@ -170,6 +173,8 @@ CLI arguments override config file settings.
 ├── video2.mp4             # Compressed (converted to output format; mp4 by default)
 ├── subfolder/
 │   └── video3.mp4         # Compressed
+
+~/Videos/raw_err/          # Errors directory (created automatically by suffix "_err")
 └── video_error.err        # Error marker (if compression failed)
 
 /tmp/vbc/compression.log    # Detailed log

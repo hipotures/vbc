@@ -29,13 +29,13 @@ uv run pytest
 ### Specific Test File
 
 ```bash
-uv run pytest tests/unit/test_config.py
+uv run pytest tests/unit/test_config_models.py
 ```
 
 ### Specific Test Function
 
 ```bash
-uv run pytest tests/unit/test_config.py::test_load_config
+uv run pytest tests/unit/test_config_models.py::test_general_config_defaults
 ```
 
 ### With Coverage
@@ -66,7 +66,7 @@ uv run pytest -x
 ### Unit Test Example
 
 ```python
-# tests/unit/test_config.py
+# tests/unit/test_config_models.py
 import pytest
 from pathlib import Path
 from pydantic import ValidationError
@@ -208,7 +208,7 @@ def test_event_bus_multiple_subscribers():
 # tests/integration/test_orchestrator.py
 import pytest
 from pathlib import Path
-from vbc.config.loader import load_config
+from vbc.config.models import AppConfig
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
 from vbc.infrastructure.exif_tool import ExifToolAdapter
@@ -227,7 +227,7 @@ def test_dir(tmp_path):
 @pytest.mark.integration
 def test_orchestrator_discovery(test_dir):
     """Test Orchestrator discovery phase."""
-    config = load_config()
+    config = AppConfig()
     config.general.extensions = [".mp4"]
     config.general.min_size_bytes = 0
 
@@ -285,7 +285,7 @@ def sample_video_path():
 ```python
 def test_with_fixtures(event_bus, default_config):
     """Test using fixtures."""
-    assert default_config.general.threads == 4
+    assert default_config.general.threads == 1
     assert isinstance(event_bus, EventBus)
 ```
 

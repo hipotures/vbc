@@ -39,7 +39,7 @@ suffix_errors_dirs: null
 
 general:
   # === Core Settings ===
-  threads: 8                    # Max concurrent compression threads (1-8)
+  threads: 8                    # Max concurrent compression threads (>0; executor max_workers=16)
   prefetch_factor: 1            # Submit-on-demand multiplier (1-5)
   gpu: true                     # Use GPU (NVENC) vs CPU (SVT-AV1)
   queue_sort: name              # Queue order: name, rand, dir, size, size-asc, size-desc, ext
@@ -169,7 +169,8 @@ autorotate:
 - **Type**: Integer (>0)
 - **Default**: 1
 - **Description**: Maximum number of concurrent compression threads
-- **Note**: Can be adjusted at runtime with `<` and `>` keys
+- **Note**: Runtime keyboard adjustment (`<`/`>`) clamps to 1-8 threads
+- **Implementation detail**: Worker pool is created with `max_workers=16`, so practical upper parallelism is 16
 
 #### Quality Defaults
 - **Source**: Encoder args (`gpu_encoder`/`cpu_encoder`) via `-cq` (GPU) or `-crf` (CPU)

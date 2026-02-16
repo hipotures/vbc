@@ -111,9 +111,9 @@ class JobProgressUpdated(JobEvent):
     progress_percent: float
 ```
 
-**Publisher:** FFmpegAdapter (planned)
+**Publisher:** FFmpegAdapter
 **Subscribers:** UIManager
-**Purpose:** Update progress bars (future feature)
+**Purpose:** Update per-job progress in the active jobs panel
 
 ### Queue Events
 
@@ -481,7 +481,7 @@ def publish(self, event: Event):
 ## Best Practices
 
 1. **One event per action**: Don't combine unrelated state changes
-2. **Immutable events**: Treat events as immutable; don't mutate them after publish
+2. **Treat events as value objects**: Avoid mutating event fields after publish (recommended convention, not enforced by Pydantic config)
 3. **Descriptive names**: `JobCompleted` > `Event1`
 4. **Minimal data**: Only include necessary fields
 5. **Document purpose**: Add docstrings to event classes

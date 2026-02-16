@@ -69,7 +69,7 @@ vbc/
 │
 ├── domain/                  # Core business logic (framework-agnostic)
 │   ├── models.py           # VideoFile, CompressionJob, VideoMetadata
-│   └── events.py           # Event definitions (16 event types)
+│   └── events.py           # Domain event definitions
 │
 ├── infrastructure/          # External adapters (replaceable)
 │   ├── event_bus.py        # Pub/Sub event system
@@ -114,7 +114,7 @@ vbc/
   - `CompressionJob`: Job state and results
   - `JobStatus`: Enum (PENDING, PROCESSING, COMPLETED, etc.)
 
-- `events.py`: Domain events (16 types)
+- `events.py`: Domain events
   - `JobStarted`, `JobCompleted`, `JobFailed`
   - `DiscoveryStarted`, `DiscoveryFinished`
   - `HardwareCapabilityExceeded`
@@ -186,7 +186,7 @@ vbc/
 - Throughput and ETA calculation
 
 #### UIManager
-- Subscribes to all 14 event types
+- Subscribes to domain and UI keyboard events used by the dashboard
 - Updates `UIState` based on events
 - Decouples UI from business logic
 
@@ -340,7 +340,7 @@ def on_job_started(self, event: JobStarted):
     self.state.add_active_job(event.job)
 ```
 
-**16 Event Types**:
+**Representative events (domain + UI keyboard layer):**
 
 | Event | Publisher | Subscribers | Purpose |
 |-------|-----------|-------------|---------|
@@ -357,7 +357,7 @@ def on_job_started(self, event: JobStarted):
 | `QueueUpdated` | Orchestrator | UIManager | Update pending files queue |
 | `ProcessingFinished` | Orchestrator | UIManager | All jobs done |
 | `InterruptRequested` | KeyboardListener, Orchestrator | UIManager | Ctrl+C pressed |
-| `ToggleConfig` | KeyboardListener | UIManager | Show/hide config overlay |
+| `ToggleOverlayTab` | KeyboardListener | UIManager | Open/close overlay tab |
 
 **Benefits**:
 - Loose coupling (UI doesn't know Orchestrator)

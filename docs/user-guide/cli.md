@@ -50,7 +50,7 @@ Number of concurrent compression threads.
 uv run vbc /videos --threads 8
 ```
 
-**Note:** Can be adjusted at runtime with `<`/`>` keys.
+**Note:** Runtime keyboard adjustment (`<`/`>`) clamps to 1-8. Startup value from CLI/config accepts `>0` (practical upper bound: executor `max_workers=16`).
 
 #### `--quality INT`
 
@@ -445,7 +445,8 @@ Detailed log of all operations (INFO and ERROR levels). Override with `--log-pat
 ### Error Markers
 
 ```
-{INPUT_DIR}_out/{relative_path}.err
+{INPUT_DIR}_out/{relative_path}.err   # during run
+{INPUT_DIR}_err/{relative_path}.err   # final location after run (default suffix_errors_dirs)
 ```
 
 Created for failed compressions. Contains error message.
@@ -454,7 +455,7 @@ These markers are written under the output directory during processing and moved
 
 **Example:**
 ```
-$ cat /videos_out/video.err
+$ cat /videos_err/video.err
 Hardware is lacking required capabilities
 ```
 

@@ -90,9 +90,6 @@ bus.subscribe(CustomEvent, handler)
 # Publish
 bus.publish(CustomEvent(message="Hello!"))
 # Output: Received: Hello!
-
-# Unsubscribe
-bus.unsubscribe(CustomEvent, handler)
 ```
 
 ### FileScanner
@@ -243,6 +240,7 @@ housekeeper.cleanup_error_markers(Path("/videos_out"))
 All adapters are injected into the Orchestrator:
 
 ```python
+from pathlib import Path
 from vbc.pipeline.orchestrator import Orchestrator
 from vbc.infrastructure.file_scanner import FileScanner
 from vbc.infrastructure.exif_tool import ExifToolAdapter
@@ -252,7 +250,7 @@ from vbc.infrastructure.event_bus import EventBus
 from vbc.config.loader import load_config
 
 # Create dependencies
-config = load_config()
+config = load_config(Path("conf/vbc.yaml"))
 bus = EventBus()
 scanner = FileScanner(
     extensions=config.general.extensions,

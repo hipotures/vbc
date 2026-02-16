@@ -58,7 +58,7 @@ dynamic_quality:
 ### CLI Override
 
 ```bash
-# Override all CQ (disables dynamic quality)
+# Override baseline CQ/CRF in encoder args
 uv run vbc /videos --quality 40
 
 # Dynamic Quality still active (from config)
@@ -383,7 +383,8 @@ VBC automatically detects GPU limitations including:
 **Session Limits Exceeded:**
 - RTX 30-series: Max ~5 concurrent sessions
 - RTX 40-series (e.g., 4090): Max 10-12 concurrent sessions
-- VBC runtime limit is 8 threads, so session-limit errors are usually caused by other GPU workloads
+- VBC keyboard runtime controls (`<`/`>`) clamp to 1-8 threads
+- Startup `--threads` / `general.threads` accepts values `>0` (practical upper bound is `ThreadPoolExecutor(max_workers=16)`)
 
 **10-bit Encoding:**
 - Older GPUs don't support 10-bit AV1
@@ -422,7 +423,7 @@ VBC:
 uv run vbc /videos --threads 5
 
 # RTX 4090
-uv run vbc /videos --threads 12
+uv run vbc /videos --threads 8
 ```
 
 **Option 2:** Use CPU mode (no hardware limitations)

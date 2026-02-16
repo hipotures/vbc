@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class Event(BaseModel):
     """Base class for all domain events.
 
-    All events are immutable Pydantic models, automatically validated.
+    Events are validated Pydantic models. They are not frozen by default.
     """
 
     pass
@@ -36,7 +36,7 @@ class JobStarted(JobEvent):
 
 
 class JobProgressUpdated(JobEvent):
-    """Emitted periodically as FFmpeg reports progress (future feature)."""
+    """Emitted periodically as FFmpeg reports progress."""
 
     progress_percent: float
 

@@ -8,7 +8,7 @@
 - **FFmpeg**: Version 6.0+ with AV1 codec support
   - For GPU: FFmpeg compiled with `--enable-nvenc`
   - For CPU: FFmpeg with `libsvtav1` support
-- **ExifTool**: Perl-based metadata tool (optional but recommended)
+- **ExifTool**: Perl-based metadata tool (required in current runtime flow)
 - **nvtop**: GPU monitoring tool for sparklines (optional; NVIDIA GPUs only)
 - **Operating System**: Linux, macOS, or Windows with WSL
 
@@ -19,10 +19,10 @@
 python3 --version  # Should be 3.12+
 
 # Check FFmpeg
-ffmpeg -version | head -1
+ffmpeg -version
 ffmpeg -codecs | grep av1  # Should show av1_nvenc and/or libsvtav1
 
-# Check ExifTool (optional)
+# Check ExifTool
 exiftool -ver
 
 # Check GPU monitoring tool (optional)
@@ -39,11 +39,18 @@ VBC uses `uv` for fast, reliable dependency management:
 # Install uv if not already installed
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Clone repository
-cd ~/DEV/vbc
+# Clone repository and enter project
+git clone https://github.com/your-org/vbc.git
+cd vbc
 
-# Dependencies are automatically installed when running via uv
-uv run vbc
+# Install dependencies
+uv sync
+
+# Bootstrap runtime config (required)
+cp conf/vbc.yaml.example conf/vbc.yaml
+
+# Verify CLI works
+uv run vbc --help
 ```
 
 ### Method 2: Manual Virtual Environment
@@ -127,9 +134,9 @@ sudo make install
 
 ```bash
 # Check all dependencies
-uv run vbc
+uv run vbc --help
 
-# You should see the help message without errors
+# You should see the help message without errors.
 # Test with a small video file
 uv run vbc /path/to/test/video --threads 1 --quality 45
 ```
@@ -164,6 +171,7 @@ For GPU-accelerated compression with NVENC:
         - Consumer GPUs (RTX 30-series): ~5 concurrent sessions
         - RTX 40-series (e.g., 4090): 10-12 concurrent sessions
         - Professional GPUs (Quadro, A-series): Higher limits
+    - VBC keyboard runtime controls (`<`/`>`) clamp threads to 1-8
     - 10-bit AV1 requires RTX 40-series or newer
     - VBC automatically detects "Hardware is lacking required capabilities" errors
 

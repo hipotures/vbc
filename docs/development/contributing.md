@@ -9,7 +9,7 @@ Thank you for considering contributing to VBC! This document provides guidelines
 - Python 3.12+
 - `uv` package manager
 - FFmpeg (for testing)
-- ExifTool (optional, for metadata testing)
+- ExifTool (required in current runtime flow)
 
 ### Clone and Setup
 
@@ -20,6 +20,9 @@ cd vbc
 
 # Install dependencies
 uv sync
+
+# Bootstrap local runtime config
+cp conf/vbc.yaml.example conf/vbc.yaml
 
 # Install documentation dependencies
 uv sync --extra docs
@@ -236,7 +239,7 @@ uv run pytest
 uv run pytest --cov=vbc --cov-report=html
 
 # Run specific test
-uv run pytest tests/test_config.py::test_load_config
+uv run pytest tests/unit/test_config_models.py::test_general_config_defaults
 ```
 
 ## Documentation

@@ -24,7 +24,7 @@ from vbc.config.loader import load_config
 from vbc.infrastructure.ffmpeg import extract_quality_value
 
 # Load from default location
-config = load_config()
+config = load_config(Path("conf/vbc.yaml"))
 
 # Load from custom path
 config = load_config(Path("custom.yaml"))
@@ -34,10 +34,11 @@ print(f"Threads: {config.general.threads}")
 print(f"GPU quality: {extract_quality_value(config.gpu_encoder.common_args)}")
 print(f"GPU: {config.general.gpu}")
 
-# Validate at runtime
+# Validation happens when creating/parsing models
+from vbc.config.models import GeneralConfig
 from pydantic import ValidationError
 try:
-    config.general.threads = -1  # Will raise ValidationError
+    GeneralConfig(threads=0)
 except ValidationError as e:
     print(e)
 ```

@@ -7,7 +7,7 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | Key | Action | Description |
 |-----|--------|-------------|
 | `<` or `,` | Decrease threads | Reduce max concurrent threads by 1 (min: 1) |
-| `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: 8) |
+| `>` or `.` | Increase threads | Increase max concurrent threads by 1 (interactive max: 8) |
 | `S` or `s` | Graceful shutdown / Cancel | Stop accepting new jobs, finish active compressions. Press again to cancel shutdown |
 | `R` or `r` | Refresh queue | Re-scan input directory and add new files |
 | `C` or `c` | Overlay: Prefs | Toggle Prefs tab |
@@ -53,10 +53,12 @@ Result: Threads: 8 → 7
 Increases the maximum concurrent threads by 1.
 
 **Behavior:**
-- Maximum: 8 threads (application limit)
+- Interactive maximum: 8 threads
 - New slots available immediately
 - Queued jobs start filling new slots
 - UI feedback: "Threads: 4 → 5"
+
+Startup threads from CLI/config are validated as `>0` and can be higher; practical upper bound is executor `max_workers=16`.
 
 **Use case:** Speed up compression if system can handle more load
 

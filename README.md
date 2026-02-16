@@ -58,7 +58,7 @@ Modern video libraries grow fast. Raw 4K footage from cameras and drones consume
 - ✅ **Color Space Fixes**: Automatic recovery for FFmpeg 7.x "reserved" color space bugs
 
 ### Processing & Performance
-- ✅ **Multi-Threaded**: 1-8 concurrent compressions with dynamic adjustment
+- ✅ **Multi-Threaded**: Concurrent compressions with runtime adjustment (`<`/`>` clamps to 1-8)
 - ✅ **Submit-on-Demand**: Memory-efficient queue (doesn't load 10K futures upfront)
 - ✅ **Metadata Caching**: Thread-safe cache avoids redundant ExifTool calls
 - ✅ **Hardware Detection**: Automatic GPU capability error detection with optional CPU fallback
@@ -213,7 +213,7 @@ graph TB
 ### Prerequisites
 - Python 3.12+
 - FFmpeg 6.0+ with AV1 support (`av1_nvenc` and/or `libsvtav1`)
-- ExifTool (optional but recommended for metadata)
+- ExifTool (required in current runtime flow)
 - `uv` package manager
 
 ### First Run
@@ -222,6 +222,9 @@ graph TB
 # Install dependencies
 cd /path/to/vbc
 uv sync
+
+# Bootstrap local config (required on first run)
+cp conf/vbc.yaml.example conf/vbc.yaml
 
 # Run VBC on a directory
 uv run vbc /path/to/videos
@@ -243,7 +246,7 @@ ls -lh /path/to/videos_out/
 # Check logs
 cat /tmp/vbc/compression.log
 
-# View metadata (if ExifTool installed)
+# View metadata tags
 exiftool -XMP-vbc:all /path/to/videos_out/compressed_video.mp4
 ```
 
@@ -260,7 +263,9 @@ exiftool -XMP-vbc:all /path/to/videos_out/compressed_video.mp4
 ├── video2.mp4                # Compressed (converted to output format; mp4 by default)
 ├── subfolder/
 │   └── video3.mp4            # Compressed
-└── failed_video.err          # Error marker (if compression failed)
+
+/path/to/videos_err/          # Errors directory (auto-created from suffix_errors_dirs: "_err")
+└── failed_video.err          # Final location of error marker after run
 ```
 
 ---
@@ -273,7 +278,7 @@ exiftool -XMP-vbc:all /path/to/videos_out/compressed_video.mp4
 |-------------|---------|---------|
 | **Python** | 3.12+ | Runtime |
 | **FFmpeg** | 6.0+ | Video encoding (with `av1_nvenc` or `libsvtav1`) |
-| **ExifTool** | Any recent | Metadata extraction (optional but recommended) |
+| **ExifTool** | Any recent | Metadata extraction and copy (required in current runtime flow) |
 | **nvtop** | - | GPU monitoring panel (NVIDIA GPUs only) |
 | **OS** | Linux, macOS, Windows (WSL) | Platform support |
 
@@ -313,6 +318,9 @@ cd vbc
 # Install dependencies (automatic via uv)
 uv sync
 
+# Bootstrap local runtime config
+cp conf/vbc.yaml.example conf/vbc.yaml
+
 # Verify installation
 uv run vbc --help
 ```
@@ -335,8 +343,8 @@ ffmpeg -codecs | grep nvenc
 
 **NVENC Session Limits** (important for thread count):
 - **RTX 30-series**: ~5 concurrent sessions → max 4-5 threads
-- **RTX 40-series** (e.g., RTX 4090): 10-12 sessions (hardware) → app limit still max 8 threads
-- **Professional GPUs** (Quadro, A-series): Higher/unlimited → app limit still max 8 threads
+- **RTX 40-series** (e.g., RTX 4090): 10-12 sessions (hardware), VBC keyboard runtime control clamps to 1-8
+- **Professional GPUs** (Quadro, A-series): Higher/unlimited, VBC keyboard runtime control clamps to 1-8
 
 **10-bit AV1**: Requires RTX 40-series or newer.
 
@@ -399,8 +407,8 @@ suffix_errors_dirs: "_err"
 # --- General Settings ---
 
 general:
-  # Max concurrent compression threads (1-8).
-  # Can be adjusted at runtime with < and > keys.
+  # Max concurrent compression threads (>0, practical cap: executor max_workers=16).
+  # Runtime keyboard adjustment (< and >) clamps to 1-8.
   threads: 4
 
   # Submit-on-demand queue multiplier (1-5).
@@ -660,7 +668,11 @@ uv run vbc /path/to/videos --debug --threads 2
 | `INPUT_DIR` | Positional | - | Directory to process (or comma-separated list) |
 | `--config`, `-c` | Path | `conf/vbc.yaml` | Configuration file |
 | `--threads`, `-t` | Integer | From config (1) | Max concurrent threads |
+| `--quality-mode` | String | `cq` | Rate-control mode: `cq` or `rate` |
 | `--quality` | Integer | From encoder args (`-cq`/`-crf`) | Quality override (0-63, lower=better) |
+| `--bps` | String | None | Target bitrate in `rate` mode (absolute or ratio, e.g. `200Mbps`, `0.8`) |
+| `--minrate` | String | None | Optional min bitrate clamp in `rate` mode (same numeric class as `--bps`) |
+| `--maxrate` | String | None | Optional max bitrate clamp in `rate` mode (same numeric class as `--bps`) |
 | `--gpu` / `--cpu` | Boolean | `--gpu` | Use GPU (NVENC) or CPU (SVT-AV1) |
 | `--queue-sort` | String | `name` | Queue order (`name`, `rand`, `dir`, `size`, `size-asc`, `size-desc`, `ext`) |
 | `--queue-seed` | Integer | None | Seed for deterministic random order |
@@ -984,7 +996,7 @@ errors:
 ```bash
 # Reduce threads to GPU limit
 uv run vbc /videos --threads 5   # RTX 30-series
-uv run vbc /videos --threads 10  # RTX 4090
+uv run vbc /videos --threads 8   # RTX 4090 (runtime keyboard control max: 8)
 
 # Enable CPU fallback
 # In conf/vbc.yaml:
@@ -1099,7 +1111,7 @@ uv run pytest -m "not slow"
 uv run pytest --cov=vbc --cov-report=html
 
 # Specific test
-uv run pytest tests/unit/test_config.py::test_load_config
+uv run pytest tests/unit/test_config_models.py::test_general_config_defaults
 ```
 
 ### Documentation
