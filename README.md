@@ -236,7 +236,7 @@ uv run vbc /path/to/videos
 
 1. **Discovery**: Scans `/path/to/videos` for video files (`.mp4`, `.mov`, `.avi`, `.flv`, `.webm`)
 2. **Output Created**: Creates `/path/to/videos_out/` directory automatically
-3. **Compression**: Starts processing with defaults (1 thread, quality from encoder args: -cq 45, GPU mode)
+3. **Compression**: Starts processing using settings from `conf/vbc.yaml` (defaults apply when fields are omitted)
 4. **Dashboard**: Shows real-time progress, active jobs, queue, and summary
 
 ### Check Results
@@ -691,7 +691,7 @@ uv run vbc /path/to/videos --debug --threads 2
 | `--demo` | Boolean | False | Simulation mode (no video file processing I/O; logs still written) |
 | `--demo-config` | Path | `conf/demo.yaml` | Demo simulation settings |
 
-**Configuration Precedence**: CLI args > YAML config > defaults
+**Configuration Precedence**: CLI overrides > local `VBC.YAML` overrides > global YAML (`conf/vbc.yaml`) > defaults
 
 **Rate Mode Validation Rules**:
 - `--quality` cannot be used with `--quality-mode rate`
@@ -866,7 +866,7 @@ autorotate:
 **Rotation Angles**:
 - `0` = No rotation
 - `90` = Clockwise (transpose=1)
-- `180` = Upside down (hflip,vflip)
+- `180` = Upside down (`transpose=2,transpose=2`)
 - `270` = Counter-clockwise (transpose=2)
 
 **Manual Override**:
@@ -1022,7 +1022,7 @@ uv run vbc /videos --cpu
 **Solution**: VBC automatically applies color space fix. Enable debug logging to verify:
 ```bash
 uv run vbc /videos --debug
-# Look for: "Detected reserved color space in video.mp4, applying fix..."
+# Look for: "FFMPEG_COLORFIX" or "Successfully fixed color space"
 ```
 
 #### Files Not Being Processed
@@ -1146,13 +1146,11 @@ uv sync --extra docs
 ### Code Quality
 
 ```bash
-# Format code (if formatter configured)
-uv run black vbc/
-
-# Lint (if linter configured)
+# Optional quality tools (not pinned in `pyproject.toml` by default):
+#   uv add --group dev ruff black mypy
+# Then run:
 uv run ruff check vbc/
-
-# Type check (if mypy configured)
+uv run black vbc/
 uv run mypy vbc/
 ```
 

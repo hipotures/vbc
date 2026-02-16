@@ -66,7 +66,7 @@ source .venv/bin/activate
 pip install rich pyyaml pyexiftool typer pydantic
 
 # Run VBC
-python vbc/main.py --help
+python -m vbc.main --help
 ```
 
 ## Installing FFmpeg
