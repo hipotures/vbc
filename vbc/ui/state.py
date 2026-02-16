@@ -119,6 +119,7 @@ class UIState:
         self.logs_page_size: int = 10
         self.logs_page_index: int = 0
         self.session_error_logs: List[SessionErrorEntry] = []
+        self._discovery_error_keys: set[Tuple[Path, str]] = set()
 
     @property
     def space_saved_bytes(self) -> int:
@@ -241,6 +242,10 @@ class UIState:
             next_idx = (current_idx + direction) % len(self.OVERLAY_DIM_LEVELS)
             self.overlay_dim_level = self.OVERLAY_DIM_LEVELS[next_idx]
 
+    @staticmethod
+    def _normalize_error_message(error_message: str) -> str:
+        return (error_message or "Unknown error").strip() or "Unknown error"
+
     def _append_session_error_entry(
         self,
         *,
@@ -253,13 +258,8 @@ class UIState:
         audio_codec: Optional[str],
         duration_seconds: Optional[float],
         error_message: str,
-        deduplicate: bool = False,
     ) -> None:
-        normalized_error = (error_message or "Unknown error").strip() or "Unknown error"
-        if deduplicate:
-            for existing in self.session_error_logs:
-                if existing.path == path and existing.error_message == normalized_error:
-                    return
+        normalized_error = self._normalize_error_message(error_message)
 
         self.session_error_logs.insert(
             0,
@@ -298,6 +298,11 @@ class UIState:
     def add_discovery_error(self, path: Path, size_bytes: Optional[int], error_message: str) -> None:
         """Store discovery-time `.err` marker entry for current-session Logs tab."""
         with self._lock:
+            normalized_error = self._normalize_error_message(error_message)
+            key = (path, normalized_error)
+            if key in self._discovery_error_keys:
+                return
+            self._discovery_error_keys.add(key)
             self._append_session_error_entry(
                 path=path,
                 size_bytes=size_bytes,
@@ -307,8 +312,7 @@ class UIState:
                 codec=None,
                 audio_codec=None,
                 duration_seconds=None,
-                error_message=error_message,
-                deduplicate=True,
+                error_message=normalized_error,
             )
 
     def logs_total_pages(self) -> int:

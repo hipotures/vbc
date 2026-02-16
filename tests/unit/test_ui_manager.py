@@ -134,6 +134,81 @@ def test_ui_manager_discovery_errors_are_added_to_logs(tmp_path):
     assert state.session_error_logs[0].error_message == "ffmpeg exited with code 245"
 
 
+def test_ui_manager_discovery_error_not_deduped_against_existing_failed_log(tmp_path):
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+
+    source_path = tmp_path / "stale.mp4"
+    source_path.write_bytes(b"x" * 100)
+
+    vf = VideoFile(path=source_path, size_bytes=100)
+    failed_job = CompressionJob(source_file=vf, status=JobStatus.FAILED)
+    bus.publish(JobFailed(job=failed_job, error_message="ffmpeg exited with code 245"))
+
+    bus.publish(
+        DiscoveryFinished(
+            files_found=1,
+            files_to_process=0,
+            already_compressed=0,
+            ignored_small=0,
+            ignored_err=1,
+            ignored_err_entries=[
+                DiscoveryErrorEntry(
+                    path=source_path,
+                    size_bytes=100,
+                    error_message="ffmpeg exited with code 245",
+                )
+            ],
+            ignored_av1=0,
+        )
+    )
+
+    assert state.failed_count == 1
+    assert state.ignored_err_count == 1
+    assert len(state.session_error_logs) == 2
+
+
+def test_ui_manager_logs_include_fail_and_discovery_err_entries(tmp_path):
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+
+    failed_path = tmp_path / "failed.mp4"
+    failed_path.write_bytes(b"x" * 100)
+    err_path = tmp_path / "ignored_err.mp4"
+    err_path.write_bytes(b"x" * 120)
+
+    failed_job = CompressionJob(
+        source_file=VideoFile(path=failed_path, size_bytes=100),
+        status=JobStatus.FAILED,
+    )
+    bus.publish(JobFailed(job=failed_job, error_message="ffmpeg exited with code 245"))
+
+    bus.publish(
+        DiscoveryFinished(
+            files_found=2,
+            files_to_process=1,
+            already_compressed=0,
+            ignored_small=0,
+            ignored_err=1,
+            ignored_err_entries=[
+                DiscoveryErrorEntry(
+                    path=err_path,
+                    size_bytes=120,
+                    error_message="stale .err marker",
+                )
+            ],
+            ignored_av1=0,
+        )
+    )
+
+    assert state.failed_count == 1
+    assert state.ignored_err_count == 1
+    assert len(state.session_error_logs) == 2
+    assert {entry.path for entry in state.session_error_logs} == {failed_path, err_path}
+
+
 def test_ui_manager_job_lifecycle_updates(tmp_path):
     bus = EventBus()
     state = UIState()

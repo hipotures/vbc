@@ -111,3 +111,21 @@ def test_ui_state_discovery_error_deduplicates_by_path_and_message():
     assert total_entries == 2
     assert entries[0].error_message == "different message"
     assert entries[1].error_message == "ffmpeg exited with code 245"
+
+
+def test_ui_state_discovery_error_keeps_failed_entry_with_same_path_and_message():
+    state = UIState()
+
+    vf = VideoFile(path=Path("stale.mp4"), size_bytes=123)
+    failed_job = CompressionJob(source_file=vf, status=JobStatus.FAILED)
+    state.add_session_error(failed_job, "ffmpeg exited with code 245")
+    state.add_discovery_error(
+        path=Path("stale.mp4"),
+        size_bytes=123,
+        error_message="ffmpeg exited with code 245",
+    )
+
+    entries, _page_idx, _total_pages, total_entries = state.get_logs_page()
+    assert total_entries == 2
+    assert entries[0].error_message == "ffmpeg exited with code 245"
+    assert entries[1].error_message == "ffmpeg exited with code 245"
