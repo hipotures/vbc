@@ -1,6 +1,9 @@
 import subprocess
 from pathlib import Path
 
+from vbc.utils.flv_repair_core import copy_from_offset, find_flv_header_offset
+
+
 def repair_flv_file(input_path: Path, output_path: Path, keep_intermediate=False) -> bool:
     """
     Repairs a FLV/MP4 file by removing the text error prefix and saving as a clean .flv.
@@ -19,30 +22,18 @@ def repair_flv_file(input_path: Path, output_path: Path, keep_intermediate=False
 
     # 1. Find FLV offset
     try:
-        # Look for the first occurrence of "FLV" (magic bytes for FLV header)
-        result = subprocess.run(
-            ["grep", "-abo", "FLV", str(input_path)],
-            capture_output=True, text=True
-        )
-        if not result.stdout:
+        offset = find_flv_header_offset(input_path)
+        if offset is None:
             return False
-        
-        # Get the first offset (e.g., "528:FLV")
-        first_line = result.stdout.splitlines()[0]
-        offset = int(first_line.split(":")[0])
     except Exception:
         return False
 
-    # 2. Extract clean FLV using tail (fast and robust)
-    # tail -c +N starts from N-th byte (1-indexed). So offset 528 means start from 529.
-    tail_cmd = ["tail", "-c", f"+{offset + 1}", str(input_path)]
-    
+    # 2. Extract clean FLV by copying bytes from marker offset
     try:
-        with open(output_path, "wb") as f_out:
-            subprocess.run(tail_cmd, stdout=f_out, check=True)
+        written = copy_from_offset(input_path, output_path, offset)
         
         # Sanity check: is the output file significantly larger than 0?
-        if not output_path.exists() or output_path.stat().st_size <= 1000:
+        if written <= 1000 or not output_path.exists():
             if output_path.exists():
                 output_path.unlink()
             return False

@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 import subprocess
 import sys
-import os
 from pathlib import Path
 import argparse
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from vbc.utils.flv_repair_core import copy_from_offset, find_flv_header_offset
+
 
 def run_cmd(cmd, check=True):
     print(f"Executing: {' '.join(cmd)}")
@@ -14,33 +20,25 @@ def repair_file(input_path: Path, output_dir: Path, keep_intermediate=False):
     
     # 1. Find FLV offset
     try:
-        # Look for the first occurrence of "FLV\x01" which is the standard header start
-        # Using grep -abo to find the byte offset
-        result = subprocess.run(
-            ["grep", "-abo", "FLV", str(input_path)],
-            capture_output=True, text=True
-        )
-        if not result.stdout:
+        offset = find_flv_header_offset(input_path)
+        if offset is None:
             print(f"[-] Error: No FLV header found in {input_path}")
             return False
-        
-        # Get the first offset (e.g., "24:FLV")
-        # We take the very first one because subsequent FLV strings might be data/metadata
-        first_line = result.stdout.splitlines()[0]
-        offset = int(first_line.split(":")[0])
+
         print(f"[*] Found FLV header at offset: {offset}")
     except Exception as e:
         print(f"[-] Search failed: {e}")
         return False
 
-    # 2. Extract clean FLV using tail (fast)
+    # 2. Extract clean FLV by copying bytes from FLV marker offset
     clean_flv = output_dir / f"{input_path.stem}.clean.flv"
-    # tail -c +N starts from N-th byte (1-indexed). So offset 24 means start from 25.
-    tail_cmd = f"tail -c +{offset + 1} '{input_path}' > '{clean_flv}'"
     print(f"[*] Extracting clean FLV (skipping {offset} bytes)...")
     try:
-        subprocess.run(tail_cmd, shell=True, check=True)
-    except subprocess.CalledProcessError as e:
+        written = copy_from_offset(input_path, clean_flv, offset)
+        if written <= 0:
+            print("[-] Extraction failed: no bytes written")
+            return False
+    except Exception as e:
         print(f"[-] Extraction failed: {e}")
         return False
 
