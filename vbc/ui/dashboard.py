@@ -249,7 +249,8 @@ class Dashboard:
 
     def _format_logs_file_line(self, entry) -> str:
         """Format first line in Logs tab: file and best-effort metadata."""
-        path_text = str(entry.path)
+        file_name = self._sanitize_filename(entry.path.name, max_len=200)
+        path_text = f"XXX/{file_name}"
         size_text = self.format_size(entry.size_bytes) if entry.size_bytes is not None else "size:—"
 
         meta_parts: List[str] = [size_text]
