@@ -303,8 +303,15 @@ display = sanitize(filename)
 | `>` or `.` | `ThreadControlEvent(change=+1)` | Orchestrator increases threads |
 | `S` or `s` | `RequestShutdown()` | Orchestrator graceful shutdown |
 | `R` or `r` | `RefreshRequested()` | Orchestrator re-scans directory |
-| `C` or `c` | `ToggleConfig()` | UIManager toggles config overlay |
-| `Esc` | `HideConfig()` | UIManager hides config overlay |
+| `C` or `c` | `ToggleOverlayTab(tab="settings")` | UIManager toggles Settings tab |
+| `F` or `f` | `ToggleOverlayTab(tab="io")` | UIManager toggles I/O tab |
+| `M` or `m` | `ToggleOverlayTab(tab="shortcuts")` | UIManager toggles Shortcuts tab |
+| `T` or `t` | `ToggleOverlayTab(tab="tui")` | UIManager toggles TUI tab |
+| `E` or `e` | `ToggleOverlayTab(tab="reference")` | UIManager toggles Reference tab |
+| `L` or `l` | `ToggleOverlayTab(tab="logs")` | UIManager toggles Logs tab |
+| `[` / `]` | `CycleLogsPage(direction=-1/+1)` | UIManager pages Logs tab |
+| `Tab` | `CycleOverlayTab(direction=+1)` | UIManager cycles tabs |
+| `Esc` | `CloseOverlay()` | UIManager closes active overlay |
 | `Ctrl+C` | `InterruptRequested()` | Orchestrator terminates active jobs |
 
 ## Configuration Overlay

@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 from vbc.domain.events import ActionMessage, RefreshRequested
 from vbc.ui.keyboard import (
+    CycleLogsPage,
     KeyboardListener,
     RequestShutdown,
     ThreadControlEvent,
@@ -43,7 +44,7 @@ def test_thread_control_event():
 
 def test_keyboard_listener_run_handles_keys(monkeypatch):
     """Test _run publishes events for supported keys."""
-    keys = ['.', ',', 's', 'r', 'c', '\x1b', '\x03']
+    keys = ['.', ',', 's', 'r', 'c', 'l', 'e', '[', ']', '\x1b', '\x03']
 
     class FakeStdin:
         def isatty(self):
@@ -79,6 +80,10 @@ def test_keyboard_listener_run_handles_keys(monkeypatch):
     assert any(isinstance(e, RefreshRequested) for e in published)
     assert any(isinstance(e, ActionMessage) and e.message == "REFRESH requested" for e in published)
     assert any(isinstance(e, ToggleOverlayTab) and e.tab == "settings" for e in published)
+    assert any(isinstance(e, ToggleOverlayTab) and e.tab == "logs" for e in published)
+    assert any(isinstance(e, ToggleOverlayTab) and e.tab == "reference" for e in published)
+    assert any(isinstance(e, CycleLogsPage) and e.direction == -1 for e in published)
+    assert any(isinstance(e, CycleLogsPage) and e.direction == 1 for e in published)
     assert any(isinstance(e, CloseOverlay) for e in published)
     assert tcset.called
 

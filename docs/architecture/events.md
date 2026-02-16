@@ -194,12 +194,23 @@ class InterruptRequested(Event):
 #### ToggleOverlayTab
 ```python
 class ToggleOverlayTab(Event):
-    tab: Optional[str] = None  # "settings" | "io" | "reference" | "shortcuts" | "tui" | None
+    tab: Optional[str] = None  # "settings" | "io" | "reference" | "shortcuts" | "tui" | "logs" | None
 ```
 
 **Publisher:** KeyboardListener
 **Subscribers:** UIManager
 **Purpose:** Toggle overlay with optional tab selection
+**Location:** `vbc/ui/keyboard.py`
+
+#### CycleLogsPage
+```python
+class CycleLogsPage(Event):
+    direction: int = 1  # 1=next, -1=previous
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** UIManager
+**Purpose:** Navigate paginated entries in Logs tab
 **Location:** `vbc/ui/keyboard.py`
 
 #### CloseOverlay

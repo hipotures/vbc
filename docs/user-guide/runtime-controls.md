@@ -12,15 +12,18 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | `R` or `r` | Refresh queue | Re-scan input directory and add new files |
 | `C` or `c` | Overlay: Settings | Toggle settings tab |
 | `F` or `f` | Overlay: I/O | Toggle I/O tab |
-| `L` or `l` | Overlay: Reference | Toggle reference tab |
+| `E` or `e` | Overlay: Reference | Toggle reference tab |
+| `L` or `l` | Overlay: Logs | Toggle logs tab (session errors) |
 | `M` or `m` | Overlay: Shortcuts | Toggle shortcuts tab |
 | `T` or `t` | Overlay: TUI | Toggle TUI tab |
 | `Tab` | Cycle overlay tabs | Next tab |
+| `[` | Logs previous page | Previous page in Logs tab |
+| `]` | Logs next page | Next page in Logs tab |
 | `D` or `d` | Dim overlay | Cycle overlay dim level |
 | `G` or `g` | Rotate GPU metric | Cycle GPU sparkline metric |
 | `W` or `w` | Sparkline preset | Cycle preset |
 | `P` or `p` | Sparkline palette | Cycle palette |
-| `Esc` | Close overlay | Close configuration overlay |
+| `Esc` | Close overlay | Close active overlay tab |
 | `Ctrl+C` | Immediate interrupt | Terminate active compressions immediately |
 
 ## Thread Adjustment
@@ -191,6 +194,18 @@ Toggles full configuration display.
 │ Press Esc to close                            │
 └────────────────────────────────────────────────┘
 ```
+
+## Session Error Logs (`L`)
+
+Opens the `Logs` tab in overlay and shows errors captured since app start (current session only).
+
+**Behavior:**
+1. One error entry uses exactly 2 lines:
+   - Line 1: source file + best-effort metadata (size, resolution/FPS/codec when available)
+   - Line 2: error message in muted red (single-line, cropped if too long)
+2. Default pagination is 10 entries per page (max 20 lines of log content).
+3. If there are more than 10 errors, use `[` and `]` to move between pages.
+4. The newest errors appear first.
 
 ## Concurrency Behavior
 

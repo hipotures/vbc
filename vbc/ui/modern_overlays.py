@@ -6,7 +6,7 @@ Używa Rich library z kartami, tabelami i hierarchiczną strukturą.
 
 Koncepcja:
 - Settings (C) - konfiguracja sesji w kartach tematycznych
-- Reference (L) - legenda statusów i symboli
+- Reference (E) - legenda statusów i symboli
 - Shortcuts (M) - skróty klawiszowe z podziałem funkcjonalnym
 - I/O (F) - foldery i ustawienia kolejki
 - TUI (T) - ustawienia interfejsu terminalowego
@@ -328,7 +328,7 @@ class SettingsOverlay:
         """Returns complete Panel with footer (for backward compatibility)."""
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] L [/] Reference • "
+            f"[white on {COLORS['border']}] E [/] Reference • "
             f"[white on {COLORS['border']}] M [/] Shortcuts[/]",
             justify="center"
         )
@@ -492,7 +492,7 @@ class IoOverlay:
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
             f"[white on {COLORS['border']}] C [/] Settings • "
-            f"[white on {COLORS['border']}] L [/] Reference[/]",
+            f"[white on {COLORS['border']}] E [/] Reference[/]",
             justify="center"
         )
 
@@ -697,7 +697,7 @@ class ReferenceOverlay:
         return Panel(
             content_with_footer,
             title="[bold white]📖 REFERENCE[/]",
-            subtitle=f"[{COLORS['dim']}][L] to toggle[/]",
+            subtitle=f"[{COLORS['dim']}][E] to toggle[/]",
             border_style=COLORS['accent_orange'],
             box=ROUNDED,
             padding=(1, 2),
@@ -714,7 +714,7 @@ class ShortcutsOverlay:
     
     Grupy:
     - NAVIGATION: M, Esc, Ctrl+C
-    - PANELS: C, L, G
+    - PANELS: C, E, L, G
     - JOB CONTROL: S, R, </>, </>
     + Quick Reference z kolorowymi badge'ami
     """
@@ -724,8 +724,8 @@ class ShortcutsOverlay:
 
         key_labels = [
             "M", "Esc", "Ctrl+C",
-            "C", "F", "L", "T", "D", "W", "P", "G",
-            "S", "R", "< ,", "> .",
+            "C", "F", "E", "L", "T", "D", "W", "P", "G",
+            "[", "]", "S", "R", "< ,", "> .",
             "< >", "S", "R",
         ]
         badge_width = max(len(label) for label in key_labels)
@@ -778,8 +778,12 @@ class ShortcutsOverlay:
             "TUI settings"
         )
         panels_table.add_row(
-            key_badge("L"),
+            key_badge("E"),
             "Legend & reference"
+        )
+        panels_table.add_row(
+            key_badge("L"),
+            "Session logs (errors)"
         )
         panels_table.add_row(
             key_badge("D"),
@@ -796,6 +800,14 @@ class ShortcutsOverlay:
         panels_table.add_row(
             key_badge("G"),
             "Rotate GPU metric graph"
+        )
+        panels_table.add_row(
+            key_badge("["),
+            "Logs: previous page"
+        )
+        panels_table.add_row(
+            key_badge("]"),
+            "Logs: next page"
         )
         
         panels_card = Panel(
@@ -878,7 +890,7 @@ class ShortcutsOverlay:
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
             f"[white on {COLORS['border']}] C [/] Settings • "
-            f"[white on {COLORS['border']}] L [/] Reference[/]",
+            f"[white on {COLORS['border']}] E [/] Reference[/]",
             justify="center"
         )
 

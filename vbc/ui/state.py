@@ -1,5 +1,7 @@
 import threading
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from collections import deque
 from typing import List, Optional, Dict, Any, ClassVar, Tuple
 from vbc.domain.models import CompressionJob
@@ -8,11 +10,28 @@ from vbc.ui.gpu_sparkline import (
     DEFAULT_GPU_SPARKLINE_PRESET,
 )
 
+
+@dataclass(frozen=True)
+class SessionErrorEntry:
+    """Snapshot of a failed job captured for current-session Logs tab."""
+
+    path: Path
+    size_bytes: Optional[int]
+    width: Optional[int]
+    height: Optional[int]
+    fps: Optional[float]
+    codec: Optional[str]
+    audio_codec: Optional[str]
+    duration_seconds: Optional[float]
+    error_message: str
+    created_at: datetime
+
+
 class UIState:
     """Thread-safe state manager for the interactive UI."""
 
     # Tab order for cycling (shortcuts first as it's the main menu)
-    OVERLAY_TABS: ClassVar[List[str]] = ["shortcuts", "settings", "io", "tui", "reference"]
+    OVERLAY_TABS: ClassVar[List[str]] = ["shortcuts", "settings", "io", "tui", "reference", "logs"]
     OVERLAY_DIM_LEVELS: ClassVar[List[str]] = ["light", "mid", "dark"]
 
     def __init__(self, activity_feed_max_items: int = 5):
@@ -63,7 +82,7 @@ class UIState:
         self.ui_title = "VBC"
         # Tabbed overlay state
         self.show_overlay = False
-        self.active_tab = "shortcuts"  # "shortcuts" | "settings" | "io" | "tui" | "reference"
+        self.active_tab = "shortcuts"  # "shortcuts" | "settings" | "io" | "tui" | "reference" | "logs"
         self.overlay_dim_level = "mid"  # "light" | "mid" | "dark"
         self.show_info = False
         self.info_message = ""
@@ -95,6 +114,11 @@ class UIState:
         self.gpu_history_gpu: deque = deque(maxlen=60)
         self.gpu_history_mem: deque = deque(maxlen=60)
         self.gpu_history_fan: deque = deque(maxlen=60)
+
+        # Logs tab (current session only)
+        self.logs_page_size: int = 10
+        self.logs_page_index: int = 0
+        self.session_error_logs: List[SessionErrorEntry] = []
 
     @property
     def space_saved_bytes(self) -> int:
@@ -216,3 +240,54 @@ class UIState:
             current_idx = self.OVERLAY_DIM_LEVELS.index(self.overlay_dim_level)
             next_idx = (current_idx + direction) % len(self.OVERLAY_DIM_LEVELS)
             self.overlay_dim_level = self.OVERLAY_DIM_LEVELS[next_idx]
+
+    def add_session_error(self, job: CompressionJob, error_message: str) -> None:
+        """Store failed job snapshot for current-session Logs tab."""
+        with self._lock:
+            metadata = job.source_file.metadata
+            self.session_error_logs.insert(
+                0,
+                SessionErrorEntry(
+                    path=job.source_file.path,
+                    size_bytes=job.source_file.size_bytes if job.source_file else None,
+                    width=metadata.width if metadata else None,
+                    height=metadata.height if metadata else None,
+                    fps=metadata.fps if metadata else None,
+                    codec=metadata.codec if metadata else None,
+                    audio_codec=metadata.audio_codec if metadata else None,
+                    duration_seconds=metadata.duration if metadata else None,
+                    error_message=error_message or (job.error_message or "Unknown error"),
+                    created_at=datetime.now(),
+                ),
+            )
+            # Keep first page focused on newest entries.
+            self.logs_page_index = 0
+
+    def logs_total_pages(self) -> int:
+        with self._lock:
+            if not self.session_error_logs:
+                return 1
+            return ((len(self.session_error_logs) - 1) // self.logs_page_size) + 1
+
+    def cycle_logs_page(self, direction: int) -> None:
+        """Navigate logs pages. direction: 1=next, -1=prev."""
+        with self._lock:
+            total_pages = self.logs_total_pages()
+            next_page = self.logs_page_index + direction
+            if next_page < 0:
+                next_page = 0
+            if next_page > total_pages - 1:
+                next_page = total_pages - 1
+            self.logs_page_index = next_page
+
+    def get_logs_page(self) -> Tuple[List[SessionErrorEntry], int, int, int]:
+        """Return (entries, page_index, total_pages, total_entries)."""
+        with self._lock:
+            total_entries = len(self.session_error_logs)
+            total_pages = self.logs_total_pages()
+            page_index = min(self.logs_page_index, total_pages - 1)
+            page_size = self.logs_page_size
+            start = page_index * page_size
+            end = start + page_size
+            entries = list(self.session_error_logs[start:end])
+            return entries, page_index, total_pages, total_entries

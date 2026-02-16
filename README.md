@@ -123,7 +123,7 @@ Dynamic thread adjustment while processing:
   </tr>
   <tr>
     <td><img src="assets/images/scr-folders.png" alt="I/O Folders"/><br/><b>I/O Folders [F]</b></td>
-    <td><img src="assets/images/scr-reference.png" alt="Reference"/><br/><b>Reference [L]</b></td>
+    <td><img src="assets/images/scr-reference.png" alt="Reference"/><br/><b>Reference [E]</b></td>
     <td><img src="assets/images/scr-tui.png" alt="TUI Settings"/><br/><b>TUI Settings [T]</b></td>
   </tr>
   <tr>
@@ -690,7 +690,13 @@ While VBC is running, use these keyboard shortcuts:
 | `S` or `s` | Graceful shutdown | Stop accepting new jobs, finish active ones (press again to cancel) |
 | `R` or `r` | Refresh queue | Re-scan directory and add new files |
 | `C` or `c` | Toggle config | Show/hide configuration overlay |
-| `Esc` | Close overlay | Close configuration overlay |
+| `F` or `f` | Overlay: I/O | Open/close I/O tab |
+| `M` or `m` | Overlay: Shortcuts | Open/close shortcuts tab |
+| `E` or `e` | Overlay: Reference | Open/close reference tab |
+| `L` or `l` | Overlay: Logs | Open/close logs tab (session errors) |
+| `[` / `]` | Logs pagination | Previous / next page in Logs tab |
+| `Tab` | Cycle overlay tabs | Move to next tab |
+| `Esc` | Close overlay | Close active overlay tab |
 | `Ctrl+C` | Immediate interrupt | Terminate all active jobs immediately |
 
 **Thread Adjustment**: Changes take effect instantly. New jobs start as slots become available.

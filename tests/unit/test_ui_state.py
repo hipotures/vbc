@@ -50,3 +50,39 @@ def test_ui_state_recent_limit():
     # Should only keep 5 most recent
     assert len(state.recent_jobs) == 5
     assert state.recent_jobs[0].source_file.path.name == "test9.mp4"
+
+
+def test_ui_state_logs_pagination_and_reset():
+    state = UIState()
+    assert "logs" in state.OVERLAY_TABS
+
+    for i in range(12):
+        vf = VideoFile(path=Path(f"err_{i}.mp4"), size_bytes=1000 + i)
+        job = CompressionJob(source_file=vf, status=JobStatus.FAILED)
+        state.add_session_error(job, f"error-{i}")
+
+    entries, page_idx, total_pages, total_entries = state.get_logs_page()
+    assert len(entries) == 10
+    assert page_idx == 0
+    assert total_pages == 2
+    assert total_entries == 12
+    assert entries[0].error_message == "error-11"
+
+    state.cycle_logs_page(1)
+    entries, page_idx, total_pages, total_entries = state.get_logs_page()
+    assert len(entries) == 2
+    assert page_idx == 1
+    assert total_pages == 2
+    assert total_entries == 12
+    assert entries[0].error_message == "error-1"
+
+    # New error should reset paging to newest page.
+    state.add_session_error(
+        CompressionJob(source_file=VideoFile(path=Path("new.mp4"), size_bytes=50), status=JobStatus.FAILED),
+        "new-error",
+    )
+    entries, page_idx, total_pages, total_entries = state.get_logs_page()
+    assert page_idx == 0
+    assert total_pages == 2
+    assert total_entries == 13
+    assert entries[0].error_message == "new-error"

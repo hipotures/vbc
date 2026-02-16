@@ -247,6 +247,59 @@ class Dashboard:
         part_len = (max_len - 1) // 2
         return f"{filename[:part_len]}…{filename[-part_len:]}"
 
+    def _format_logs_file_line(self, entry) -> str:
+        """Format first line in Logs tab: file and best-effort metadata."""
+        path_text = str(entry.path)
+        size_text = self.format_size(entry.size_bytes) if entry.size_bytes is not None else "size:—"
+
+        meta_parts: List[str] = [size_text]
+        if entry.width and entry.height:
+            meta_parts.append(f"{entry.width}x{entry.height}")
+        if entry.fps:
+            fps_val = int(entry.fps) if float(entry.fps).is_integer() else round(float(entry.fps), 2)
+            meta_parts.append(f"{fps_val}fps")
+        if entry.codec:
+            meta_parts.append(entry.codec)
+        if entry.audio_codec:
+            meta_parts.append(f"a:{entry.audio_codec}")
+        if entry.duration_seconds:
+            meta_parts.append(self.format_time(entry.duration_seconds))
+        return f"{path_text} • {' • '.join(meta_parts)}"
+
+    def _render_logs_content(self) -> RenderableType:
+        """Render Logs tab content with session-only errors and pagination."""
+        entries, page_index, total_pages, total_entries = self.state.get_logs_page()
+
+        table = Table(show_header=False, box=None, padding=(0, 0), expand=True)
+        table.add_column(ratio=1, no_wrap=True, overflow="crop")
+
+        if not entries:
+            table.add_row("[dim]No errors in current session.[/]")
+            return table
+
+        for entry in entries:
+            file_line = self._format_logs_file_line(entry)
+            err_line = (entry.error_message or "Unknown error").replace("\n", " ").strip()
+            table.add_row(f"[white]{file_line}[/]")
+            table.add_row(f"[#f85149]{err_line}[/]")
+
+        if total_pages <= 1:
+            return table
+
+        has_prev = page_index > 0
+        has_next = page_index < total_pages - 1
+        nav_grid = Table.grid(expand=True)
+        nav_grid.add_column(justify="left", ratio=1)
+        nav_grid.add_column(justify="center", ratio=1)
+        nav_grid.add_column(justify="right", ratio=1)
+        nav_grid.add_row(
+            Text("Prev [", style="bold white" if has_prev else "dim"),
+            Text(f"Page {page_index + 1}/{total_pages} • Errors: {total_entries}", style="dim"),
+            Text("] Next", style="bold white" if has_next else "dim"),
+        )
+
+        return Group(table, "", nav_grid)
+
     # --- Render Logic ---
 
     def _render_list(self, items: List[Any], available_lines: int,
@@ -1006,6 +1059,7 @@ class Dashboard:
         tabs_table.add_column(ratio=1)
         tabs_table.add_column(ratio=1)
         tabs_table.add_column(ratio=1)
+        tabs_table.add_column(ratio=1)
 
         def tab_style(tab_id: str) -> Tuple[str, str, Any]:
             """Return (text_style, border_style, box_type) for tab."""
@@ -1018,8 +1072,9 @@ class Dashboard:
         io_text, io_border, io_box = tab_style("io")
         tui_text, tui_border, tui_box = tab_style("tui")
         reference_text, reference_border, reference_box = tab_style("reference")
+        logs_text, logs_border, logs_box = tab_style("logs")
 
-        # Tab order: Shortcuts (M), Settings (C), I/O (F), TUI (T), Reference (L)
+        # Tab order: Shortcuts (M), Settings (C), I/O (F), TUI (T), Reference (E), Logs (L)
         tabs_table.add_row(
             Panel(
                 f"[{shortcuts_text}]⌨ Shortcuts[/] [{shortcuts_text}][M][/]",
@@ -1046,9 +1101,15 @@ class Dashboard:
                 padding=(0, 0),
             ),
             Panel(
-                f"[{reference_text}]📖 Reference[/] [{reference_text}][L][/]",
+                f"[{reference_text}]📖 Reference[/] [{reference_text}][E][/]",
                 border_style=reference_border,
                 box=reference_box,
+                padding=(0, 0),
+            ),
+            Panel(
+                f"[{logs_text}]📝 Logs[/] [{logs_text}][L][/]",
+                border_style=logs_border,
+                box=logs_box,
                 padding=(0, 0),
             ),
         )
@@ -1071,6 +1132,8 @@ class Dashboard:
             )
         elif active_tab == "tui":
             content = render_tui_content(dim_level, sparkline_preset, sparkline_palette, sparkline_mode)
+        elif active_tab == "logs":
+            content = self._render_logs_content()
         else:  # reference
             content = render_reference_content(
                 self._spinner_frame,

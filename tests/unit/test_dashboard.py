@@ -5,6 +5,7 @@ import pytest
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
+from rich.console import Console
 
 from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
 from vbc.ui.state import UIState
@@ -129,6 +130,29 @@ def test_dashboard_create_display_overlay():
     state.show_overlay = False
     display = dashboard.create_display()
     assert isinstance(display, Layout)
+
+
+def test_dashboard_logs_tab_with_pagination(tmp_path):
+    state = UIState()
+    state.show_overlay = True
+    state.active_tab = "logs"
+    dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
+
+    for i in range(11):
+        vf = VideoFile(path=tmp_path / f"err_{i}.mp4", size_bytes=100 + i)
+        job = CompressionJob(source_file=vf, status=JobStatus.FAILED)
+        state.add_session_error(job, f"failure-{i}")
+
+    display = dashboard.create_display()
+    assert isinstance(display, dashboard_module._Overlay)
+
+    logs_content = dashboard._render_logs_content()
+    console = Console(width=120, record=True)
+    console.print(logs_content)
+    rendered = console.export_text()
+    assert "Page 1/2" in rendered
+    assert "Prev [" in rendered
+    assert "] Next" in rendered
 
 
 def test_dashboard_create_display_info_overlay():

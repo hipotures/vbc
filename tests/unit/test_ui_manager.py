@@ -17,6 +17,7 @@ from vbc.domain.events import (
 )
 from vbc.domain.models import VideoFile, CompressionJob, JobStatus
 from vbc.ui.keyboard import (
+    CycleLogsPage,
     InterruptRequested,
     RequestShutdown,
     ThreadControlEvent,
@@ -92,6 +93,10 @@ def test_ui_manager_discovery_and_controls():
     bus.publish(ToggleOverlayTab(tab="settings"))
     assert state.show_overlay is True
     assert state.active_tab == "settings"
+    bus.publish(ToggleOverlayTab(tab="logs"))
+    assert state.active_tab == "logs"
+    bus.publish(CycleLogsPage(direction=1))
+    assert state.logs_page_index == 0
     bus.publish(CloseOverlay())
     assert state.show_overlay is False
 
@@ -136,6 +141,7 @@ def test_ui_manager_job_failed_av1_skip(tmp_path):
 
     assert state.ignored_av1_count == 1
     assert state.failed_count == 0
+    assert len(state.session_error_logs) == 1
     assert len(state.active_jobs) == 0
 
 
@@ -152,6 +158,7 @@ def test_ui_manager_job_failed_camera_skip(tmp_path):
 
     assert state.cam_skipped_count == 1
     assert state.failed_count == 0
+    assert len(state.session_error_logs) == 1
     assert len(state.active_jobs) == 0
 
 
@@ -167,6 +174,7 @@ def test_ui_manager_job_failed_interrupted(tmp_path):
     bus.publish(JobFailed(job=job, error_message="Interrupted"))
 
     assert state.interrupted_count == 1
+    assert len(state.session_error_logs) == 1
     assert len(state.recent_jobs) == 1
     assert len(state.active_jobs) == 0
 
@@ -183,6 +191,8 @@ def test_ui_manager_job_failed_generic(tmp_path):
     bus.publish(JobFailed(job=job, error_message="Something failed"))
 
     assert state.failed_count == 1
+    assert len(state.session_error_logs) == 1
+    assert state.session_error_logs[0].error_message == "Something failed"
     assert len(state.recent_jobs) == 1
     assert len(state.active_jobs) == 0
 
@@ -218,3 +228,28 @@ def test_ui_manager_queue_action_and_finish(tmp_path):
 
     bus.publish(ProcessingFinished())
     assert state.finished is True
+
+
+def test_ui_manager_cycle_logs_page_only_when_logs_tab_active(tmp_path):
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+
+    for i in range(12):
+        vf = VideoFile(path=tmp_path / f"input_{i}.mp4", size_bytes=100 + i)
+        job = CompressionJob(source_file=vf, status=JobStatus.FAILED)
+        bus.publish(JobFailed(job=job, error_message=f"error-{i}"))
+
+    assert state.logs_page_index == 0
+
+    # Ignored while overlay is closed.
+    bus.publish(CycleLogsPage(direction=1))
+    assert state.logs_page_index == 0
+
+    bus.publish(ToggleOverlayTab(tab="settings"))
+    bus.publish(CycleLogsPage(direction=1))
+    assert state.logs_page_index == 0
+
+    bus.publish(ToggleOverlayTab(tab="logs"))
+    bus.publish(CycleLogsPage(direction=1))
+    assert state.logs_page_index == 1

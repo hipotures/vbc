@@ -19,7 +19,7 @@ from vbc.ui.gpu_sparkline import (
 from vbc.ui.keyboard import (
     ThreadControlEvent, RequestShutdown, InterruptRequested,
     ToggleOverlayTab, CycleOverlayTab, CloseOverlay, CycleOverlayDim, RotateGpuMetric,
-    CycleSparklinePreset, CycleSparklinePalette,
+    CycleSparklinePreset, CycleSparklinePalette, CycleLogsPage,
 )
 
 class UIManager:
@@ -49,6 +49,7 @@ class UIManager:
         self.bus.subscribe(RotateGpuMetric, self.on_rotate_gpu_metric)
         self.bus.subscribe(CycleSparklinePreset, self.on_cycle_sparkline_preset)
         self.bus.subscribe(CycleSparklinePalette, self.on_cycle_sparkline_palette)
+        self.bus.subscribe(CycleLogsPage, self.on_cycle_logs_page)
         self.bus.subscribe(QueueUpdated, self.on_queue_updated)
         self.bus.subscribe(ActionMessage, self.on_action_message)
         self.bus.subscribe(RefreshFinished, self.on_refresh_finished)
@@ -184,6 +185,13 @@ class UIManager:
             palette = get_gpu_sparkline_palette(next_palette)
             self.state.set_last_action(f"Palette: {palette.display_label}")
 
+    def on_cycle_logs_page(self, event: CycleLogsPage):
+        """Cycle page in Logs tab only."""
+        with self.state._lock:
+            if not self.state.show_overlay or self.state.active_tab != "logs":
+                return
+        self.state.cycle_logs_page(event.direction)
+
     def on_job_started(self, event: JobStarted):
         # Track when first job starts
         from datetime import datetime
@@ -216,6 +224,7 @@ class UIManager:
         # Calculate duration
         from datetime import datetime
         from vbc.domain.models import JobStatus
+        self.state.add_session_error(event.job, event.error_message)
         filename = event.job.source_file.path.name
         if filename in self.state.job_start_times:
             start_time = self.state.job_start_times[filename]

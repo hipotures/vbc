@@ -35,10 +35,14 @@ class HideConfig(Event):
 # New tabbed overlay events
 class ToggleOverlayTab(Event):
     """Event emitted to toggle overlay with optional tab selection."""
-    tab: Optional[str] = None  # "settings" | "io" | "reference" | "shortcuts" | "tui" | None
+    tab: Optional[str] = None  # "settings" | "io" | "reference" | "shortcuts" | "tui" | "logs" | None
 
 class CycleOverlayTab(Event):
     """Event emitted to cycle through overlay tabs."""
+    direction: int = 1  # 1=next, -1=previous
+
+class CycleLogsPage(Event):
+    """Event emitted to cycle logs page in Logs tab."""
     direction: int = 1  # 1=next, -1=previous
 
 class CloseOverlay(Event):
@@ -100,6 +104,8 @@ class KeyboardListener:
                     elif key in ('C', 'c'):
                         self.event_bus.publish(ToggleOverlayTab(tab="settings"))
                     elif key in ('L', 'l'):
+                        self.event_bus.publish(ToggleOverlayTab(tab="logs"))
+                    elif key in ('E', 'e'):
                         self.event_bus.publish(ToggleOverlayTab(tab="reference"))
                     elif key in ('M', 'm'):
                         self.event_bus.publish(ToggleOverlayTab(tab="shortcuts"))
@@ -107,6 +113,10 @@ class KeyboardListener:
                         self.event_bus.publish(ToggleOverlayTab(tab="io"))
                     elif key in ('T', 't'):
                         self.event_bus.publish(ToggleOverlayTab(tab="tui"))
+                    elif key == '[':
+                        self.event_bus.publish(CycleLogsPage(direction=-1))
+                    elif key == ']':
+                        self.event_bus.publish(CycleLogsPage(direction=1))
                     elif key == '\t':  # Tab key
                         self.event_bus.publish(CycleOverlayTab(direction=1))
                     elif key in ('D', 'd'):
