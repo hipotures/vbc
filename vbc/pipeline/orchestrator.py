@@ -53,6 +53,7 @@ from vbc.infrastructure.ffmpeg import (
 )
 from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
 from vbc.domain.events import (
+    DiscoveryErrorEntry,
     DiscoveryStarted,
     DiscoveryFinished,
     JobStarted,
@@ -988,7 +989,8 @@ class Orchestrator:
             'files_to_process': 0,
             'already_compressed': 0,
             'ignored_small': 0,
-            'ignored_err': 0
+            'ignored_err': 0,
+            'ignored_err_entries': [],
         }
 
         for idx, input_dir in enumerate(input_dirs):
@@ -1010,6 +1012,7 @@ class Orchestrator:
             folder_ignored_small = 0
             folder_already_compressed = 0
             folder_ignored_err = 0
+            folder_ignored_err_entries = []
             folder_files_to_process = []
 
             for root, dirs, filenames in os.walk(str(input_dir)):
@@ -1062,8 +1065,22 @@ class Orchestrator:
                                         continue
                                 else:
                                     folder_ignored_err += 1
+                                    folder_ignored_err_entries.append(
+                                        DiscoveryErrorEntry(
+                                            path=fpath,
+                                            size_bytes=file_stat.st_size,
+                                            error_message=(err_content.strip() or "Error marker present"),
+                                        )
+                                    )
                             except (OSError, UnicodeDecodeError):
                                 folder_ignored_err += 1
+                                folder_ignored_err_entries.append(
+                                    DiscoveryErrorEntry(
+                                        path=fpath,
+                                        size_bytes=file_stat.st_size,
+                                        error_message="Unreadable .err marker",
+                                    )
+                                )
                             if err_path.exists():
                                 continue
 
@@ -1083,6 +1100,7 @@ class Orchestrator:
             total_stats['already_compressed'] += folder_already_compressed
             total_stats['ignored_small'] += folder_ignored_small
             total_stats['ignored_err'] += folder_ignored_err
+            total_stats['ignored_err_entries'].extend(folder_ignored_err_entries)
 
             all_files.extend(folder_files_to_process)
 
@@ -1578,6 +1596,7 @@ class Orchestrator:
             already_compressed=discovery_stats['already_compressed'],
             ignored_small=discovery_stats['ignored_small'],
             ignored_err=discovery_stats['ignored_err'],
+            ignored_err_entries=discovery_stats['ignored_err_entries'],
             ignored_av1=0,  # AV1 check done during processing
             source_folders_count=len(input_dirs)
         ))
@@ -1675,6 +1694,7 @@ class Orchestrator:
                                 already_compressed=new_stats['already_compressed'],
                                 ignored_small=new_stats['ignored_small'],  # FIX: update this counter
                                 ignored_err=new_stats['ignored_err'],
+                                ignored_err_entries=new_stats['ignored_err_entries'],
                                 ignored_av1=0,  # AV1 check done during processing
                                 source_folders_count=len(self._folder_mapping)
                             ))

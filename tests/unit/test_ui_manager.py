@@ -5,6 +5,7 @@ from vbc.ui.state import UIState
 from vbc.ui.manager import UIManager
 from vbc.domain.events import (
     ActionMessage,
+    DiscoveryErrorEntry,
     DiscoveryFinished,
     DiscoveryStarted,
     HardwareCapabilityExceeded,
@@ -99,6 +100,38 @@ def test_ui_manager_discovery_and_controls():
     assert state.logs_page_index == 0
     bus.publish(CloseOverlay())
     assert state.show_overlay is False
+
+
+def test_ui_manager_discovery_errors_are_added_to_logs(tmp_path):
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+
+    source_path = tmp_path / "stale.mp4"
+    source_path.write_bytes(b"x" * 100)
+
+    bus.publish(
+        DiscoveryFinished(
+            files_found=1,
+            files_to_process=0,
+            already_compressed=0,
+            ignored_small=0,
+            ignored_err=1,
+            ignored_err_entries=[
+                DiscoveryErrorEntry(
+                    path=source_path,
+                    size_bytes=100,
+                    error_message="ffmpeg exited with code 245",
+                )
+            ],
+            ignored_av1=0,
+        )
+    )
+
+    assert state.ignored_err_count == 1
+    assert len(state.session_error_logs) == 1
+    assert state.session_error_logs[0].path == source_path
+    assert state.session_error_logs[0].error_message == "ffmpeg exited with code 245"
 
 
 def test_ui_manager_job_lifecycle_updates(tmp_path):

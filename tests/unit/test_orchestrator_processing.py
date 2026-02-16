@@ -59,6 +59,9 @@ def test_perform_discovery_counts_and_skips(tmp_path):
     assert stats["ignored_small"] == 1
     assert stats["already_compressed"] == 1
     assert stats["ignored_err"] == 1
+    assert len(stats["ignored_err_entries"]) == 1
+    assert stats["ignored_err_entries"][0].path.name == "bad.mp4"
+    assert stats["ignored_err_entries"][0].error_message == "Something failed"
     assert [vf.path.name for vf in files] == ["good.mp4"]
 
 
@@ -89,6 +92,7 @@ def test_perform_discovery_hw_cap_err_cleared_with_cpu_fallback(tmp_path):
 
     assert not err_path.exists()
     assert stats["ignored_err"] == 0
+    assert stats["ignored_err_entries"] == []
     assert [vf.path.name for vf in files] == ["video.mp4"]
 
 
@@ -497,6 +501,7 @@ def test_run_refresh_adds_new_files(monkeypatch, tmp_path):
         "already_compressed": 0,
         "ignored_small": 0,
         "ignored_err": 0,
+        "ignored_err_entries": [],
     }
     stats2 = {
         "files_found": 2,
@@ -504,6 +509,7 @@ def test_run_refresh_adds_new_files(monkeypatch, tmp_path):
         "already_compressed": 0,
         "ignored_small": 0,
         "ignored_err": 0,
+        "ignored_err_entries": [],
     }
 
     orchestrator._perform_discovery = MagicMock(side_effect=[([vf1], stats1), ([vf2], stats2)])

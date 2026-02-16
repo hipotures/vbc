@@ -75,6 +75,12 @@ class UIManager:
         self.state.ignored_err_count = event.ignored_err
         self.state.ignored_av1_count = event.ignored_av1
         self.state.source_folders_count = event.source_folders_count
+        for err_entry in event.ignored_err_entries:
+            self.state.add_discovery_error(
+                path=err_entry.path,
+                size_bytes=err_entry.size_bytes,
+                error_message=err_entry.error_message,
+            )
         self.state.discovery_finished = True
         self.state.discovery_finished_time = datetime.now()
         self.state.completed_count_at_last_discovery = self.state.completed_count

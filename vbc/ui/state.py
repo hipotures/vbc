@@ -241,27 +241,75 @@ class UIState:
             next_idx = (current_idx + direction) % len(self.OVERLAY_DIM_LEVELS)
             self.overlay_dim_level = self.OVERLAY_DIM_LEVELS[next_idx]
 
+    def _append_session_error_entry(
+        self,
+        *,
+        path: Path,
+        size_bytes: Optional[int],
+        width: Optional[int],
+        height: Optional[int],
+        fps: Optional[float],
+        codec: Optional[str],
+        audio_codec: Optional[str],
+        duration_seconds: Optional[float],
+        error_message: str,
+        deduplicate: bool = False,
+    ) -> None:
+        normalized_error = (error_message or "Unknown error").strip() or "Unknown error"
+        if deduplicate:
+            for existing in self.session_error_logs:
+                if existing.path == path and existing.error_message == normalized_error:
+                    return
+
+        self.session_error_logs.insert(
+            0,
+            SessionErrorEntry(
+                path=path,
+                size_bytes=size_bytes,
+                width=width,
+                height=height,
+                fps=fps,
+                codec=codec,
+                audio_codec=audio_codec,
+                duration_seconds=duration_seconds,
+                error_message=normalized_error,
+                created_at=datetime.now(),
+            ),
+        )
+        # Keep first page focused on newest entries.
+        self.logs_page_index = 0
+
     def add_session_error(self, job: CompressionJob, error_message: str) -> None:
         """Store failed job snapshot for current-session Logs tab."""
         with self._lock:
             metadata = job.source_file.metadata
-            self.session_error_logs.insert(
-                0,
-                SessionErrorEntry(
-                    path=job.source_file.path,
-                    size_bytes=job.source_file.size_bytes if job.source_file else None,
-                    width=metadata.width if metadata else None,
-                    height=metadata.height if metadata else None,
-                    fps=metadata.fps if metadata else None,
-                    codec=metadata.codec if metadata else None,
-                    audio_codec=metadata.audio_codec if metadata else None,
-                    duration_seconds=metadata.duration if metadata else None,
-                    error_message=error_message or (job.error_message or "Unknown error"),
-                    created_at=datetime.now(),
-                ),
+            self._append_session_error_entry(
+                path=job.source_file.path,
+                size_bytes=job.source_file.size_bytes if job.source_file else None,
+                width=metadata.width if metadata else None,
+                height=metadata.height if metadata else None,
+                fps=metadata.fps if metadata else None,
+                codec=metadata.codec if metadata else None,
+                audio_codec=metadata.audio_codec if metadata else None,
+                duration_seconds=metadata.duration if metadata else None,
+                error_message=error_message or (job.error_message or "Unknown error"),
             )
-            # Keep first page focused on newest entries.
-            self.logs_page_index = 0
+
+    def add_discovery_error(self, path: Path, size_bytes: Optional[int], error_message: str) -> None:
+        """Store discovery-time `.err` marker entry for current-session Logs tab."""
+        with self._lock:
+            self._append_session_error_entry(
+                path=path,
+                size_bytes=size_bytes,
+                width=None,
+                height=None,
+                fps=None,
+                codec=None,
+                audio_codec=None,
+                duration_seconds=None,
+                error_message=error_message,
+                deduplicate=True,
+            )
 
     def logs_total_pages(self) -> int:
         with self._lock:

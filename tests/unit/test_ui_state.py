@@ -86,3 +86,28 @@ def test_ui_state_logs_pagination_and_reset():
     assert total_pages == 2
     assert total_entries == 13
     assert entries[0].error_message == "new-error"
+
+
+def test_ui_state_discovery_error_deduplicates_by_path_and_message():
+    state = UIState()
+
+    state.add_discovery_error(
+        path=Path("stale.mp4"),
+        size_bytes=123,
+        error_message="ffmpeg exited with code 245",
+    )
+    state.add_discovery_error(
+        path=Path("stale.mp4"),
+        size_bytes=123,
+        error_message="ffmpeg exited with code 245",
+    )
+    state.add_discovery_error(
+        path=Path("stale.mp4"),
+        size_bytes=123,
+        error_message="different message",
+    )
+
+    entries, _page_idx, _total_pages, total_entries = state.get_logs_page()
+    assert total_entries == 2
+    assert entries[0].error_message == "different message"
+    assert entries[1].error_message == "ffmpeg exited with code 245"

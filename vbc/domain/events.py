@@ -6,9 +6,9 @@ decoupling the pipeline orchestrator from the UI layer and enabling extensibilit
 See `infrastructure/event_bus.py` for the pub/sub mechanism.
 """
 
-from typing import List, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from .models import CompressionJob
 
 if TYPE_CHECKING:
@@ -68,6 +68,14 @@ class DiscoveryStarted(Event):
     directory: Path
 
 
+class DiscoveryErrorEntry(BaseModel):
+    """Discovery-time `.err` marker details used by Logs tab."""
+
+    path: Path
+    size_bytes: Optional[int] = None
+    error_message: str
+
+
 class DiscoveryFinished(Event):
     """Emitted after file discovery and filtering is complete.
 
@@ -79,6 +87,7 @@ class DiscoveryFinished(Event):
     already_compressed: int = 0
     ignored_small: int = 0
     ignored_err: int = 0
+    ignored_err_entries: List[DiscoveryErrorEntry] = Field(default_factory=list)
     ignored_av1: int = 0
     source_folders_count: int = 1
 
