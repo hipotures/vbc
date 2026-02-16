@@ -297,7 +297,7 @@ max_queued_jobs = prefetch_factor × current_threads
 | 2-3 | Better parallelism, smoother queue | Higher memory usage |
 | 4-5 | Maximum parallelism | Memory intensive, slow thread response |
 
-**Recommendation:** Keep at 1 unless you have 16+ threads.
+**Recommendation:** Keep at 1 unless you need more parallelism and your system can sustain up to 8 threads.
 
 ## Deep Metadata Copy
 
@@ -382,7 +382,7 @@ VBC automatically detects GPU limitations including:
 **Session Limits Exceeded:**
 - RTX 30-series: Max ~5 concurrent sessions
 - RTX 40-series (e.g., 4090): Max 10-12 concurrent sessions
-- If you run `--threads 16` on RTX 4090, threads 13+ will get HW_CAP errors
+- VBC runtime limit is 8 threads, so session-limit errors are usually caused by other GPU workloads
 
 **10-bit Encoding:**
 - Older GPUs don't support 10-bit AV1

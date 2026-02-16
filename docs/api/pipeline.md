@@ -183,7 +183,7 @@ def _on_thread_control(self, event: ThreadControlEvent):
     with self._thread_lock:
         old = self._current_max_threads
         new = old + event.change
-        self._current_max_threads = max(1, min(16, new))
+        self._current_max_threads = max(1, min(8, new))
         self._thread_lock.notify_all()  # Wake up waiting threads
 
     bus.publish(ActionMessage(message=f"Threads: {old} → {new}"))

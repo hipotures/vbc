@@ -49,7 +49,7 @@ The dashboard shows:
 
 While running, press:
 
-- **`.`** - Increase threads (max 16)
+- **`.`** - Increase threads (max 8)
 - **`,`** - Decrease threads (min 1)
 - **`S`** - Graceful shutdown (finish current jobs)
 - **`R`** - Refresh queue (scan for new files)

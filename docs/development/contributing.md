@@ -96,7 +96,7 @@ Use Pydantic for all configuration and data models:
 from pydantic import BaseModel, Field, field_validator
 
 class MyConfig(BaseModel):
-    threads: int = Field(default=4, gt=0, le=16)
+    threads: int = Field(default=4, gt=0, le=8)
     quality: int = Field(default=45, ge=0, le=63)
 
     @field_validator('threads')

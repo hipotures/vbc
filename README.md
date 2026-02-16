@@ -58,7 +58,7 @@ Modern video libraries grow fast. Raw 4K footage from cameras and drones consume
 - ✅ **Color Space Fixes**: Automatic recovery for FFmpeg 7.x "reserved" color space bugs
 
 ### Processing & Performance
-- ✅ **Multi-Threaded**: 1-16 concurrent compressions with dynamic adjustment
+- ✅ **Multi-Threaded**: 1-8 concurrent compressions with dynamic adjustment
 - ✅ **Submit-on-Demand**: Memory-efficient queue (doesn't load 10K futures upfront)
 - ✅ **Metadata Caching**: Thread-safe cache avoids redundant ExifTool calls
 - ✅ **Hardware Detection**: Automatic GPU capability error detection with optional CPU fallback
@@ -335,8 +335,8 @@ ffmpeg -codecs | grep nvenc
 
 **NVENC Session Limits** (important for thread count):
 - **RTX 30-series**: ~5 concurrent sessions → max 4-5 threads
-- **RTX 40-series** (e.g., RTX 4090): 10-12 sessions → max 10-12 threads
-- **Professional GPUs** (Quadro, A-series): Higher/unlimited → max 8-16 threads
+- **RTX 40-series** (e.g., RTX 4090): 10-12 sessions (hardware) → app limit still max 8 threads
+- **Professional GPUs** (Quadro, A-series): Higher/unlimited → app limit still max 8 threads
 
 **10-bit AV1**: Requires RTX 40-series or newer.
 
@@ -399,7 +399,7 @@ suffix_errors_dirs: "_err"
 # --- General Settings ---
 
 general:
-  # Max concurrent compression threads (1-16).
+  # Max concurrent compression threads (1-8).
   # Can be adjusted at runtime with < and > keys.
   threads: 4
 
@@ -686,7 +686,7 @@ While VBC is running, use these keyboard shortcuts:
 | Key | Action | Description |
 |-----|--------|-------------|
 | `<` or `,` | Decrease threads | Reduce max concurrent threads by 1 (min: 1) |
-| `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: 16) |
+| `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: 8) |
 | `S` or `s` | Graceful shutdown | Stop accepting new jobs, finish active ones (press again to cancel) |
 | `R` or `r` | Refresh queue | Re-scan directory and add new files |
 | `C` or `c` | Toggle config | Show/hide configuration overlay |
@@ -1024,7 +1024,7 @@ Files found: 100 | To process: 50 | Already compressed: 30 | Ignored: size:15, e
 **Symptom**: Press `.` but threads don't increase
 
 **Causes**:
-1. Already at max (16 threads)
+1. Already at max (8 threads)
 2. Graceful shutdown active (`S` pressed)
 
 **Solution**: Check UI for "SHUTDOWN requested" message. Press `S` again to cancel shutdown.

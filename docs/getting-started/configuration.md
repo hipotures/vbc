@@ -39,7 +39,7 @@ suffix_errors_dirs: null
 
 general:
   # === Core Settings ===
-  threads: 8                    # Max concurrent compression threads (1-16)
+  threads: 8                    # Max concurrent compression threads (1-8)
   prefetch_factor: 1            # Submit-on-demand multiplier (1-5)
   gpu: true                     # Use GPU (NVENC) vs CPU (SVT-AV1)
   queue_sort: name              # Queue order: name, rand, dir, size, size-asc, size-desc, ext
@@ -572,7 +572,7 @@ All config settings can be overridden via CLI:
 
 ```bash
 # Override threads and quality
-uv run vbc /videos --threads 16 --quality 38
+uv run vbc /videos --threads 8 --quality 38
 
 # Override GPU setting
 uv run vbc /videos --cpu  # Force CPU mode

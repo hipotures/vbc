@@ -397,27 +397,14 @@ Run coverage report:
 uv run pytest --cov=vbc --cov-report=term-missing
 ```
 
-## Continuous Integration
+## Automation (Optional)
 
-GitHub Actions runs tests on every PR:
+Recommended local checks before push:
 
-```yaml
-# .github/workflows/test.yml
-name: Tests
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
-      - name: Install dependencies
-        run: uv sync
-      - name: Run tests
-        run: uv run pytest --cov=vbc
+```bash
+uv run pytest
+uv run pytest --cov=vbc
+uv run pytest tests/test_docs_sync.py -q
 ```
 
 ## Debugging Tests

@@ -7,7 +7,7 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | Key | Action | Description |
 |-----|--------|-------------|
 | `<` or `,` | Decrease threads | Reduce max concurrent threads by 1 (min: 1) |
-| `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: 16) |
+| `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: 8) |
 | `S` or `s` | Graceful shutdown / Cancel | Stop accepting new jobs, finish active compressions. Press again to cancel shutdown |
 | `R` or `r` | Refresh queue | Re-scan input directory and add new files |
 | `C` or `c` | Overlay: Settings | Toggle settings tab |
@@ -53,7 +53,7 @@ Result: Threads: 8 → 7
 Increases the maximum concurrent threads by 1.
 
 **Behavior:**
-- Maximum: 16 threads (NVENC session limit)
+- Maximum: 8 threads (application limit)
 - New slots available immediately
 - Queued jobs start filling new slots
 - UI feedback: "Threads: 4 → 5"
@@ -270,16 +270,16 @@ NVIDIA GPUs have encoding session limits that vary by generation:
 
 **Recommendation:**
 - RTX 30-series: Max 4-5 threads for GPU mode
-- RTX 40-series: Max 10-12 threads for GPU mode
-- Professional GPUs: Max 8-16 threads
+- RTX 40-series: Max 8 threads in VBC (hardware often supports 10-12 sessions)
+- Professional GPUs: Max 8 threads (VBC runtime limit)
 
-If you exceed the limit, you'll see `HW_CAP` errors in the UI.
+If total concurrent GPU sessions (VBC + other processes) exceed hardware limits, you'll see `HW_CAP` errors in the UI.
 
 ### CPU Mode Threading
 
 For CPU encoding (SVT-AV1):
 
-- **High-end CPU** (16+ cores): 8-12 threads
+- **High-end CPU** (16+ cores): 6-8 threads
 - **Mid-range CPU** (8-12 cores): 4-6 threads
 - **Low-end CPU** (4-6 cores): 2-3 threads
 
@@ -326,7 +326,7 @@ Feedback expires after 60 seconds.
 **Symptom:** Press `.` but threads stay the same
 
 **Causes:**
-1. Already at max (16 threads)
+1. Already at max (8 threads)
 2. Shutdown requested (no new jobs allowed)
 
 **Solution:** Check UI for "SHUTDOWN requested" message

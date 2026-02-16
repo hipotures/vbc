@@ -409,7 +409,7 @@ class ThreadController:
 
     def increase(self):
         with self.condition:
-            self.max_threads = min(self.max_threads + 1, 16)
+            self.max_threads = min(self.max_threads + 1, 8)
             self.condition.notify()
 
     def decrease(self):

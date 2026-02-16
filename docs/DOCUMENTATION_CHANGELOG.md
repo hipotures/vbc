@@ -112,7 +112,7 @@ $ uv run pytest tests/test_docs_sync.py -v
 ========================= 10 passed in 0.02s =========================
 ```
 
-**Impact**: Future code changes that break docs will fail CI immediately.
+**Impact**: Future code changes that break docs are caught by the local docs-sync test suite.
 
 ---
 
@@ -174,12 +174,10 @@ Documentation now properly separated:
 
 ## Maintenance Recommendations
 
-### 1. Run Validation Tests in CI
+### 1. Run Validation Tests Locally Before Push
 
-Add to `.github/workflows/test.yml`:
-```yaml
-- name: Validate docs sync
-  run: uv run pytest tests/test_docs_sync.py -v
+```bash
+uv run pytest tests/test_docs_sync.py -v
 ```
 
 ### 2. Pre-Commit Hook
