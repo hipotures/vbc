@@ -93,12 +93,12 @@ Lower quality value (CQ/CRF) = higher quality (range: 0-63)
 
 ### Camera-Specific Settings
 
-If you have videos from specific cameras (e.g., Sony, DJI):
+If you have videos from specific cameras (for best results use exact model strings, e.g., `ILCE-7RM5`, `DJI OsmoPocket3`):
 
 ```bash
 # First, create conf/vbc.yaml with dynamic_quality settings
 # Then run with camera filtering
-uv run vbc ~/Videos/raw --camera "Sony,DJI"
+uv run vbc ~/Videos/raw --camera "ILCE-7RM5,DJI"
 ```
 
 This will only process files from those cameras and apply custom CQ per camera.

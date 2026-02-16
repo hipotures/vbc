@@ -40,7 +40,7 @@ suffix_errors_dirs: null
 general:
   # === Core Settings ===
   threads: 8                    # Max concurrent compression threads (>0; executor max_workers=16)
-  prefetch_factor: 1            # Submit-on-demand multiplier (1-5)
+  prefetch_factor: 1            # Submit-on-demand multiplier (>=1)
   gpu: true                     # Use GPU (NVENC) vs CPU (SVT-AV1)
   queue_sort: name              # Queue order: name, rand, dir, size, size-asc, size-desc, ext
   queue_seed: null              # Optional seed for deterministic rand order
@@ -64,7 +64,7 @@ general:
   # === Filtering ===
   skip_av1: false               # Skip files already encoded in AV1
   filter_cameras: []            # Only process specific camera models (empty = all)
-                                # Example: ["Sony", "DJI OsmoPocket3"]
+                                # Example: ["ILCE-7RM5", "DJI OsmoPocket3"]
 
   # === Quality Control ===
   dynamic_quality:             # Camera-specific quality rules
@@ -182,7 +182,7 @@ autorotate:
   - 55+: Low quality, very small files
 
 #### `prefetch_factor`
-- **Type**: Integer (1-5)
+- **Type**: Integer (>=1)
 - **Default**: 1
 - **Description**: Submit-on-demand queue multiplier. Higher values = more files queued.
 - **Formula**: `max_queued = prefetch_factor × threads`
@@ -438,8 +438,8 @@ Dashboard display settings.
 - **Type**: List of strings
 - **Default**: `[]` (empty = process all cameras)
 - **Description**: Only process files from specific camera models
-- **Example**: `["Sony", "DJI", "ILCE-7RM5"]`
-- **Matching**: Substring match (case-insensitive)
+- **Example**: `["ILCE-7RM5", "DJI OsmoPocket3"]`
+- **Matching**: Case-insensitive substring against extracted camera metadata; exact model strings are most reliable.
 
 ### Quality Control
 
@@ -475,6 +475,9 @@ Dashboard display settings.
 - **Description**:
   - `cq`: use encoder quality args (`-cq` on GPU, `-crf` on CPU)
   - `rate`: use bitrate target (`bps`) with optional `minrate`/`maxrate`
+- **CLI validation rules**:
+  - `--quality` is valid only for `quality_mode=cq`
+  - `--bps` / `--minrate` / `--maxrate` require `quality_mode=rate`
 
 #### `bps`
 - **Type**: String or null
@@ -569,7 +572,24 @@ Dashboard display settings.
 
 ## CLI Overrides
 
-All config settings can be overridden via CLI:
+Only a subset of config keys can be overridden via CLI flags:
+
+- `general.threads` → `--threads`
+- encoder CQ/CRF value → `--quality` (only when `quality_mode=cq`)
+- `general.quality_mode` → `--quality-mode`
+- `general.bps`, `general.minrate`, `general.maxrate` → `--bps`, `--minrate`, `--maxrate` (only when `quality_mode=rate`)
+- `general.gpu` → `--gpu/--cpu`
+- `general.queue_sort`, `general.queue_seed` → `--queue-sort`, `--queue-seed`
+- `general.log_path` → `--log-path`
+- `general.clean_errors` → `--clean-errors`
+- `general.skip_av1` → `--skip-av1`
+- `general.min_size_bytes` → `--min-size`
+- `general.min_compression_ratio` → `--min-ratio`
+- `general.filter_cameras` → `--camera`
+- `general.manual_rotation` → `--rotate-180`
+- `general.debug` → `--debug`
+
+Other settings (for example `prefetch_factor`, `dynamic_quality`, encoder arg lists, directory mappings, and `gpu_config`) must be set in YAML.
 
 ```bash
 # Override threads and quality
@@ -579,7 +599,7 @@ uv run vbc /videos --threads 8 --quality 38
 uv run vbc /videos --cpu  # Force CPU mode
 
 # Override camera filtering
-uv run vbc /videos --camera "Sony,DJI"
+uv run vbc /videos --camera "ILCE-7RM5,DJI"
 
 # Override multiple settings
 uv run vbc /videos \

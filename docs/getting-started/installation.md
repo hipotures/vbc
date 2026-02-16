@@ -43,8 +43,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/your-org/vbc.git
 cd vbc
 
-# Install dependencies
-uv sync
+# Install dependencies from lockfile (reproducible)
+uv sync --frozen
+# If you intentionally updated dependencies or uv.lock:
+# uv sync
 
 # Bootstrap runtime config (required)
 cp conf/vbc.yaml.example conf/vbc.yaml
@@ -87,9 +89,6 @@ sudo apt install ffmpeg
 ```bash
 # Using Homebrew
 brew install ffmpeg exiftool
-
-# For NVENC support (requires NVIDIA GPU and drivers)
-brew install ffmpeg --with-nvenc
 ```
 
 ### Arch Linux
@@ -137,8 +136,8 @@ sudo make install
 uv run vbc --help
 
 # You should see the help message without errors.
-# Test with a small video file
-uv run vbc /path/to/test/video --threads 1 --quality 45
+# Test with a small input directory
+uv run vbc /path/to/test/videos --threads 1 --quality 45
 ```
 
 ## GPU Support (NVIDIA)
@@ -163,7 +162,7 @@ For GPU-accelerated compression with NVENC:
 
 4. **Test GPU encoding**:
    ```bash
-   uv run vbc /path/to/video --gpu --threads 2
+   uv run vbc /path/to/videos --gpu --threads 2
    ```
 
 !!! warning "Hardware Limitations"

@@ -82,7 +82,7 @@ def test_general_config_defaults():
 
 def test_encoder_defaults():
     """Test default encoder quality values."""
-    config = AppConfig()
+    config = AppConfig(general=GeneralConfig())
     assert extract_quality_value(config.gpu_encoder.common_args) == 45
     assert extract_quality_value(config.cpu_encoder.common_args) == 32
 
@@ -208,7 +208,7 @@ def test_event_bus_multiple_subscribers():
 # tests/integration/test_orchestrator.py
 import pytest
 from pathlib import Path
-from vbc.config.models import AppConfig
+from vbc.config.models import AppConfig, GeneralConfig
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
 from vbc.infrastructure.exif_tool import ExifToolAdapter
@@ -227,7 +227,7 @@ def test_dir(tmp_path):
 @pytest.mark.integration
 def test_orchestrator_discovery(test_dir):
     """Test Orchestrator discovery phase."""
-    config = AppConfig()
+    config = AppConfig(general=GeneralConfig())
     config.general.extensions = [".mp4"]
     config.general.min_size_bytes = 0
 
@@ -366,6 +366,10 @@ uv run pytest -m "not slow"
 Test multiple scenarios:
 
 ```python
+import pytest
+from vbc.config.models import AppConfig, GeneralConfig
+from vbc.infrastructure.ffmpeg import extract_quality_value, replace_quality_value
+
 @pytest.mark.parametrize("quality,expected_quality", [
     (35, "high"),
     (45, "medium"),
@@ -373,7 +377,7 @@ Test multiple scenarios:
 ])
 def test_quality_mapping(quality, expected_quality):
     """Test quality-to-label mapping."""
-    config = AppConfig()
+    config = AppConfig(general=GeneralConfig())
     args = replace_quality_value(config.gpu_encoder.common_args, quality)
     assert extract_quality_value(args) == quality
     # Assert quality label based on value

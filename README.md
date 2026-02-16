@@ -221,7 +221,9 @@ graph TB
 ```bash
 # Install dependencies
 cd /path/to/vbc
-uv sync
+uv sync --frozen
+# If you intentionally updated dependencies or uv.lock:
+# uv sync
 
 # Bootstrap local config (required on first run)
 cp conf/vbc.yaml.example conf/vbc.yaml
@@ -315,8 +317,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/your-org/vbc.git
 cd vbc
 
-# Install dependencies (automatic via uv)
-uv sync
+# Install dependencies from lockfile (reproducible)
+uv sync --frozen
+# If you intentionally updated dependencies or uv.lock:
+# uv sync
 
 # Bootstrap local runtime config
 cp conf/vbc.yaml.example conf/vbc.yaml
@@ -351,10 +355,10 @@ ffmpeg -codecs | grep nvenc
 ### Verification
 
 ```bash
-# Test with a small video
-uv run vbc /path/to/test/video --threads 1 --quality 45
+# Test with a small directory
+uv run vbc /path/to/test/videos --threads 1 --quality 45
 
-# Run demo mode (no file I/O)
+# Run demo mode (no video file processing I/O; logs are still written)
 uv run vbc --demo
 ```
 
@@ -411,7 +415,7 @@ general:
   # Runtime keyboard adjustment (< and >) clamps to 1-8.
   threads: 4
 
-  # Submit-on-demand queue multiplier (1-5).
+  # Submit-on-demand queue multiplier (>=1).
   # Formula: max_queued = prefetch_factor * threads.
   prefetch_factor: 1
 
@@ -443,7 +447,7 @@ general:
   use_exif: true
 
   # Only process specific camera models (substring match, case-insensitive).
-  # Example: ["Sony", "DJI"]
+  # Example: ["ILCE-7RM5", "DJI"]
   filter_cameras: []
 
   # Camera-specific quality rules (first match wins).
@@ -649,7 +653,7 @@ uv run vbc /path/to/videos --cpu --quality 35 --threads 4
 uv run vbc /path/to/videos --config conf/production.yaml
 
 # Camera-specific processing
-uv run vbc /path/to/videos --camera "Sony,DJI" --quality 38
+uv run vbc /path/to/videos --camera "ILCE-7RM5,DJI" --quality 38
 
 # Rotate all videos 180°
 uv run vbc /path/to/videos --rotate-180
@@ -669,11 +673,11 @@ uv run vbc /path/to/videos --debug --threads 2
 | `--config`, `-c` | Path | `conf/vbc.yaml` | Configuration file |
 | `--threads`, `-t` | Integer | From config (1) | Max concurrent threads |
 | `--quality-mode` | String | `cq` | Rate-control mode: `cq` or `rate` |
-| `--quality` | Integer | From encoder args (`-cq`/`-crf`) | Quality override (0-63, lower=better) |
+| `--quality` | Integer | From encoder args (`-cq`/`-crf`) | Quality override (CQ/CRF, 0-63, lower=better); invalid with `--quality-mode rate` |
 | `--bps` | String | None | Target bitrate in `rate` mode (absolute or ratio, e.g. `200Mbps`, `0.8`) |
 | `--minrate` | String | None | Optional min bitrate clamp in `rate` mode (same numeric class as `--bps`) |
 | `--maxrate` | String | None | Optional max bitrate clamp in `rate` mode (same numeric class as `--bps`) |
-| `--gpu` / `--cpu` | Boolean | `--gpu` | Use GPU (NVENC) or CPU (SVT-AV1) |
+| `--gpu` / `--cpu` | Boolean | From config (`gpu: true`) | Use GPU (NVENC) or CPU (SVT-AV1) |
 | `--queue-sort` | String | `name` | Queue order (`name`, `rand`, `dir`, `size`, `size-asc`, `size-desc`, `ext`) |
 | `--queue-seed` | Integer | None | Seed for deterministic random order |
 | `--skip-av1` | Boolean | False | Skip AV1-encoded files |
@@ -684,10 +688,14 @@ uv run vbc /path/to/videos --debug --threads 2
 | `--clean-errors` | Boolean | False | Remove .err markers and retry |
 | `--log-path` | Path | `/tmp/vbc/compression.log` | Log file path |
 | `--debug` | Boolean | False | Verbose debug logging |
-| `--demo` | Boolean | False | Simulation mode (no file I/O) |
+| `--demo` | Boolean | False | Simulation mode (no video file processing I/O; logs still written) |
 | `--demo-config` | Path | `conf/demo.yaml` | Demo simulation settings |
 
 **Configuration Precedence**: CLI args > YAML config > defaults
+
+**Rate Mode Validation Rules**:
+- `--quality` cannot be used with `--quality-mode rate`
+- `--bps` / `--minrate` / `--maxrate` require `--quality-mode rate`
 
 Full CLI reference: [docs/user-guide/cli.md](docs/user-guide/cli.md)
 
@@ -873,20 +881,20 @@ Process only files from specific cameras:
 ```yaml
 general:
   filter_cameras:
-    - "Sony"
-    - "DJI OsmoPocket3"
     - "ILCE-7RM5"
+    - "DJI OsmoPocket3"
+    - "Canon EOS R5"
 ```
 
 Or via CLI:
 ```bash
-uv run vbc /videos --camera "Sony,DJI"
+uv run vbc /videos --camera "ILCE-7RM5,DJI"
 ```
 
 **Matching**: Substring match (case-insensitive). Example:
-- Filter: `["Sony"]`
+- Filter: `["ILCE-7RM5"]`
 - File camera: `ILCE-7RM5`
-- Match: ✓ ("Sony" appears in full model name)
+- Match: ✓ (`"ILCE-7RM5"` appears in camera model)
 
 ### Minimum Compression Ratio
 
@@ -1065,8 +1073,14 @@ cat /tmp/vbc/compression.log
 # Or custom path
 cat /path/to/custom.log
 
+# Fatal uncaught exceptions (startup/runtime)
+cat error.log
+
 # Live tail
 tail -f /tmp/vbc/compression.log
+
+# Error markers moved after run
+find /path/to/videos_err -name "*.err"
 ```
 
 ---

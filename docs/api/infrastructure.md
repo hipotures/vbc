@@ -224,13 +224,16 @@ from pathlib import Path
 # Create service
 housekeeper = HousekeepingService()
 
-# Cleanup temp files
-housekeeper.cleanup_temp_files(Path("/videos"))
-# Removes: *.tmp, *_colorfix.mp4
-
-# Cleanup error markers
-housekeeper.cleanup_error_markers(Path("/videos_out"))
-# Removes: *.err files
+# Cleanup markers in output dir
+housekeeper.cleanup_output_markers(
+    input_dir=Path("/videos"),
+    output_dir=Path("/videos_out"),
+    errors_dir=Path("/videos_err"),
+    clean_errors=True,   # True: cleanup .tmp and .err, False: only .tmp
+)
+# Removes or relocates markers:
+# - *.tmp always
+# - *.err only when clean_errors=True
 ```
 
 ## Adapter Patterns

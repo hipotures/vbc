@@ -130,15 +130,15 @@ Process only files from specific camera models.
 # conf/vbc.yaml
 general:
   filter_cameras:
-    - "Sony"
-    - "DJI OsmoPocket3"
     - "ILCE-7RM5"
+    - "DJI OsmoPocket3"
+    - "Canon EOS R5"
 ```
 
 Or via CLI:
 
 ```bash
-uv run vbc /videos --camera "Sony,DJI"
+uv run vbc /videos --camera "ILCE-7RM5,DJI"
 ```
 
 ### How It Works
@@ -149,11 +149,11 @@ uv run vbc /videos --camera "Sony,DJI"
 
 **Example:**
 ```
-Filter: ["Sony", "DJI"]
+Filter: ["ILCE-7RM5", "DJI"]
 
 File: IMG_1234.MOV
 Camera: ILCE-7RM5 (Sony A7R V)
-Match: "Sony" in "ILCE-7RM5" → Process ✓
+Match: "ILCE-7RM5" in "ILCE-7RM5" → Process ✓
 
 File: VIDEO_5678.MP4
 Camera: Canon EOS R5
@@ -296,7 +296,7 @@ max_queued_jobs = prefetch_factor × current_threads
 |--------|------|------|
 | 1 (default) | Minimal memory, responsive to thread changes | Less parallelism |
 | 2-3 | Better parallelism, smoother queue | Higher memory usage |
-| 4-5 | Maximum parallelism | Memory intensive, slow thread response |
+| 4+ | Maximum parallelism | Memory intensive, slow thread response |
 
 **Recommendation:** Keep at 1 unless you need more parallelism and your system can sustain up to 8 threads.
 

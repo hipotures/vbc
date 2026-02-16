@@ -57,6 +57,7 @@ uv run vbc /videos --threads 8
 Quality value (0-63). Lower = better quality.
 
 **Default:** From encoder args (`gpu_encoder`/`cpu_encoder`, via `-cq` or `-crf`)
+**Rule:** Cannot be used with `--quality-mode rate`.
 
 ```bash
 uv run vbc /videos --quality 38
@@ -81,6 +82,10 @@ uv run vbc /videos --quality-mode cq --quality 38
 # Bitrate target mode
 uv run vbc /videos --quality-mode rate --bps 200Mbps
 ```
+
+**Validation rules:**
+- `--quality` cannot be used with `--quality-mode rate`
+- `--bps` / `--minrate` / `--maxrate` require `--quality-mode rate`
 
 #### `--bps TEXT`
 
@@ -115,7 +120,7 @@ Must be the same numeric class as `--bps` and `--minrate`.
 
 Enable/disable GPU acceleration.
 
-**Default:** `--gpu` (NVENC)
+**Default:** From config (`general.gpu`, default `true`)
 
 ```bash
 # Use GPU (NVENC AV1)
@@ -198,13 +203,13 @@ Only process files from specific camera models (comma-separated).
 
 ```bash
 # Single camera
-uv run vbc /videos --camera "Sony"
+uv run vbc /videos --camera "ILCE-7RM5"
 
 # Multiple cameras
-uv run vbc /videos --camera "Sony,DJI,ILCE-7RM5"
+uv run vbc /videos --camera "ILCE-7RM5,DJI,DC-GH7"
 ```
 
-**Matching:** Substring, case-insensitive.
+**Matching:** Substring, case-insensitive. Exact model strings are most reliable.
 
 #### `--min-size INT`
 
@@ -290,11 +295,16 @@ Path to log file (overrides config).
 uv run vbc /videos --log-path /tmp/vbc/compression.log
 ```
 
+**Related diagnostics:**
+- If `log_path` is `null`, logs are written to `<output_dir>/compression.log`.
+- Uncaught fatal exceptions are appended to `error.log` in the current working directory.
+- Per-file failures create `.err` markers (moved to errors dir after processing).
+
 ### Demo
 
 #### `--demo`
 
-Run simulated processing (no file IO). The UI and event flow behave like a real run.
+Run simulated processing (no video file processing I/O). The UI and event flow behave like a real run, and logs are still written.
 
 **Note:** `INPUT_DIR` is optional; in demo mode it is ignored.
 
@@ -338,9 +348,9 @@ uv run vbc /videos --gpu --threads 8 --quality 45
 ### Camera-Specific Processing
 
 ```bash
-# Only Sony cameras, high quality
+# Only ILCE-7RM5 cameras, high quality
 uv run vbc /videos \
-  --camera "Sony" \
+  --camera "ILCE-7RM5" \
   --quality 38 \
   --threads 6
 ```
