@@ -54,6 +54,7 @@ from vbc.config.rate_control import validate_rate_control_inputs, describe_rate_
 warnings.filterwarnings("ignore")
 
 app = typer.Typer(help="VBC (Video Batch Compression) - Modular Version")
+DEFAULT_WEB_PORT = 8765
 
 @app.command()
 def compress(
@@ -96,7 +97,9 @@ def compress(
     min_ratio: Optional[float] = typer.Option(None, "--min-ratio", help="Minimum compression ratio required (0.0-1.0)"),
     camera: Optional[str] = typer.Option(None, "--camera", help="Comma-separated list of camera models to filter"),
     rotate_180: bool = typer.Option(False, "--rotate-180", help="Rotate output 180 degrees"),
-    debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable verbose debug logging")
+    debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable verbose debug logging"),
+    web: bool = typer.Option(False, "--web", help="Enable read-only HTMX web dashboard"),
+    web_port: int = typer.Option(DEFAULT_WEB_PORT, "--web-port", help="Web dashboard port (default: 8765)"),
 ):
     """Batch compress videos in a directory with full feature parity."""
     cli_input_dirs = parse_cli_input_dirs(input_dirs_arg)
@@ -571,6 +574,12 @@ def compress(
 
         UIManager(bus, ui_state, demo_mode=demo)
 
+        web_server = None
+        if web:
+            from vbc.infrastructure.web_server import VBCWebServer
+            web_server = VBCWebServer(state=ui_state, port=web_port)
+            web_server.start()
+
         exif = None
         if demo and demo_config:
             orchestrator = DemoOrchestrator(
@@ -689,6 +698,8 @@ def compress(
                 processing_finished = True
         finally:
             keyboard.stop()
+            if web_server:
+                web_server.stop()
             if gpu_monitor:
                 gpu_monitor.stop()
             # Cleanup ExifTool
