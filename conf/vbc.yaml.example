@@ -249,6 +249,22 @@ ui:
   # Vertical scaling factor for dashboard panels (0.3-1.0).
   panel_height_scale: 0.7
 
+# --- Web Dashboard Settings ---
+
+web_server:
+  # Start the web dashboard automatically when VBC launches.
+  # Can also be enabled at runtime with --web flag (CLI has higher priority).
+  enabled: false
+
+  # TCP port to listen on.
+  # Override at runtime: --web-port 9000
+  port: 8765
+
+  # Bind address:
+  # "0.0.0.0" — all network interfaces (accessible from LAN/phone)
+  # "127.0.0.1" — localhost only
+  host: "0.0.0.0"
+
 # --- Auto-Rotation Settings ---
 
 autorotate:

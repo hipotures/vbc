@@ -862,9 +862,10 @@ class VBCWebServer:
         server.stop()    # optional; daemon thread auto-stops on exit
     """
 
-    def __init__(self, state: "UIState", port: int = DEFAULT_PORT) -> None:
+    def __init__(self, state: "UIState", port: int = DEFAULT_PORT, host: str = "0.0.0.0") -> None:
         self.state = state
         self.port = port
+        self.host = host
         self._server: Optional[_ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
 
@@ -872,10 +873,10 @@ class VBCWebServer:
         """Start web server in a daemon background thread."""
         VBCRequestHandler.state = self.state  # inject shared state
         try:
-            self._server = _ThreadingHTTPServer(("0.0.0.0", self.port), VBCRequestHandler)
+            self._server = _ThreadingHTTPServer((self.host, self.port), VBCRequestHandler)
         except OSError as exc:
-            logger.warning("Web dashboard: could not bind to port %d: %s", self.port, exc)
-            print(f"[VBC] Web dashboard: port {self.port} unavailable — dashboard disabled.")
+            logger.warning("Web dashboard: could not bind to %s:%d: %s", self.host, self.port, exc)
+            print(f"[VBC] Web dashboard: {self.host}:{self.port} unavailable — dashboard disabled.")
             return
 
         self._thread = threading.Thread(
@@ -884,8 +885,9 @@ class VBCWebServer:
             daemon=True,
         )
         self._thread.start()
-        logger.info("Web dashboard: http://localhost:%d/", self.port)
-        print(f"[VBC] Web dashboard: http://localhost:{self.port}/")
+        display_host = "localhost" if self.host in ("0.0.0.0", "::") else self.host
+        logger.info("Web dashboard: http://%s:%d/", display_host, self.port)
+        print(f"[VBC] Web dashboard: http://{display_host}:{self.port}/")
 
     def stop(self) -> None:
         """Gracefully stop the web server."""

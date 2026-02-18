@@ -54,7 +54,6 @@ from vbc.config.rate_control import validate_rate_control_inputs, describe_rate_
 warnings.filterwarnings("ignore")
 
 app = typer.Typer(help="VBC (Video Batch Compression) - Modular Version")
-DEFAULT_WEB_PORT = 8765
 
 @app.command()
 def compress(
@@ -98,8 +97,8 @@ def compress(
     camera: Optional[str] = typer.Option(None, "--camera", help="Comma-separated list of camera models to filter"),
     rotate_180: bool = typer.Option(False, "--rotate-180", help="Rotate output 180 degrees"),
     debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable verbose debug logging"),
-    web: bool = typer.Option(False, "--web", help="Enable read-only HTMX web dashboard"),
-    web_port: int = typer.Option(DEFAULT_WEB_PORT, "--web-port", help="Web dashboard port (default: 8765)"),
+    web: bool = typer.Option(False, "--web", help="Enable read-only HTMX web dashboard (overrides config)"),
+    web_port: Optional[int] = typer.Option(None, "--web-port", help="Web dashboard port (overrides config)"),
 ):
     """Batch compress videos in a directory with full feature parity."""
     cli_input_dirs = parse_cli_input_dirs(input_dirs_arg)
@@ -210,6 +209,10 @@ def compress(
             config.general.debug = True
         if rotate_180:
             config.general.manual_rotation = 180
+        if web:
+            config.web_server.enabled = True
+        if web_port is not None:
+            config.web_server.port = web_port
 
         demo_config = load_demo_config(demo_config_path) if demo else None
 
@@ -575,9 +578,13 @@ def compress(
         UIManager(bus, ui_state, demo_mode=demo)
 
         web_server = None
-        if web:
+        if config.web_server.enabled:
             from vbc.infrastructure.web_server import VBCWebServer
-            web_server = VBCWebServer(state=ui_state, port=web_port)
+            web_server = VBCWebServer(
+                state=ui_state,
+                port=config.web_server.port,
+                host=config.web_server.host,
+            )
             web_server.start()
 
         exif = None

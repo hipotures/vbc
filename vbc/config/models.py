@@ -363,6 +363,21 @@ class UiConfig(BaseModel):
     panel_height_scale: float = Field(default=0.7, ge=0.3, le=1.0)
 
 
+class WebServerConfig(BaseModel):
+    """Web dashboard server configuration.
+
+    Attributes:
+        enabled: Start web dashboard automatically (default False).
+        port: TCP port to listen on (default 8765).
+        host: Bind address — "0.0.0.0" for all interfaces (LAN access),
+              "127.0.0.1" for localhost only.
+    """
+
+    enabled: bool = False
+    port: int = Field(default=8765, ge=1, le=65535)
+    host: str = "0.0.0.0"
+
+
 class AppConfig(BaseModel):
     """Top-level VBC application configuration.
 
@@ -384,6 +399,7 @@ class AppConfig(BaseModel):
         gpu_encoder: GPU encoder configuration.
         cpu_encoder: CPU encoder configuration.
         ui: Dashboard UI configuration.
+        web_server: Read-only HTMX web dashboard configuration.
     """
 
     general: GeneralConfig
@@ -397,6 +413,7 @@ class AppConfig(BaseModel):
     gpu_encoder: GpuEncoderConfig = Field(default_factory=GpuEncoderConfig)
     cpu_encoder: CpuEncoderConfig = Field(default_factory=CpuEncoderConfig)
     ui: UiConfig = Field(default_factory=UiConfig)
+    web_server: WebServerConfig = Field(default_factory=WebServerConfig)
 
     @field_validator("suffix_output_dirs")
     @classmethod
