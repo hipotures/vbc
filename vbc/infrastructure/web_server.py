@@ -6,6 +6,7 @@ Runs as a daemon thread — stops automatically when VBC exits.
 No new dependencies: uses stdlib http.server + socketserver only.
 HTMX 2.0.8 and Pico.css 2.1.1 loaded from jsDelivr CDN.
 Static files (style.css, theme-switcher.js) served from vbc/infrastructure/web/.
+HTML fragments rendered via Jinja2 templates in vbc/infrastructure/web/templates/.
 """
 from __future__ import annotations
 
@@ -19,6 +20,8 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
+
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 if TYPE_CHECKING:
     from vbc.ui.state import UIState
@@ -34,17 +37,20 @@ DEFAULT_PORT = 8765
 _STATIC_DIR = Path(__file__).parent / "web"
 _ALLOWED_MIME = {".css": "text/css", ".js": "application/javascript"}
 
+_TEMPLATE_DIR = _STATIC_DIR / "templates"
+_jinja_env = Environment(
+    loader=FileSystemLoader(_TEMPLATE_DIR),
+    autoescape=select_autoescape(["html"]),
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
+
 def _get_index_html() -> str:
     return (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 # ---------------------------------------------------------------------------
 # Format helpers (pure functions, mirror dashboard.py conventions)
 # ---------------------------------------------------------------------------
-
-def _esc(text: object) -> str:
-    """HTML-escape a value. Always call this on data from domain models."""
-    return html.escape(str(text), quote=True)
-
 
 _SPIN_NORMAL = "●○◉◎"
 _SPIN_ROTATE = "◐◓◑◒"
@@ -94,6 +100,10 @@ def _fmt_fps(metadata: object) -> str:
     if metadata and getattr(metadata, "fps", None):
         return f"{int(metadata.fps)}fps"
     return ""
+
+
+# Register format helpers as Jinja2 globals so templates can call them directly.
+_jinja_env.globals.update(fmt_size=_fmt_size, fmt_time=_fmt_time)
 
 
 def _parse_gpu_num(s: object) -> float:
@@ -239,10 +249,10 @@ def _compute_stats(state: "UIState") -> dict:
 
 
 # ---------------------------------------------------------------------------
-# HTML fragment renderers
+# View-model functions (pure dicts, no HTML) + Jinja2 template renderers
 # ---------------------------------------------------------------------------
 
-def _render_header(s: dict) -> str:
+def _vm_header(s: dict) -> dict:
     if s["is_finished"]:
         badge_cls, label = "badge-done", "FINISHED"
     elif s["is_interrupted"]:
@@ -253,112 +263,79 @@ def _render_header(s: dict) -> str:
         badge_cls, label = "badge-active", "ACTIVE"
 
     a, t = s["active_count"], s["target_threads"]
-    threads_disp = str(a) if a == t else f"{a} &rarr; {t}"
+    threads_disp = str(a) if a == t else f"{a} \u2192 {t}"
 
     tp_str = f"{s['throughput_bps'] / 1_048_576:.1f} MB/s"
     eta_str = _fmt_time(s["eta_seconds"])
-    saved_str = _esc(_fmt_size(s["space_saved"]))
+    saved_str = _fmt_size(s["space_saved"])
     ratio_pct = (1.0 - s["ratio"]) * 100.0
 
-    # GPU block
-    gpu_html = ""
+    gpu = None
     g = s["gpu_data"]
     if g:
-        t_val = _parse_gpu_num(g.get("temp"))
-        f_val = _parse_gpu_num(g.get("fan_speed"))
-        p_val = _parse_gpu_num(g.get("power_draw"))
+        t_val  = _parse_gpu_num(g.get("temp"))
+        f_val  = _parse_gpu_num(g.get("fan_speed"))
+        p_val  = _parse_gpu_num(g.get("power_draw"))
         gu_val = _parse_gpu_num(g.get("gpu_util"))
         mu_val = _parse_gpu_num(g.get("mem_util"))
+        gpu = {
+            "device_name": g.get("device_name", "GPU"),
+            "temp":        g.get("temp", "??"),
+            "t_cls":       _gpu_cls(t_val,  55, 65),
+            "fan_speed":   g.get("fan_speed", "??"),
+            "f_cls":       _gpu_cls(f_val,  50, 75),
+            "power_draw":  g.get("power_draw", "??"),
+            "p_cls":       _gpu_cls(p_val,  250, 380),
+            "gpu_util":    g.get("gpu_util", "??"),
+            "gu_cls":      _gpu_cls(gu_val, 30, 60),
+            "gu_val":      min(100.0, gu_val),
+            "mem_util":    g.get("mem_util", "??"),
+            "mu_cls":      _gpu_cls(mu_val, 30, 60),
+            "mu_val":      min(100.0, mu_val),
+        }
 
-        t_cls  = _gpu_cls(t_val,  55, 65)
-        f_cls  = _gpu_cls(f_val,  50, 75)
-        p_cls  = _gpu_cls(p_val,  250, 380)
-        gu_cls = _gpu_cls(gu_val, 30, 60)
-        mu_cls = _gpu_cls(mu_val, 30, 60)
+    return {
+        "badge_cls":    badge_cls,
+        "label":        label,
+        "threads_disp": threads_disp,
+        "eta_str":      eta_str,
+        "tp_str":       tp_str,
+        "saved_str":    saved_str,
+        "ratio_pct":    ratio_pct,
+        "gpu":          gpu,
+    }
 
-        gpu_html = f"""
-      <div class="gpu-panel">
-        <div class="gpu-name">{_esc(g.get('device_name', 'GPU'))}</div>
-        <div class="gpu-metrics">
-          <span class="{t_cls}">{_esc(g.get('temp', '??'))}</span>
-          <span class="sep">•</span>
-          <span class="{f_cls}">fan {_esc(g.get('fan_speed', '??'))}</span>
-          <span class="sep">•</span>
-          <span class="{p_cls}">pwr {_esc(g.get('power_draw', '??'))}</span>
-          <span class="sep">•</span>
-          <span class="{gu_cls}">gpu {_esc(g.get('gpu_util', '??'))}</span>
-          <span class="sep">•</span>
-          <span class="{mu_cls}">mem {_esc(g.get('mem_util', '??'))}</span>
-        </div>
-        <div class="gpu-bar-row">
-          <span class="gpu-bar-lbl">gpu</span>
-          <div class="mini-track"><div class="mini-fill {gu_cls}" style="width:{min(100, gu_val):.0f}%"></div></div>
-          <span class="gpu-bar-lbl">mem</span>
-          <div class="mini-track"><div class="mini-fill {mu_cls}" style="width:{min(100, mu_val):.0f}%"></div></div>
-        </div>
-      </div>"""
 
-    return f"""<article id="slot-header"
-     hx-get="/api/header"
-     hx-trigger="every 2s"
-     hx-swap="outerHTML">
-  <header>VBC</header>
-  <div class="kpi-row">
-    <span class="dot">●</span>
-    <span class="badge {badge_cls}">{_esc(label)}</span>
-    <span class="dim">Threads: {threads_disp}</span>
-  </div>
-  <div class="kpi-row">
-    ETA: {_esc(eta_str)}<span class="sep">•</span>{_esc(tp_str)}<span class="sep">•</span><span class="ok">{saved_str} saved ({ratio_pct:.1f}%)</span>
-  </div>
-  {gpu_html}
-</article>"""
+def _render_header(s: dict) -> str:
+    return _jinja_env.get_template("header.html").render(**_vm_header(s))
+
+
+def _vm_progress(s: dict) -> dict:
+    pct = min(100.0, max(0.0, s["pct_global"]))
+    tp_str = f"{s['throughput_bps'] / 1_048_576:.1f} MB/s"
+    return {
+        "pct":          pct,
+        "done":         s["completed"],
+        "total":        s["files_to_process"],
+        "failed":       s["failed"],
+        "src":          s["source_folders"],
+        "done_sz":      _fmt_size(s["total_in"]),
+        "total_sz":     _fmt_size(s["total_size"]),
+        "tp_str":       tp_str,
+        "elapsed_str":  _fmt_time(s["elapsed"]) if s["elapsed"] > 0 else "--:--",
+        "eta_str":      _fmt_time(s["eta_seconds"]),
+    }
 
 
 def _render_progress(s: dict) -> str:
-    pct = min(100.0, max(0.0, s["pct_global"]))
-    total = s["files_to_process"]
-    done = s["completed"]
-    failed = s["failed"]
-    src = s["source_folders"]
-
-    hdr = f"Done: {done}/{total}"
-    if src > 1:
-        hdr += f"<span class='sep'>•</span>Sources: {src}"
-    fail_span = f"<span class='sep'>•</span><span class='fail'>Failed: {failed}</span>" if failed else ""
-
-    tp_str = f"{s['throughput_bps'] / 1_048_576:.1f} MB/s"
-    total_sz = _esc(_fmt_size(s["total_size"]))
-    done_sz = _esc(_fmt_size(s["total_in"]))
-    elapsed_str = _esc(_fmt_time(s["elapsed"]) if s["elapsed"] > 0 else "--:--")
-    eta_str = _esc(_fmt_time(s["eta_seconds"]))
-
-    return f"""<article id="slot-progress"
-     hx-get="/api/progress"
-     hx-trigger="every 2s"
-     hx-swap="outerHTML">
-  <header>{hdr}{fail_span} <span class="dim">{pct:.1f}%</span></header>
-  <progress value="{pct:.1f}" max="100" class="bar-global"></progress>
-  <small class="dim">{done_sz}/{total_sz}<span class="sep">•</span>{_esc(tp_str)}<span class="sep">•</span>{elapsed_str}<span class="sep">•</span>ETA {eta_str}</small>
-</article>"""
+    return _jinja_env.get_template("progress.html").render(**_vm_progress(s))
 
 
-def _render_active_jobs(s: dict) -> str:
-    jobs = s["active_jobs"]
+def _vm_active_jobs(s: dict) -> dict:
     now = s["now"]
-
-    if not jobs:
-        return """<article id="slot-active"
-     hx-get="/api/active"
-     hx-trigger="every 2s"
-     hx-swap="outerHTML">
-  <header>ACTIVE JOBS</header>
-  <p class="empty">No active jobs</p>
-</article>"""
-
-    rows = []
-    for job in jobs:
-        fname = _esc(job.source_file.path.name)
+    job_items = []
+    for job in s["active_jobs"]:
+        fname = job.source_file.path.name
         meta = job.source_file.metadata
         dur = _fmt_time(getattr(meta, "duration", None) if meta else None)
         fps = _fmt_fps(meta)
@@ -366,11 +343,9 @@ def _render_active_jobs(s: dict) -> str:
         q = _quality_str(job)
         pct = min(100.0, max(0.0, float(job.progress_percent or 0.0)))
 
-        # Per-job ETA
         eta_str = "--:--"
-        key = job.source_file.path.name
-        if key in s["job_start_times"] and 0 < pct < 100:
-            job_elapsed = (now - s["job_start_times"][key]).total_seconds()
+        if fname in s["job_start_times"] and 0 < pct < 100:
+            job_elapsed = (now - s["job_start_times"][fname]).total_seconds()
             if job_elapsed > 0:
                 eta_str = _fmt_time((job_elapsed / pct) * (100.0 - pct))
 
@@ -385,50 +360,29 @@ def _render_active_jobs(s: dict) -> str:
 
         rotation = getattr(job, "rotation_angle", None) or 0
         custom_cq = getattr(meta, "custom_cq", None) if meta else None
-        spin_char = _esc(_spinner(job.source_file.path.name, rotation, custom_cq))
-
-        rows.append(f"""    <div class="job-row">
-      <div class="job-name-row">
-        <span class="job-dot">{spin_char}</span>
-        <span class="job-name">{fname}</span>
-        <small class="job-meta">{_esc(" \u2022 ".join(meta_parts))}</small>
-      </div>
-      <div class="job-bar-row">
-        <progress value="{pct:.1f}" max="100" class="bar-job"></progress>
-        <span class="job-pct">{pct:>5.1f}%</span>
-        <span class="sep">•</span>
-        <span class="job-eta">{_esc(eta_str)}</span>
-      </div>
-    </div>""")
-
-    body = "\n".join(rows)
-    return f"""<article id="slot-active"
-     hx-get="/api/active"
-     hx-trigger="every 2s"
-     hx-swap="outerHTML">
-  <header>ACTIVE JOBS</header>
-{body}
-</article>"""
+        job_items.append({
+            "fname":   fname,
+            "spin":    _spinner(fname, rotation, custom_cq),
+            "meta":    " \u2022 ".join(meta_parts),
+            "pct":     pct,
+            "eta_str": eta_str,
+        })
+    return {"jobs": job_items}
 
 
-def _render_activity(s: dict) -> str:
-    jobs = s["recent_jobs"]
+def _render_active_jobs(s: dict) -> str:
+    return _jinja_env.get_template("active_jobs.html").render(**_vm_active_jobs(s))
 
-    if not jobs:
-        return """<article id="slot-activity"
-     hx-get="/api/activity"
-     hx-trigger="every 2s"
-     hx-swap="outerHTML">
-  <header>ACTIVITY FEED</header>
-  <p class="empty">No recent jobs</p>
-</article>"""
 
-    rows = []
-    for job in jobs[:5]:
-        fname = _esc(job.source_file.path.name)
+def _vm_activity(s: dict) -> dict:
+    job_items = []
+    for job in s["recent_jobs"][:5]:
+        fname = job.source_file.path.name
         raw_status = getattr(job, "status", None)
         status = raw_status.value if hasattr(raw_status, "value") else str(raw_status)
 
+        stat_str = None
+        error = None
         if status == "COMPLETED":
             in_b = job.source_file.size_bytes or 0
             out_b = getattr(job, "output_size_bytes", None) or 0
@@ -441,92 +395,47 @@ def _render_activity(s: dict) -> str:
                 stat_parts.append(q)
             stat_parts.append(f"{_fmt_size(in_b)} \u2192 {_fmt_size(out_b)} ({ratio_pct:.1f}%)")
             stat_parts.append(dur)
-            rows.append(f"""    <div class="act-row">
-      <span class="act-icon ok">&#10003;</span>
-      <div class="act-body">
-        <div class="act-name">{fname}</div>
-        <small class="act-stat ok">{_esc(" \u2022 ".join(stat_parts))}</small>
-      </div>
-    </div>""")
-
+            stat_str = " \u2022 ".join(stat_parts)
         elif status == "FAILED":
-            err = _esc(getattr(job, "error_message", None) or "error")
-            rows.append(f"""    <div class="act-row">
-      <span class="act-icon fail">&#10007;</span>
-      <div class="act-body">
-        <div class="act-name">{fname}</div>
-        <small class="act-stat fail">{err}</small>
-      </div>
-    </div>""")
+            error = getattr(job, "error_message", None) or "error"
+        elif status != "INTERRUPTED":
+            stat_str = status
 
-        elif status == "INTERRUPTED":
-            rows.append(f"""    <div class="act-row">
-      <span class="act-icon warn">&#9889;</span>
-      <div class="act-body">
-        <div class="act-name">{fname}</div>
-        <small class="act-stat warn">INTERRUPTED</small>
-      </div>
-    </div>""")
-
-        else:
-            rows.append(f"""    <div class="act-row">
-      <span class="act-icon dim">&#8801;</span>
-      <div class="act-body">
-        <div class="act-name">{fname}</div>
-        <small class="act-stat dim">{_esc(status)}</small>
-      </div>
-    </div>""")
-
-    body = "\n".join(rows)
-    return f"""<article id="slot-activity"
-     hx-get="/api/activity"
-     hx-trigger="every 2s"
-     hx-swap="outerHTML">
-  <header>ACTIVITY FEED</header>
-{body}
-</article>"""
+        job_items.append({
+            "fname":    fname,
+            "status":   status,
+            "stat_str": stat_str,
+            "error":    error,
+        })
+    return {"jobs": job_items}
 
 
-def _render_queue(s: dict) -> str:
+def _render_activity(s: dict) -> str:
+    return _jinja_env.get_template("activity.html").render(**_vm_activity(s))
+
+
+def _vm_queue(s: dict) -> dict:
     files = s["pending_files"]
-
-    if not files:
-        return """<article id="slot-queue"
-     hx-get="/api/queue"
-     hx-trigger="every 2s"
-     hx-swap="outerHTML">
-  <header>QUEUE</header>
-  <p class="empty">Queue empty</p>
-</article>"""
-
     MAX_DISPLAY = 5
-    shown = files[:MAX_DISPLAY]
-    more = len(files) - MAX_DISPLAY if len(files) > MAX_DISPLAY else 0
-
-    rows = []
-    for f in shown:
-        fname = _esc(f.path.name)
+    more = max(0, len(files) - MAX_DISPLAY)
+    items = []
+    for f in files[:MAX_DISPLAY]:
         size = _fmt_size(getattr(f, "size_bytes", None))
         fps = _fmt_fps(getattr(f, "metadata", None))
         meta_parts = [p for p in [size, fps] if p]
-        meta = _esc(" \u2022 ".join(meta_parts))
-        rows.append(f"""    <div class="q-item">
-      <div class="q-name-row"><span class="q-arrow">&raquo;</span><span class="q-name">{fname}</span></div>
-      <small class="q-meta">{meta}</small>
-    </div>""")
+        items.append({
+            "fname": f.path.name,
+            "meta":  " \u2022 ".join(meta_parts),
+        })
+    return {
+        "title": f"QUEUE ({len(files)} files)" if files else "QUEUE",
+        "items": items,
+        "more":  more,
+    }
 
-    if more > 0:
-        rows.append(f'    <p class="q-more">&hellip; +{more} more</p>')
 
-    body = "\n".join(rows)
-    title = f"QUEUE ({len(files)} files)"
-    return f"""<article id="slot-queue"
-     hx-get="/api/queue"
-     hx-trigger="every 2s"
-     hx-swap="outerHTML">
-  <header>{title}</header>
-{body}
-</article>"""
+def _render_queue(s: dict) -> str:
+    return _jinja_env.get_template("queue.html").render(**_vm_queue(s))
 
 
 # ---------------------------------------------------------------------------
@@ -602,7 +511,7 @@ class VBCRequestHandler(BaseHTTPRequestHandler):
             try:
                 self._send_html(
                     f"<article><header>ERROR</header>"
-                    f"<p class='fail'>{_esc(str(exc))}</p></article>",
+                    f"<p class='fail'>{html.escape(str(exc))}</p></article>",
                     status=500,
                 )
             except Exception:
