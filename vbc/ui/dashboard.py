@@ -723,8 +723,8 @@ class Dashboard:
             ratio = self.state.compression_ratio
 
             # Thread display: show single number or transition
-            # During shutdown, target is 0; otherwise use configured threads
-            target_threads = 0 if self.state.shutdown_requested else self.state.current_threads
+            # During shutdown or waiting, target is 0; otherwise use configured threads
+            target_threads = 0 if (self.state.shutdown_requested or self.state.waiting_for_input) else self.state.current_threads
 
             if active_threads == target_threads:
                 threads_display = str(active_threads)

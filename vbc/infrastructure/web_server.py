@@ -224,7 +224,7 @@ def _compute_stats(state: "UIState") -> dict:
         space_saved = max(0, total_in - total_out)
         ratio = (total_out / total_in) if total_in > 0 else 0.0
         active_count = len(active_jobs)
-        target_threads = 0 if is_shutdown else state.current_threads
+        target_threads = 0 if (is_shutdown or is_waiting) else state.current_threads
         source_folders = state.source_folders_count
 
         hw_cap_count       = state.hw_cap_count
