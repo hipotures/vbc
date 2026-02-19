@@ -4,7 +4,7 @@
          hx-swap="outerHTML">
   <header>Progress</header>
   <div class="kpi-row">
-    <span class="vbc-kpi-lbl">Done:</span> <span class="vbc-kpi-val">{{ done }}/{{ total }}</span>{% if src > 1 %}<span class="sep">•</span><span class="vbc-kpi-lbl">Sources:</span> <span class="vbc-kpi-val">{{ src }}</span>{% endif %}{% if failed %}<span class="sep">•</span><span class="vbc-kpi-lbl fail">Failed:</span> <span class="vbc-kpi-val fail">{{ failed }}</span>{% endif %}<span class="sep">•</span><span class="vbc-kpi-val">{{ "%.1f"|format(pct) }}%</span>
+    <span class="vbc-kpi-lbl">Done:</span> <span class="vbc-kpi-val">{{ done }}/{{ total }}</span>{% if failed %}<span class="sep">•</span><span class="vbc-kpi-lbl fail">Failed:</span> <span class="vbc-kpi-val fail">{{ failed }}</span>{% endif %}<span class="sep">•</span><span class="vbc-kpi-lbl">Size:</span> <span class="vbc-kpi-val">{{ "%.1f"|format(pct) }}%</span>{% if src > 1 %}<span class="sep">•</span><span class="vbc-kpi-lbl">Sources:</span> <span class="vbc-kpi-val">{{ src }}</span>{% endif %}
   </div>
   <progress value="{{ "%.1f"|format(pct) }}" max="100" class="bar-global"></progress>
   <small class="dim">{{ done_sz }}/{{ total_sz }}<span class="sep">•</span>{{ tp_str }}<span class="sep">•</span>{{ elapsed_str }}<span class="sep">•</span>ETA {{ eta_str }}</small>

@@ -3,7 +3,8 @@
          hx-get="/api/gpu"
          hx-trigger="every 2s"
          hx-swap="outerHTML">
-  <header>{{ gpu.device_name }}</header>
+  <header>GPU</header>
+  <div class="gpu-name">{{ gpu.device_name }}</div>
   <div class="gpu-metrics">
     <span class="vbc-kpi-val">{{ gpu.temp }}</span>
     <span class="sep">•</span>

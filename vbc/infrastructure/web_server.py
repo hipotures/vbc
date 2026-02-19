@@ -369,15 +369,15 @@ def _vm_active_jobs(s: dict) -> dict:
         if fps:
             meta_parts.append(fps)
         meta_parts.append(f"in {size}")
-        if q:
-            meta_parts.append(f"\u2192 {q}")
-
         rotation = getattr(job, "rotation_angle", None) or 0
         custom_cq = getattr(meta, "custom_cq", None) if meta else None
+        meta_str = " • ".join(meta_parts)
+        if q:
+            meta_str += f" → {q}"
         job_items.append({
             "fname":   fname,
             "spin":    _spinner(fname, rotation, custom_cq),
-            "meta":    " \u2022 ".join(meta_parts),
+            "meta":    meta_str,
             "pct":     pct,
             "eta_str": eta_str,
         })

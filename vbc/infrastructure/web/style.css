@@ -120,7 +120,9 @@ article > header {
 .warn { color: var(--vbc-warn); }
 .fail { color: var(--vbc-err); }
 .dim  { color: var(--vbc-dim); }
-.sep  { color: var(--pico-muted-border-color); margin: 0 2px; }
+.sep                { color: var(--pico-muted-color); margin: 0 8px; }
+.kpi-row .sep       { margin: 0 -2px; }
+.gpu-metrics .sep   { margin: 0; }
 .empty { color: var(--vbc-dim); font-style: italic; font-size: 12px; }
 
 /* === 7-role text hierarchy ========================================= */
