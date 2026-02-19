@@ -1,7 +1,7 @@
 <article id="slot-queue"
          hx-get="/api/queue"
          hx-trigger="every 2s"
-         hx-swap="outerHTML">
+         hx-swap="morph:outerHTML">
   <header>{{ title }}</header>
   {% if not items %}
   <p class="empty">Queue empty</p>

@@ -1,7 +1,7 @@
 <article id="slot-progress"
          hx-get="/api/progress"
          hx-trigger="every 2s"
-         hx-swap="outerHTML">
+         hx-swap="morph:outerHTML">
   <header>Progress</header>
   <div class="kpi-row">
     <span class="vbc-kpi-lbl">Done:</span> <span class="vbc-kpi-val">{{ done }}/{{ total }}</span>{% if failed %}<span class="sep">•</span><span class="vbc-kpi-lbl fail">Failed:</span> <span class="vbc-kpi-val fail">{{ failed }}</span>{% endif %}<span class="sep">•</span><span class="vbc-kpi-lbl">Size:</span> <span class="vbc-kpi-val">{{ "%.1f"|format(pct) }}%</span>{% if src > 1 %}<span class="sep">•</span><span class="vbc-kpi-lbl">Sources:</span> <span class="vbc-kpi-val">{{ src }}</span>{% endif %}

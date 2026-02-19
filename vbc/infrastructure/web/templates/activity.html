@@ -1,7 +1,7 @@
 <article id="slot-activity"
          hx-get="/api/activity"
          hx-trigger="every 2s"
-         hx-swap="outerHTML">
+         hx-swap="morph:outerHTML">
   <header>ACTIVITY FEED</header>
   {% if not jobs %}
   <p class="empty">No recent jobs</p>

@@ -1,7 +1,7 @@
 <article id="slot-active"
          hx-get="/api/active"
          hx-trigger="every 2s"
-         hx-swap="outerHTML">
+         hx-swap="morph:outerHTML">
   <header>ACTIVE JOBS</header>
   {% if not jobs %}
   <p class="empty">No active jobs</p>

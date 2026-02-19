@@ -2,7 +2,7 @@
 <article id="slot-gpu"
          hx-get="/api/gpu"
          hx-trigger="every 2s"
-         hx-swap="outerHTML">
+         hx-swap="morph:outerHTML">
   <header>GPU</header>
   <div class="gpu-name">{{ gpu.device_name }}</div>
   <div class="gpu-metrics">
@@ -27,5 +27,5 @@
 <div id="slot-gpu"
      hx-get="/api/gpu"
      hx-trigger="every 2s"
-     hx-swap="outerHTML"></div>
+     hx-swap="morph:outerHTML"></div>
 {% endif %}
