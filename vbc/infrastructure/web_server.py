@@ -204,8 +204,15 @@ def _compute_stats(state: "UIState") -> dict:
         )
         rem = max(0, files_to_process - done_since)
         eta_seconds: Optional[float] = None
-        if files_window > 0 and time_window > 0 and rem > 0:
-            eta_seconds = (time_window / files_window) * rem
+        if rem > 0:
+            avg_sec_per_file = 0.0
+            if files_window > 0 and time_window > 0:
+                avg_sec_per_file = time_window / files_window
+            elif (completed + failed) > 0 and elapsed > 0:
+                # Fallback: global average when sliding window is empty
+                avg_sec_per_file = elapsed / (completed + failed)
+            if avg_sec_per_file > 0:
+                eta_seconds = avg_sec_per_file * rem
 
         # Global progress % by bytes
         pending_bytes = sum(getattr(f, "size_bytes", 0) for f in pending_files)
@@ -344,7 +351,9 @@ def _vm_active_jobs(s: dict) -> dict:
         pct = min(100.0, max(0.0, float(job.progress_percent or 0.0)))
 
         eta_str = "--:--"
-        if fname in s["job_start_times"] and 0 < pct < 100:
+        if pct >= 100:
+            eta_str = "0s"
+        elif fname in s["job_start_times"] and pct > 0:
             job_elapsed = (now - s["job_start_times"][fname]).total_seconds()
             if job_elapsed > 0:
                 eta_str = _fmt_time((job_elapsed / pct) * (100.0 - pct))
