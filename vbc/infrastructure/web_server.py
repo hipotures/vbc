@@ -226,6 +226,12 @@ def _compute_stats(state: "UIState") -> dict:
         target_threads = 0 if is_shutdown else state.current_threads
         source_folders = state.source_folders_count
 
+        hw_cap_count       = state.hw_cap_count
+        skipped_count      = state.skipped_count
+        cam_skipped_count  = state.cam_skipped_count
+        kept_count         = state.min_ratio_skip_count
+        ignored_small_count = state.ignored_small_count
+
     return {
         "now": now,
         "completed": completed,
@@ -252,6 +258,11 @@ def _compute_stats(state: "UIState") -> dict:
         "target_threads": target_threads,
         "source_folders": source_folders,
         "files_window": files_window,
+        "hw_cap_count":        hw_cap_count,
+        "skipped_count":       skipped_count,
+        "cam_skipped_count":   cam_skipped_count,
+        "kept_count":          kept_count,
+        "ignored_small_count": ignored_small_count,
     }
 
 
@@ -277,6 +288,16 @@ def _vm_header(s: dict) -> dict:
     saved_str = _fmt_size(s["space_saved"])
     ratio_pct = (1.0 - s["ratio"]) * 100.0
 
+    counters = [
+        ("fail",   s["failed"],              "FFmpeg compression failed"),
+        ("err",    s["skipped_count"],        "Skipped due to .err marker file"),
+        ("hw_cap", s["hw_cap_count"],         "GPU capacity exceeded, fell back to CPU"),
+        ("skip",   s["cam_skipped_count"],    "Skipped by camera filter"),
+        ("kept",   s["kept_count"],           "Original kept (compression ratio too low)"),
+        ("small",  s["ignored_small_count"],  "File too small, ignored"),
+    ]
+    stats = [(lbl, val, tip) for lbl, val, tip in counters if val > 0]
+
     return {
         "badge_cls":    badge_cls,
         "label":        label,
@@ -285,6 +306,7 @@ def _vm_header(s: dict) -> dict:
         "tp_str":       tp_str,
         "saved_str":    saved_str,
         "ratio_pct":    ratio_pct,
+        "stats":        stats,
     }
 
 

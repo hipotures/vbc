@@ -11,4 +11,11 @@
   <div class="kpi-row">
     <span class="vbc-kpi-lbl">ETA:</span> <span class="vbc-kpi-val">{{ eta_str }}</span><span class="sep">•</span><span class="vbc-kpi-val">{{ tp_str }}</span><span class="sep">•</span><span class="vbc-kpi-val">{{ saved_str }} saved ({{ "%.1f"|format(ratio_pct) }}%)</span>
   </div>
+  {% if stats %}
+  <div class="kpi-row">
+    {% for lbl, val, tip in stats %}
+    <span class="vbc-kpi-lbl" data-tooltip="{{ tip }}">{{ lbl }}:</span><span class="vbc-kpi-val">{{ val }}</span>{% if not loop.last %}<span class="sep">•</span>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
 </article>

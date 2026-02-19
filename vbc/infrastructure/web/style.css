@@ -121,6 +121,7 @@ article > header {
 .fail { color: var(--vbc-err); }
 .dim  { color: var(--vbc-dim); }
 .sep                { color: var(--pico-muted-color); margin: 0 8px; }
+[data-tooltip]      { text-decoration: none !important; border-bottom: none !important; cursor: default; }
 .kpi-row .sep       { margin: 0 -2px; }
 .gpu-metrics .sep   { margin: 0; }
 .empty { color: var(--vbc-dim); font-style: italic; font-size: 12px; }
