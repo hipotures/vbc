@@ -754,9 +754,8 @@ def compress(
                         target_files=moved_files,
                     )
                     if config.general.bell_on_finish and n_repaired > 0:
-                        import sys
-                        sys.stdout.write('\x07')
-                        sys.stdout.flush()
+                        from vbc.pipeline.orchestrator import _emit_bell
+                        _emit_bell()
 
             # Warning for files skipped because they were already encoded by VBC
             if not demo and orchestrator and getattr(orchestrator, "skipped_vbc_count", 0) > 0:

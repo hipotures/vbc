@@ -69,6 +69,23 @@ from vbc.domain.events import (
 from vbc.pipeline.queue_sorting import sort_files
 
 
+def _emit_bell() -> None:
+    """Write two terminal bells 0.3s apart directly to /dev/tty, bypassing Rich's stdout capture."""
+    import time
+    def _ring():
+        try:
+            with open('/dev/tty', 'w') as tty:
+                tty.write('\x07')
+                tty.flush()
+        except OSError:
+            import sys
+            sys.stderr.write('\x07')
+            sys.stderr.flush()
+    _ring()
+    time.sleep(0.3)
+    _ring()
+
+
 class Orchestrator:
     """Video compression pipeline orchestrator.
 
@@ -1597,9 +1614,7 @@ class Orchestrator:
 
             # Emit bell before entering wait state (if configured)
             if self.config.general.bell_on_finish:
-                import sys
-                sys.stdout.write('\x07')
-                sys.stdout.flush()
+                _emit_bell()
 
             # Publish WAITING state for UI
             from vbc.domain.events import WaitingForInput
@@ -1649,9 +1664,7 @@ class Orchestrator:
             self.logger.info("No files to process, exiting")
             self.event_bus.publish(ProcessingFinished())
             if self.config.general.bell_on_finish and not self.config.general.wait_on_finish:
-                import sys
-                sys.stdout.write('\x07')
-                sys.stdout.flush()
+                _emit_bell()
             return
 
         # Submit-on-demand pattern (like original vbc.py)
@@ -1773,9 +1786,7 @@ class Orchestrator:
                 if not self._shutdown_requested:
                     self.event_bus.publish(ProcessingFinished())
                     if self.config.general.bell_on_finish and not self.config.general.wait_on_finish:
-                        import sys
-                        sys.stdout.write('\x07')
-                        sys.stdout.flush()
+                        _emit_bell()
                 self.logger.info("All files processed, exiting")
 
             except KeyboardInterrupt:
