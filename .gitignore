@@ -40,6 +40,9 @@ tests/data/
 !vbc/
 !vbc/**/
 !vbc/**/*.py
+!vbc/**/*.html
+!vbc/**/*.css
+!vbc/**/*.js
 
 # Allow documentation
 !docs/

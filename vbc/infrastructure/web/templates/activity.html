@@ -1,0 +1,39 @@
+<article id="slot-activity"
+         hx-get="/api/activity"
+         hx-trigger="every 2s"
+         hx-swap="outerHTML">
+  <header>ACTIVITY FEED</header>
+  {% if not jobs %}
+  <p class="empty">No recent jobs</p>
+  {% else %}
+  {% for j in jobs %}
+  <div class="act-row">
+    {% if j.status == "COMPLETED" %}
+    <span class="act-icon ok">&#10003;</span>
+    <div class="act-body">
+      <div class="act-name vbc-primary">{{ j.fname }}</div>
+      <small class="act-stat vbc-meta">{{ j.stat_str }}</small>
+    </div>
+    {% elif j.status == "FAILED" %}
+    <span class="act-icon fail">&#10007;</span>
+    <div class="act-body">
+      <div class="act-name vbc-primary">{{ j.fname }}</div>
+      <small class="act-stat fail">{{ j.error }}</small>
+    </div>
+    {% elif j.status == "INTERRUPTED" %}
+    <span class="act-icon warn">&#9889;</span>
+    <div class="act-body">
+      <div class="act-name vbc-primary">{{ j.fname }}</div>
+      <small class="act-stat vbc-meta">INTERRUPTED</small>
+    </div>
+    {% else %}
+    <span class="act-icon dim">&#8801;</span>
+    <div class="act-body">
+      <div class="act-name vbc-primary">{{ j.fname }}</div>
+      <small class="act-stat vbc-meta">{{ j.stat_str }}</small>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+</article>

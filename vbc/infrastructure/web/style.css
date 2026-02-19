@@ -1,0 +1,269 @@
+/* =====================================================================
+   VBC Dashboard — semantic overrides on top of Pico Zinc classless
+   DO NOT redefine Pico base variables — let Zinc light/dark handle them
+   ===================================================================== */
+
+/* === Pico Zinc text contrast overrides =============================
+   Zinc dark defaults: --pico-color:#c2c7d0, --pico-muted-color:#7b8495
+   For a dense dashboard these are too grey — boost contrast here.
+   Must cover both auto-dark (media query) and forced dark (data-theme).
+   ==================================================================== */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --pico-color:       #e6edf3;
+    --pico-muted-color: #a3afbf;
+    --pico-h1-color:    #f8fafc;
+    --pico-h2-color:    #eef2f7;
+    --pico-h3-color:    #e6edf3;
+    --pico-h4-color:    #cbd5e1;
+    --pico-code-color:  #b6c2d1;
+  }
+}
+
+[data-theme="dark"] {
+  --pico-color:       #e6edf3;
+  --pico-muted-color: #a3afbf;
+  --pico-h1-color:    #f8fafc;
+  --pico-h2-color:    #eef2f7;
+  --pico-h3-color:    #e6edf3;
+  --pico-h4-color:    #cbd5e1;
+  --pico-code-color:  #b6c2d1;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --pico-color:       #0f172a;
+    --pico-muted-color: #475569;
+    --pico-code-color:  #334155;
+  }
+}
+
+[data-theme="light"] {
+  --pico-color:       #0f172a;
+  --pico-muted-color: #475569;
+  --pico-code-color:  #334155;
+}
+
+/* === VBC semantic accent colors ==================================== */
+:root {
+  --vbc-ok:     #34d399;   /* emerald — completed / healthy */
+  --vbc-warn:   #fbbf24;   /* amber   — interrupt / degraded */
+  --vbc-err:    #f87171;   /* coral   — fail / progress bar job */
+  --vbc-dim:    var(--pico-muted-color);  /* follows Pico muted */
+  --vbc-cyan:   #38bdf8;   /* sky blue — panel titles */
+  --vbc-accent: var(--pico-primary);     /* Pico Zinc primary */
+}
+
+/* === Base font — keep Pico spacing, switch to mono ================= */
+body {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  font-size: 13px;
+}
+
+/* === Sticky nav ==================================================== */
+body > header > nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+body > header > nav ul:first-child li strong {
+  font-size: 12px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--vbc-cyan);
+}
+
+body > header > nav ul:last-child li a {
+  font-size: 10px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  text-decoration: none;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--vbc-dim);
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+body > header > nav ul:last-child li a:hover {
+  border-color: var(--pico-muted-border-color);
+  color: var(--pico-color);
+}
+
+/* === Article panels — Zinc gives bg/border, we add top accent ===== */
+article {
+  border-top: 2px solid var(--pico-primary);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+}
+
+article > header {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--vbc-cyan);
+  text-transform: uppercase;
+  font-weight: 700;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  margin-bottom: var(--pico-spacing);
+  padding-bottom: calc(var(--pico-spacing) * 0.5);
+}
+
+/* === Status / typography helpers =================================== */
+.ok   { color: var(--vbc-ok); }
+.warn { color: var(--vbc-warn); }
+.fail { color: var(--vbc-err); }
+.dim  { color: var(--vbc-dim); }
+.sep  { color: var(--pico-muted-border-color); margin: 0 3px; }
+.empty { color: var(--vbc-dim); font-style: italic; font-size: 12px; }
+
+/* === 7-role text hierarchy ========================================= */
+/* 2) Primary — filenames, main list text */
+.vbc-primary  { color: var(--pico-color); font-weight: 600; }
+/* 3) Meta — secondary info under filename */
+.vbc-meta     { color: var(--vbc-dim); }
+/* 4) Faint — "+N more", low-priority labels */
+.vbc-faint    { color: var(--vbc-dim); opacity: 0.55; font-style: italic; }
+/* 6) KPI label — "ETA:", "Threads:" */
+.vbc-kpi-lbl  { color: var(--vbc-dim); }
+/* 5) KPI value — numbers/metrics to read quickly */
+.vbc-kpi-val  { font-variant-numeric: tabular-nums; }
+
+/* === Native <progress> — gradient fills, Zinc track =============== */
+progress {
+  height: 5px;
+  border-radius: 3px;
+  margin-bottom: 0;
+  border: none;
+}
+
+progress::-webkit-progress-bar {
+  background: var(--pico-progress-background-color, var(--pico-muted-border-color));
+  border-radius: 3px;
+}
+
+progress::-webkit-progress-value {
+  border-radius: 3px;
+  transition: width 0.9s cubic-bezier(.4,0,.2,1);
+}
+
+progress::-moz-progress-bar {
+  border-radius: 3px;
+}
+
+progress.bar-global::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--pico-primary), var(--vbc-cyan));
+}
+progress.bar-global::-moz-progress-bar {
+  background: linear-gradient(90deg, var(--pico-primary), var(--vbc-cyan));
+}
+
+progress.bar-job { height: 4px; }
+progress.bar-job::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--vbc-err), var(--vbc-warn));
+}
+progress.bar-job::-moz-progress-bar {
+  background: linear-gradient(90deg, var(--vbc-err), var(--vbc-warn));
+}
+
+/* === 3-column dashboard grid ======================================= */
+.vbc-grid { display: grid; gap: var(--pico-spacing); }
+@media (min-width: 1100px) { .vbc-grid { grid-template-columns: 1fr 1fr 1fr; } }
+
+/* === Status badges ================================================= */
+.kpi-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 12px;
+  margin: 6px 0;
+}
+
+.badge {
+  font-size: 9px;
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.badge-active    { background: rgba(52,211,153,.12); color: var(--vbc-ok);   border: 1px solid rgba(52,211,153,.28); }
+.badge-done      { background: rgba(148,163,184,.10); color: var(--vbc-dim); border: 1px solid rgba(148,163,184,.20); }
+.badge-interrupt { background: rgba(251,191,36,.12);  color: var(--vbc-warn); border: 1px solid rgba(251,191,36,.28); }
+.badge-shutdown  { background: rgba(248,113,113,.12); color: var(--vbc-err); border: 1px solid rgba(248,113,113,.28); }
+
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.dot { display: inline-block; font-size: 7px; animation: pulse-dot 2.4s ease-in-out infinite; }
+
+/* === Shared panel typography (Active Jobs / Activity Feed / Queue) = */
+.job-name, .act-name, .q-name {
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.0;
+  margin-bottom: 0;
+}
+
+.job-meta, .act-stat, .q-meta {
+  font-size: 12px !important;
+  color: var(--vbc-dim);
+  display: block;
+}
+
+.job-meta { padding-left: 15px; }
+
+/* === Active jobs =================================================== */
+.job-row { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--pico-muted-border-color); }
+.job-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.job-name-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 5px; flex-wrap: wrap; }
+.job-dot  { color: var(--vbc-ok); font-size: 9px; }
+.job-name { word-break: break-all; }
+.job-bar-row { display: flex; align-items: center; gap: 8px; padding-left: 15px; }
+.job-bar-row progress { flex: 1; margin: 0; }
+.job-pct  { font-size: 11px; min-width: 44px; text-align: right; color: var(--vbc-dim); }
+.job-eta  { font-size: 11px; color: var(--vbc-dim); }
+
+/* === Activity feed ================================================= */
+.act-row  { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.act-row:last-child { margin-bottom: 0; }
+.act-icon { font-size: 12px; flex-shrink: 0; margin-top: 2px; }
+.act-body { flex: 1; min-width: 0; }
+.act-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* === Queue ========================================================= */
+.q-item { margin-bottom: 8px; }
+.q-item:last-child { margin-bottom: 0; }
+.q-name-row { display: flex; align-items: baseline; gap: 6px; }
+.q-arrow { color: var(--vbc-dim); font-size: 11px; }
+.q-name  { word-break: break-all; }
+.q-meta  { padding-left: 14px; }
+.q-more  { font-size: 11px; color: var(--vbc-dim); font-style: italic; margin-top: 6px; }
+
+/* === GPU panel ===================================================== */
+.gpu-panel { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--pico-muted-border-color); }
+.gpu-name  { font-size: 9px; color: var(--vbc-dim); margin-bottom: 5px; letter-spacing: 0.1em; text-transform: uppercase; }
+.gpu-metrics { display: flex; flex-wrap: wrap; gap: 3px 8px; font-size: 11px; margin-bottom: 7px; }
+.gpu-bar-row { display: flex; align-items: center; gap: 8px; }
+.gpu-bar-lbl { font-size: 8px; color: var(--vbc-dim); text-transform: uppercase; letter-spacing: 0.1em; min-width: 22px; }
+.gpu-green  { color: var(--vbc-ok); }
+.gpu-yellow { color: var(--vbc-warn); }
+.gpu-red    { color: var(--vbc-err); }
+.mini-track { flex: 1; height: 3px; background: var(--pico-muted-border-color); border-radius: 2px; overflow: hidden; }
+.mini-fill  { height: 100%; border-radius: 2px; transition: width 1s ease; }
+.mini-fill.gpu-green  { background: var(--vbc-ok); }
+.mini-fill.gpu-yellow { background: var(--vbc-warn); }
+.mini-fill.gpu-red    { background: var(--vbc-err); }
+
+/* === Mobile ======================================================== */
+@media (max-width: 700px) {
+  .gpu-metrics { font-size: 10px; gap: 2px 5px; flex-wrap: nowrap; overflow: hidden; }
+  .gpu-metrics .sep { margin: 0 1px; }
+}
+
+/* === Scrollbar ===================================================== */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--pico-muted-border-color); border-radius: 3px; }

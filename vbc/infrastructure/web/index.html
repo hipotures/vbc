@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>VBC Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.classless.zinc.min.css">
+  <link rel="stylesheet" href="/static/style.css?v=100">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul><li><strong>VBC</strong></li></ul>
+      <ul>
+        <li><a href="#" data-theme-switcher="auto">Auto</a></li>
+        <li><a href="#" data-theme-switcher="light">Light</a></li>
+        <li><a href="#" data-theme-switcher="dark">Dark</a></li>
+      </ul>
+    </nav>
+    <div id="slot-header" hx-get="/api/header" hx-trigger="load, every 2s" hx-swap="outerHTML">
+      <p aria-busy="true">Connecting&hellip;</p>
+    </div>
+  </header>
+  <main>
+    <div id="slot-progress" hx-get="/api/progress" hx-trigger="load, every 2s" hx-swap="outerHTML">
+      <article aria-busy="true"></article>
+    </div>
+    <div class="vbc-grid">
+      <div id="slot-active"   hx-get="/api/active"   hx-trigger="load, every 2s" hx-swap="outerHTML"><article aria-busy="true"></article></div>
+      <div id="slot-activity" hx-get="/api/activity" hx-trigger="load, every 2s" hx-swap="outerHTML"><article aria-busy="true"></article></div>
+      <div id="slot-queue"    hx-get="/api/queue"    hx-trigger="load, every 2s" hx-swap="outerHTML"><article aria-busy="true"></article></div>
+    </div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js"></script>
+  <script src="/static/theme-switcher.js"></script>
+</body>
+</html>

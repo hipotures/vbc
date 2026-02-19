@@ -1,0 +1,25 @@
+<article id="slot-active"
+         hx-get="/api/active"
+         hx-trigger="every 2s"
+         hx-swap="outerHTML">
+  <header>ACTIVE JOBS</header>
+  {% if not jobs %}
+  <p class="empty">No active jobs</p>
+  {% else %}
+  {% for j in jobs %}
+  <div class="job-row">
+    <div class="job-name-row">
+      <span class="job-dot">{{ j.spin }}</span>
+      <span class="job-name vbc-primary">{{ j.fname }}</span>
+    </div>
+    <small class="job-meta">{{ j.meta }}</small>
+    <div class="job-bar-row">
+      <progress value="{{ "%.1f"|format(j.pct) }}" max="100" class="bar-job"></progress>
+      <span class="job-pct">{{ "%5.1f"|format(j.pct) }}%</span>
+      <span class="sep">•</span>
+      <span class="job-eta">{{ j.eta_str }}</span>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+</article>

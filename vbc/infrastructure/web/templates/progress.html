@@ -1,0 +1,8 @@
+<article id="slot-progress"
+         hx-get="/api/progress"
+         hx-trigger="every 2s"
+         hx-swap="outerHTML">
+  <header>Done: {{ done }}/{{ total }}{% if src > 1 %}<span class="sep">•</span>Sources: {{ src }}{% endif %}{% if failed %}<span class="sep">•</span><span class="fail">Failed: {{ failed }}</span>{% endif %} <span class="dim">{{ "%.1f"|format(pct) }}%</span></header>
+  <progress value="{{ "%.1f"|format(pct) }}" max="100" class="bar-global"></progress>
+  <small class="dim">{{ done_sz }}/{{ total_sz }}<span class="sep">•</span>{{ tp_str }}<span class="sep">•</span>{{ elapsed_str }}<span class="sep">•</span>ETA {{ eta_str }}</small>
+</article>

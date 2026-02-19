@@ -1,0 +1,36 @@
+<article id="slot-header"
+         hx-get="/api/header"
+         hx-trigger="every 2s"
+         hx-swap="outerHTML">
+  <header>VBC</header>
+  <div class="kpi-row">
+    <span class="dot">●</span>
+    <span class="badge {{ badge_cls }}">{{ label }}</span>
+    <span class="vbc-kpi-lbl">Threads:</span> <span class="vbc-kpi-val">{{ threads_disp }}</span>
+  </div>
+  <div class="kpi-row">
+    <span class="vbc-kpi-lbl">ETA:</span> <span class="vbc-kpi-val">{{ eta_str }}</span><span class="sep">•</span><span class="vbc-kpi-val">{{ tp_str }}</span><span class="sep">•</span><span class="ok">{{ saved_str }} saved ({{ "%.1f"|format(ratio_pct) }}%)</span>
+  </div>
+  {% if gpu %}
+  <div class="gpu-panel">
+    <div class="gpu-name">{{ gpu.device_name }}</div>
+    <div class="gpu-metrics">
+      <span class="{{ gpu.t_cls }}">{{ gpu.temp }}</span>
+      <span class="sep">•</span>
+      <span class="{{ gpu.f_cls }}">fan {{ gpu.fan_speed }}</span>
+      <span class="sep">•</span>
+      <span class="{{ gpu.p_cls }}">pwr {{ gpu.power_draw }}</span>
+      <span class="sep">•</span>
+      <span class="{{ gpu.gu_cls }}">gpu {{ gpu.gpu_util }}</span>
+      <span class="sep">•</span>
+      <span class="{{ gpu.mu_cls }}">mem {{ gpu.mem_util }}</span>
+    </div>
+    <div class="gpu-bar-row">
+      <span class="gpu-bar-lbl">gpu</span>
+      <div class="mini-track"><div class="mini-fill {{ gpu.gu_cls }}" style="width:{{ gpu.gu_val|int }}%"></div></div>
+      <span class="gpu-bar-lbl">mem</span>
+      <div class="mini-track"><div class="mini-fill {{ gpu.mu_cls }}" style="width:{{ gpu.mu_val|int }}%"></div></div>
+    </div>
+  </div>
+  {% endif %}
+</article>
