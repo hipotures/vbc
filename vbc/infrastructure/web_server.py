@@ -4,7 +4,8 @@ Serves a single-page dashboard that auto-refreshes via HTMX polling every 2s.
 Runs as a daemon thread — stops automatically when VBC exits.
 
 No new dependencies: uses stdlib http.server + socketserver only.
-HTMX 2.0.8 loaded from jsDelivr CDN.
+HTMX 2.0.8 and Pico.css 2.1.1 loaded from jsDelivr CDN.
+Static files (style.css, theme-switcher.js) served from vbc/infrastructure/web/.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ import threading
 import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -26,260 +28,13 @@ logger = logging.getLogger(__name__)
 DEFAULT_PORT = 8765
 
 # ---------------------------------------------------------------------------
-# Embedded HTML page (never written to disk)
+# Static file serving
 # ---------------------------------------------------------------------------
 
-INDEX_HTML = r"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VBC Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js"></script>
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+_STATIC_DIR = Path(__file__).parent / "web"
+_ALLOWED_MIME = {".css": "text/css", ".js": "application/javascript"}
 
-  :root {
-    --bg:          #0d1117;
-    --bg-panel:    #161b22;
-    --border:      #30363d;
-    --text:        #e6edf3;
-    --dim:         #7d8590;
-    --accent:      #58a6ff;
-    --green:       #3fb950;
-    --yellow:      #d29922;
-    --red:         #f85149;
-    --cyan:        #39d0d8;
-    --bar-track:   #30363d;
-    --bar-global:  #1f6feb;
-    --bar-job:     #da3633;
-    --font: 'JetBrains Mono', 'Fira Mono', 'Cascadia Code', Consolas, monospace;
-  }
-
-  html, body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font);
-    font-size: 13px;
-    line-height: 1.5;
-    min-height: 100vh;
-  }
-
-  /* === Layout === */
-  .dashboard {
-    max-width: 1600px;
-    margin: 0 auto;
-    padding: 10px;
-    display: grid;
-    gap: 8px;
-    grid-template-columns: 1fr;
-  }
-
-  @media (min-width: 1100px) {
-    .dashboard {
-      grid-template-columns: 58fr 42fr;
-      grid-template-areas:
-        "header   header"
-        "progress progress"
-        "active   activity"
-        "active   queue";
-    }
-    .slot-header   { grid-area: header; }
-    .slot-progress { grid-area: progress; }
-    .slot-active   { grid-area: active; }
-    .slot-activity { grid-area: activity; }
-    .slot-queue    { grid-area: queue; }
-  }
-
-  /* === Panel base === */
-  .panel {
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 12px 16px;
-  }
-
-  .panel-title {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--cyan);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-bottom: 10px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  /* === Typography helpers === */
-  .dim      { color: var(--dim); }
-  .accent   { color: var(--accent); }
-  .ok       { color: var(--green); }
-  .warn     { color: var(--yellow); }
-  .fail     { color: var(--red); }
-  .sep      { color: var(--dim); margin: 0 2px; }
-  .empty    { color: var(--dim); font-style: italic; padding: 4px 0; }
-
-  /* === Header === */
-  .hdr-body  { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
-  .hdr-left  { flex: 1; min-width: 0; }
-  .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-  .kpi-row   { margin-bottom: 3px; }
-  .hint      { font-size: 11px; color: var(--dim); }
-
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .dot-green  { background: var(--green); }
-  .dot-yellow { background: var(--yellow); animation: blink 1s infinite; }
-  .dot-red    { background: var(--red); }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-
-  .badge { font-weight: 700; font-size: 13px; }
-  .badge-active      { color: var(--cyan); }
-  .badge-finished    { color: var(--green); }
-  .badge-shutdown    { color: var(--yellow); }
-  .badge-interrupted { color: var(--red); }
-
-  /* GPU panel */
-  .gpu-panel   { border-left: 2px solid var(--border); padding-left: 14px; min-width: 260px; flex-shrink: 0; }
-  .gpu-name    { font-size: 11px; color: var(--dim); margin-bottom: 4px; }
-  .gpu-metrics { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-bottom: 6px; font-size: 12px; }
-  .gpu-bar-row { display: flex; align-items: center; gap: 6px; }
-  .gpu-bar-lbl { font-size: 10px; color: var(--dim); }
-  .gpu-green { color: var(--green); }
-  .gpu-yellow { color: var(--yellow); }
-  .gpu-red   { color: var(--red); }
-
-  /* Mobile: stack GPU below status */
-  @media (max-width: 700px) {
-    .hdr-body { flex-direction: column; gap: 10px; }
-    .gpu-panel {
-      border-left: none;
-      border-top: 1px solid var(--border);
-      padding-left: 0;
-      padding-top: 10px;
-      min-width: 0;
-      width: 100%;
-    }
-    .gpu-metrics { font-size: 11px; gap: 2px 4px; flex-wrap: nowrap; }
-    .gpu-metrics .sep { margin: 0 1px; }
-  }
-
-  /* === Progress bars === */
-  .bar-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-  .bar-track {
-    flex: 1;
-    height: 8px;
-    background: var(--bar-track);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  .bar-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.6s ease;
-  }
-  .bar-fill-global { background: var(--bar-global); }
-  .bar-fill-job    { background: var(--bar-job); }
-  .bar-pct { font-weight: 700; min-width: 52px; text-align: right; font-size: 13px; }
-  .bar-meta { font-size: 12px; color: var(--dim); }
-
-  /* Mini bars for GPU */
-  .mini-track {
-    flex: 1;
-    height: 5px;
-    background: var(--bar-track);
-    border-radius: 3px;
-    overflow: hidden;
-    min-width: 50px;
-  }
-  .mini-fill { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
-  .mini-fill.gpu-green  { background: var(--green); }
-  .mini-fill.gpu-yellow { background: var(--yellow); }
-  .mini-fill.gpu-red    { background: var(--red); }
-
-  /* === Active jobs === */
-  .job-row { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
-  .job-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-  .job-name-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 3px; flex-wrap: wrap; }
-  .job-dot  { color: var(--green); font-size: 11px; flex-shrink: 0; }
-  .job-name { font-weight: 600; word-break: break-all; }
-  .job-meta { font-size: 11px; color: var(--dim); }
-  .job-bar-row { display: flex; align-items: center; gap: 6px; }
-  .job-bar  { height: 6px; }
-  .job-pct  { font-size: 12px; min-width: 50px; text-align: right; }
-  .job-eta  { font-size: 11px; color: var(--dim); }
-
-  /* === Activity feed === */
-  .act-row  { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
-  .act-row:last-child { margin-bottom: 0; }
-  .act-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
-  .act-body { flex: 1; min-width: 0; }
-  .act-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .act-stat { font-size: 11px; }
-
-  /* === Queue === */
-  .q-item { margin-bottom: 5px; }
-  .q-item:last-of-type { margin-bottom: 0; }
-  .q-name-row { display: flex; align-items: baseline; gap: 4px; overflow: hidden; }
-  .q-arrow { flex-shrink: 0; color: var(--dim); }
-  .q-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .q-meta { padding-left: 14px; font-size: 11px; color: var(--dim); }
-  .q-more { margin-top: 6px; font-size: 11px; color: var(--dim); }
-
-  /* === Progress text in header === */
-  .prog-header { margin-bottom: 8px; }
-
-  /* Scrollbar */
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: var(--bg); }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-</style>
-</head>
-<body>
-<div class="dashboard">
-
-  <!-- Header -->
-  <div class="slot-header"
-       hx-get="/api/header"
-       hx-trigger="load, every 2s"
-       hx-swap="outerHTML">
-    <div class="panel"><div class="panel-title">VBC</div><div class="dim">Connecting&hellip;</div></div>
-  </div>
-
-  <!-- Progress -->
-  <div class="slot-progress"
-       hx-get="/api/progress"
-       hx-trigger="load, every 2s"
-       hx-swap="outerHTML">
-    <div class="panel"><div class="panel-title">PROGRESS</div><div class="dim">Loading&hellip;</div></div>
-  </div>
-
-  <!-- Active Jobs -->
-  <div class="slot-active"
-       hx-get="/api/active"
-       hx-trigger="load, every 2s"
-       hx-swap="outerHTML">
-    <div class="panel"><div class="panel-title">ACTIVE JOBS</div><div class="dim">Loading&hellip;</div></div>
-  </div>
-
-  <!-- Activity Feed -->
-  <div class="slot-activity"
-       hx-get="/api/activity"
-       hx-trigger="load, every 2s"
-       hx-swap="outerHTML">
-    <div class="panel"><div class="panel-title">ACTIVITY FEED</div><div class="dim">Loading&hellip;</div></div>
-  </div>
-
-  <!-- Queue -->
-  <div class="slot-queue"
-       hx-get="/api/queue"
-       hx-trigger="load, every 2s"
-       hx-swap="outerHTML">
-    <div class="panel"><div class="panel-title">QUEUE</div><div class="dim">Loading&hellip;</div></div>
-  </div>
-
-</div>
-</body>
-</html>"""
+INDEX_HTML = (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 # ---------------------------------------------------------------------------
 # Format helpers (pure functions, mirror dashboard.py conventions)
@@ -488,13 +243,13 @@ def _compute_stats(state: "UIState") -> dict:
 
 def _render_header(s: dict) -> str:
     if s["is_finished"]:
-        dot_cls, badge_cls, label = "dot-green", "badge-finished", "FINISHED"
+        badge_cls, label = "badge-done", "FINISHED"
     elif s["is_interrupted"]:
-        dot_cls, badge_cls, label = "dot-red", "badge-interrupted", "INTERRUPTED"
+        badge_cls, label = "badge-interrupt", "INTERRUPTED"
     elif s["is_shutdown"]:
-        dot_cls, badge_cls, label = "dot-yellow", "badge-shutdown", "SHUTTING DOWN"
+        badge_cls, label = "badge-shutdown", "SHUTTING DOWN"
     else:
-        dot_cls, badge_cls, label = "dot-green", "badge-active", "ACTIVE"
+        badge_cls, label = "badge-active", "ACTIVE"
 
     a, t = s["active_count"], s["target_threads"]
     threads_disp = str(a) if a == t else f"{a} &rarr; {t}"
@@ -542,28 +297,21 @@ def _render_header(s: dict) -> str:
         </div>
       </div>"""
 
-    return f"""<div class="slot-header"
+    return f"""<article id="slot-header"
      hx-get="/api/header"
      hx-trigger="every 2s"
      hx-swap="outerHTML">
-  <div class="panel">
-    <div class="panel-title">VBC</div>
-    <div class="hdr-body">
-      <div class="hdr-left">
-        <div class="status-row">
-          <span class="dot {dot_cls}"></span>
-          <span class="badge {badge_cls}">{_esc(label)}</span>
-          <span class="dim">Threads: {threads_disp}</span>
-        </div>
-        <div class="kpi-row">
-          ETA: {_esc(eta_str)}<span class="sep">•</span>{_esc(tp_str)}<span class="sep">•</span><span class="accent">{saved_str} saved ({ratio_pct:.1f}%)</span>
-        </div>
-        <div class="hint">Read-only web dashboard &mdash; updates every 2s</div>
-      </div>
-      {gpu_html}
-    </div>
+  <header>VBC</header>
+  <div class="kpi-row">
+    <span class="dot">●</span>
+    <span class="badge {badge_cls}">{_esc(label)}</span>
+    <span class="dim">Threads: {threads_disp}</span>
   </div>
-</div>"""
+  <div class="kpi-row">
+    ETA: {_esc(eta_str)}<span class="sep">•</span>{_esc(tp_str)}<span class="sep">•</span><span class="ok">{saved_str} saved ({ratio_pct:.1f}%)</span>
+  </div>
+  <small class="dim">Read-only web dashboard &mdash; updates every 2s</small>{gpu_html}
+</article>"""
 
 
 def _render_progress(s: dict) -> str:
@@ -584,24 +332,14 @@ def _render_progress(s: dict) -> str:
     elapsed_str = _esc(_fmt_time(s["elapsed"]) if s["elapsed"] > 0 else "--:--")
     eta_str = _esc(_fmt_time(s["eta_seconds"]))
 
-    return f"""<div class="slot-progress"
+    return f"""<article id="slot-progress"
      hx-get="/api/progress"
      hx-trigger="every 2s"
      hx-swap="outerHTML">
-  <div class="panel">
-    <div class="panel-title">PROGRESS</div>
-    <div class="prog-header">{hdr}{fail_span}</div>
-    <div class="bar-wrap">
-      <div class="bar-track">
-        <div class="bar-fill bar-fill-global" style="width:{pct:.1f}%"></div>
-      </div>
-      <span class="bar-pct">{pct:.1f}%</span>
-    </div>
-    <div class="bar-meta">
-      {done_sz}/{total_sz}<span class="sep">•</span>{_esc(tp_str)}<span class="sep">•</span>{elapsed_str}<span class="sep">•</span>ETA {eta_str}
-    </div>
-  </div>
-</div>"""
+  <header>{hdr}{fail_span} <span class="dim">{pct:.1f}%</span></header>
+  <progress value="{pct:.1f}" max="100" class="bar-global"></progress>
+  <small class="dim">{done_sz}/{total_sz}<span class="sep">•</span>{_esc(tp_str)}<span class="sep">•</span>{elapsed_str}<span class="sep">•</span>ETA {eta_str}</small>
+</article>"""
 
 
 def _render_active_jobs(s: dict) -> str:
@@ -609,15 +347,13 @@ def _render_active_jobs(s: dict) -> str:
     now = s["now"]
 
     if not jobs:
-        return """<div class="slot-active"
+        return """<article id="slot-active"
      hx-get="/api/active"
      hx-trigger="every 2s"
      hx-swap="outerHTML">
-  <div class="panel">
-    <div class="panel-title">ACTIVE JOBS</div>
-    <div class="empty">No active jobs</div>
-  </div>
-</div>"""
+  <header>ACTIVE JOBS</header>
+  <p class="empty">No active jobs</p>
+</article>"""
 
     rows = []
     for job in jobs:
@@ -657,9 +393,7 @@ def _render_active_jobs(s: dict) -> str:
         <span class="job-meta">{_esc(" \u2022 ".join(meta_parts))}</span>
       </div>
       <div class="job-bar-row">
-        <div class="bar-track job-bar">
-          <div class="bar-fill bar-fill-job" style="width:{pct:.1f}%"></div>
-        </div>
+        <progress value="{pct:.1f}" max="100" class="bar-job" style="flex:1;margin:0"></progress>
         <span class="job-pct">{pct:>5.1f}%</span>
         <span class="sep">•</span>
         <span class="job-eta">{_esc(eta_str)}</span>
@@ -667,30 +401,26 @@ def _render_active_jobs(s: dict) -> str:
     </div>""")
 
     body = "\n".join(rows)
-    return f"""<div class="slot-active"
+    return f"""<article id="slot-active"
      hx-get="/api/active"
      hx-trigger="every 2s"
      hx-swap="outerHTML">
-  <div class="panel">
-    <div class="panel-title">ACTIVE JOBS</div>
+  <header>ACTIVE JOBS</header>
 {body}
-  </div>
-</div>"""
+</article>"""
 
 
 def _render_activity(s: dict) -> str:
     jobs = s["recent_jobs"]
 
     if not jobs:
-        return """<div class="slot-activity"
+        return """<article id="slot-activity"
      hx-get="/api/activity"
      hx-trigger="every 2s"
      hx-swap="outerHTML">
-  <div class="panel">
-    <div class="panel-title">ACTIVITY FEED</div>
-    <div class="empty">No recent jobs</div>
-  </div>
-</div>"""
+  <header>ACTIVITY FEED</header>
+  <p class="empty">No recent jobs</p>
+</article>"""
 
     rows = []
     for job in jobs[:5]:
@@ -747,30 +477,26 @@ def _render_activity(s: dict) -> str:
     </div>""")
 
     body = "\n".join(rows)
-    return f"""<div class="slot-activity"
+    return f"""<article id="slot-activity"
      hx-get="/api/activity"
      hx-trigger="every 2s"
      hx-swap="outerHTML">
-  <div class="panel">
-    <div class="panel-title">ACTIVITY FEED</div>
+  <header>ACTIVITY FEED</header>
 {body}
-  </div>
-</div>"""
+</article>"""
 
 
 def _render_queue(s: dict) -> str:
     files = s["pending_files"]
 
     if not files:
-        return """<div class="slot-queue"
+        return """<article id="slot-queue"
      hx-get="/api/queue"
      hx-trigger="every 2s"
      hx-swap="outerHTML">
-  <div class="panel">
-    <div class="panel-title">QUEUE</div>
-    <div class="empty">Queue empty</div>
-  </div>
-</div>"""
+  <header>QUEUE</header>
+  <p class="empty">Queue empty</p>
+</article>"""
 
     MAX_DISPLAY = 5
     shown = files[:MAX_DISPLAY]
@@ -789,19 +515,17 @@ def _render_queue(s: dict) -> str:
     </div>""")
 
     if more > 0:
-        rows.append(f'    <div class="q-more">&hellip; +{more} more</div>')
+        rows.append(f'    <p class="q-more">&hellip; +{more} more</p>')
 
     body = "\n".join(rows)
     title = f"QUEUE ({len(files)} files)"
-    return f"""<div class="slot-queue"
+    return f"""<article id="slot-queue"
      hx-get="/api/queue"
      hx-trigger="every 2s"
      hx-swap="outerHTML">
-  <div class="panel">
-    <div class="panel-title">{title}</div>
+  <header>{title}</header>
 {body}
-  </div>
-</div>"""
+</article>"""
 
 
 # ---------------------------------------------------------------------------
@@ -828,11 +552,33 @@ class VBCRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    def _send_static(self, filename: str) -> None:
+        """Serve a static file from the web/ directory."""
+        filepath = (_STATIC_DIR / filename).resolve()
+        # Path traversal guard (is_relative_to avoids prefix-match false positives)
+        if not filepath.is_relative_to(_STATIC_DIR.resolve()):
+            self._send_html("<h1>403</h1>", status=403)
+            return
+        if not filepath.exists():
+            self._send_html("<h1>404</h1>", status=404)
+            return
+        content_type = _ALLOWED_MIME.get(filepath.suffix, "application/octet-stream")
+        data = filepath.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type + "; charset=utf-8")
+        self.send_header("Cache-Control", "max-age=3600")
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self) -> None:
         path = self.path.split("?")[0]
         try:
             if path in ("/", "/index.html"):
                 self._send_html(INDEX_HTML)
+                return
+
+            if path.startswith("/static/"):
+                self._send_static(path[8:])
                 return
 
             s = _compute_stats(self.__class__.state)
@@ -854,8 +600,8 @@ class VBCRequestHandler(BaseHTTPRequestHandler):
             logger.debug("Web dashboard request error for %s: %s", path, exc)
             try:
                 self._send_html(
-                    f"<div class='panel'><div class='panel-title'>ERROR</div>"
-                    f"<div class='fail'>{_esc(str(exc))}</div></div>",
+                    f"<article><header>ERROR</header>"
+                    f"<p class='fail'>{_esc(str(exc))}</p></article>",
                     status=500,
                 )
             except Exception:
