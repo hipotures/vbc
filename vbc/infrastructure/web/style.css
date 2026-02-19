@@ -11,42 +11,53 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --pico-color:       #e6edf3;
-    --pico-muted-color: #a3afbf;
-    --pico-h1-color:    #f8fafc;
-    --pico-h2-color:    #eef2f7;
-    --pico-h3-color:    #e6edf3;
-    --pico-h4-color:    #cbd5e1;
-    --pico-code-color:  #b6c2d1;
-    --vbc-heading:      #38bdf8;
+    --pico-color:                   #e6edf3;
+    --pico-muted-color:             #a3afbf;
+    --pico-h1-color:                #f8fafc;
+    --pico-h2-color:                #eef2f7;
+    --pico-h3-color:                #e6edf3;
+    --pico-h4-color:                #cbd5e1;
+    --pico-code-color:              #b6c2d1;
+    --vbc-heading:                  #38bdf8;
+    --pico-tooltip-background-color: #2a3040;
+    --pico-tooltip-color:            #e6edf3;
   }
 }
 
 [data-theme="dark"] {
-  --pico-color:       #e6edf3;
-  --pico-muted-color: #a3afbf;
-  --pico-h1-color:    #f8fafc;
-  --pico-h2-color:    #eef2f7;
-  --pico-h3-color:    #e6edf3;
-  --pico-h4-color:    #cbd5e1;
-  --pico-code-color:  #b6c2d1;
-  --vbc-heading:      #38bdf8;
+  --pico-color:                   #e6edf3;
+  --pico-muted-color:             #a3afbf;
+  --pico-h1-color:                #f8fafc;
+  --pico-h2-color:                #eef2f7;
+  --pico-h3-color:                #e6edf3;
+  --pico-h4-color:                #cbd5e1;
+  --pico-code-color:              #b6c2d1;
+  --vbc-heading:                  #38bdf8;
+  --pico-tooltip-background-color: #2a3040;
+  --pico-tooltip-color:            #e6edf3;
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
-    --pico-color:       #0f172a;
-    --pico-muted-color: #475569;
-    --pico-code-color:  #334155;
-    --vbc-heading:      #0369a1;
+    --pico-color:                   #0f172a;
+    --pico-muted-color:             #475569;
+    --pico-code-color:              #334155;
+    --vbc-heading:                  #0369a1;
+    --pico-tooltip-background-color: #e2e8f0;
+    --pico-tooltip-color:            #0f172a;
   }
 }
 
 [data-theme="light"] {
-  --pico-color:       #0f172a;
-  --pico-muted-color: #475569;
-  --pico-code-color:  #334155;
-  --vbc-heading:      #0369a1;
+  --pico-color:                   #0f172a;
+  --pico-muted-color:             #475569;
+  --pico-code-color:              #334155;
+  --vbc-heading:                  #0369a1;
+}
+
+:root[data-theme="light"] {
+  --pico-tooltip-background-color: #e2e8f0;
+  --pico-tooltip-color:            #0f172a;
 }
 
 /* === VBC semantic accent colors ==================================== */
