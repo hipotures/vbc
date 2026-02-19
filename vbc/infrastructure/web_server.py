@@ -157,6 +157,7 @@ def _compute_stats(state: "UIState") -> dict:
         files_to_process = state.files_to_process
 
         # Status
+        is_waiting = state.waiting_for_input
         is_finished = state.finished
         is_interrupted = state.interrupt_requested
         is_shutdown = state.shutdown_requested
@@ -237,6 +238,7 @@ def _compute_stats(state: "UIState") -> dict:
         "completed": completed,
         "failed": failed,
         "files_to_process": files_to_process,
+        "is_waiting": is_waiting,
         "is_finished": is_finished,
         "is_interrupted": is_interrupted,
         "is_shutdown": is_shutdown,
@@ -271,7 +273,9 @@ def _compute_stats(state: "UIState") -> dict:
 # ---------------------------------------------------------------------------
 
 def _vm_header(s: dict) -> dict:
-    if s["is_finished"]:
+    if s["is_waiting"]:
+        badge_cls, label = "badge-waiting", "WAITING"
+    elif s["is_finished"]:
         badge_cls, label = "badge-done", "FINISHED"
     elif s["is_interrupted"]:
         badge_cls, label = "badge-interrupt", "INTERRUPTED"

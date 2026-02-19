@@ -210,6 +210,7 @@ progress.bar-job::-moz-progress-bar {
 }
 
 .badge-active    { background: rgba(52,211,153,.12); color: var(--vbc-ok);   border: 1px solid rgba(52,211,153,.28); }
+.badge-waiting   { background: rgba(251,191,36,.12);  color: var(--vbc-warn); border: 1px solid rgba(251,191,36,.28); }
 .badge-done      { background: rgba(148,163,184,.10); color: var(--vbc-dim); border: 1px solid rgba(148,163,184,.20); }
 .badge-interrupt { background: rgba(251,191,36,.12);  color: var(--vbc-warn); border: 1px solid rgba(251,191,36,.28); }
 .badge-shutdown  { background: rgba(248,113,113,.12); color: var(--vbc-err); border: 1px solid rgba(248,113,113,.28); }
