@@ -13,6 +13,7 @@ import logging
 import re
 import socketserver
 import threading
+import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Optional
@@ -115,7 +116,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
   .ok       { color: var(--green); }
   .warn     { color: var(--yellow); }
   .fail     { color: var(--red); }
-  .sep      { color: var(--dim); margin: 0 5px; }
+  .sep      { color: var(--dim); margin: 0 2px; }
   .empty    { color: var(--dim); font-style: italic; padding: 4px 0; }
 
   /* === Header === */
@@ -140,7 +141,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
   /* GPU panel */
   .gpu-panel   { border-left: 2px solid var(--border); padding-left: 14px; min-width: 260px; flex-shrink: 0; }
   .gpu-name    { font-size: 11px; color: var(--dim); margin-bottom: 4px; }
-  .gpu-metrics { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 6px; font-size: 12px; }
+  .gpu-metrics { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-bottom: 6px; font-size: 12px; }
   .gpu-bar-row { display: flex; align-items: center; gap: 6px; }
   .gpu-bar-lbl { font-size: 10px; color: var(--dim); }
   .gpu-green { color: var(--green); }
@@ -158,6 +159,8 @@ INDEX_HTML = r"""<!DOCTYPE html>
       min-width: 0;
       width: 100%;
     }
+    .gpu-metrics { font-size: 11px; gap: 2px 4px; flex-wrap: nowrap; }
+    .gpu-metrics .sep { margin: 0 1px; }
   }
 
   /* === Progress bars === */
@@ -285,6 +288,22 @@ INDEX_HTML = r"""<!DOCTYPE html>
 def _esc(text: object) -> str:
     """HTML-escape a value. Always call this on data from domain models."""
     return html.escape(str(text), quote=True)
+
+
+_SPIN_NORMAL = "●○◉◎"
+_SPIN_ROTATE = "◐◓◑◒"
+_SPIN_CUSTOM = "◍◌"
+def _spinner(filename: str, rotation: int, custom_cq) -> str:
+    """Return current spinner character for a job — one frame per 2s HTMX poll."""
+    frame = int(time.time() / 2)
+    h = hash(filename) & 0xFFFFFF
+    if rotation:
+        chars = _SPIN_ROTATE
+    elif custom_cq is not None:
+        chars = _SPIN_CUSTOM
+    else:
+        chars = _SPIN_NORMAL
+    return chars[(frame + h) % len(chars)]
 
 
 def _fmt_size(size_bytes: Optional[int]) -> str:
@@ -627,9 +646,13 @@ def _render_active_jobs(s: dict) -> str:
         if q:
             meta_parts.append(f"\u2192 {q}")
 
+        rotation = getattr(job, "rotation_angle", None) or 0
+        custom_cq = getattr(meta, "custom_cq", None) if meta else None
+        spin_char = _esc(_spinner(job.source_file.path.name, rotation, custom_cq))
+
         rows.append(f"""    <div class="job-row">
       <div class="job-name-row">
-        <span class="job-dot">&#9675;</span>
+        <span class="job-dot">{spin_char}</span>
         <span class="job-name">{fname}</span>
         <span class="job-meta">{_esc(" \u2022 ".join(meta_parts))}</span>
       </div>
@@ -672,7 +695,8 @@ def _render_activity(s: dict) -> str:
     rows = []
     for job in jobs[:5]:
         fname = _esc(job.source_file.path.name)
-        status = str(getattr(job, "status", ""))
+        raw_status = getattr(job, "status", None)
+        status = raw_status.value if hasattr(raw_status, "value") else str(raw_status)
 
         if status == "COMPLETED":
             in_b = job.source_file.size_bytes or 0
