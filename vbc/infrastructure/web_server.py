@@ -34,7 +34,8 @@ DEFAULT_PORT = 8765
 _STATIC_DIR = Path(__file__).parent / "web"
 _ALLOWED_MIME = {".css": "text/css", ".js": "application/javascript"}
 
-INDEX_HTML = (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
+def _get_index_html() -> str:
+    return (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 # ---------------------------------------------------------------------------
 # Format helpers (pure functions, mirror dashboard.py conventions)
@@ -310,7 +311,7 @@ def _render_header(s: dict) -> str:
   <div class="kpi-row">
     ETA: {_esc(eta_str)}<span class="sep">•</span>{_esc(tp_str)}<span class="sep">•</span><span class="ok">{saved_str} saved ({ratio_pct:.1f}%)</span>
   </div>
-  <small class="dim">Read-only web dashboard &mdash; updates every 2s</small>{gpu_html}
+  {gpu_html}
 </article>"""
 
 
@@ -390,10 +391,10 @@ def _render_active_jobs(s: dict) -> str:
       <div class="job-name-row">
         <span class="job-dot">{spin_char}</span>
         <span class="job-name">{fname}</span>
-        <span class="job-meta">{_esc(" \u2022 ".join(meta_parts))}</span>
+        <small class="job-meta">{_esc(" \u2022 ".join(meta_parts))}</small>
       </div>
       <div class="job-bar-row">
-        <progress value="{pct:.1f}" max="100" class="bar-job" style="flex:1;margin:0"></progress>
+        <progress value="{pct:.1f}" max="100" class="bar-job"></progress>
         <span class="job-pct">{pct:>5.1f}%</span>
         <span class="sep">•</span>
         <span class="job-eta">{_esc(eta_str)}</span>
@@ -444,7 +445,7 @@ def _render_activity(s: dict) -> str:
       <span class="act-icon ok">&#10003;</span>
       <div class="act-body">
         <div class="act-name">{fname}</div>
-        <div class="act-stat ok">{_esc(" \u2022 ".join(stat_parts))}</div>
+        <small class="act-stat ok">{_esc(" \u2022 ".join(stat_parts))}</small>
       </div>
     </div>""")
 
@@ -454,7 +455,7 @@ def _render_activity(s: dict) -> str:
       <span class="act-icon fail">&#10007;</span>
       <div class="act-body">
         <div class="act-name">{fname}</div>
-        <div class="act-stat fail">{err}</div>
+        <small class="act-stat fail">{err}</small>
       </div>
     </div>""")
 
@@ -463,7 +464,7 @@ def _render_activity(s: dict) -> str:
       <span class="act-icon warn">&#9889;</span>
       <div class="act-body">
         <div class="act-name">{fname}</div>
-        <div class="act-stat warn">INTERRUPTED</div>
+        <small class="act-stat warn">INTERRUPTED</small>
       </div>
     </div>""")
 
@@ -472,7 +473,7 @@ def _render_activity(s: dict) -> str:
       <span class="act-icon dim">&#8801;</span>
       <div class="act-body">
         <div class="act-name">{fname}</div>
-        <div class="act-stat dim">{_esc(status)}</div>
+        <small class="act-stat dim">{_esc(status)}</small>
       </div>
     </div>""")
 
@@ -511,7 +512,7 @@ def _render_queue(s: dict) -> str:
         meta = _esc(" \u2022 ".join(meta_parts))
         rows.append(f"""    <div class="q-item">
       <div class="q-name-row"><span class="q-arrow">&raquo;</span><span class="q-name">{fname}</span></div>
-      <div class="q-meta">{meta}</div>
+      <small class="q-meta">{meta}</small>
     </div>""")
 
     if more > 0:
@@ -566,7 +567,7 @@ class VBCRequestHandler(BaseHTTPRequestHandler):
         data = filepath.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type + "; charset=utf-8")
-        self.send_header("Cache-Control", "max-age=3600")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.end_headers()
         self.wfile.write(data)
 
@@ -574,7 +575,7 @@ class VBCRequestHandler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         try:
             if path in ("/", "/index.html"):
-                self._send_html(INDEX_HTML)
+                self._send_html(_get_index_html())
                 return
 
             if path.startswith("/static/"):
