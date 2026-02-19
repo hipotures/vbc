@@ -277,30 +277,6 @@ def _vm_header(s: dict) -> dict:
     saved_str = _fmt_size(s["space_saved"])
     ratio_pct = (1.0 - s["ratio"]) * 100.0
 
-    gpu = None
-    g = s["gpu_data"]
-    if g:
-        t_val  = _parse_gpu_num(g.get("temp"))
-        f_val  = _parse_gpu_num(g.get("fan_speed"))
-        p_val  = _parse_gpu_num(g.get("power_draw"))
-        gu_val = _parse_gpu_num(g.get("gpu_util"))
-        mu_val = _parse_gpu_num(g.get("mem_util"))
-        gpu = {
-            "device_name": g.get("device_name", "GPU"),
-            "temp":        g.get("temp", "??"),
-            "t_cls":       _gpu_cls(t_val,  55, 65),
-            "fan_speed":   g.get("fan_speed", "??"),
-            "f_cls":       _gpu_cls(f_val,  50, 75),
-            "power_draw":  g.get("power_draw", "??"),
-            "p_cls":       _gpu_cls(p_val,  250, 380),
-            "gpu_util":    g.get("gpu_util", "??"),
-            "gu_cls":      _gpu_cls(gu_val, 30, 60),
-            "gu_val":      min(100.0, gu_val),
-            "mem_util":    g.get("mem_util", "??"),
-            "mu_cls":      _gpu_cls(mu_val, 30, 60),
-            "mu_val":      min(100.0, mu_val),
-        }
-
     return {
         "badge_cls":    badge_cls,
         "label":        label,
@@ -309,12 +285,41 @@ def _vm_header(s: dict) -> dict:
         "tp_str":       tp_str,
         "saved_str":    saved_str,
         "ratio_pct":    ratio_pct,
-        "gpu":          gpu,
     }
 
 
 def _render_header(s: dict) -> str:
     return _jinja_env.get_template("header.html").render(**_vm_header(s))
+
+
+def _vm_gpu(s: dict) -> dict:
+    g = s["gpu_data"]
+    if not g:
+        return {"gpu": None}
+    t_val  = _parse_gpu_num(g.get("temp"))
+    f_val  = _parse_gpu_num(g.get("fan_speed"))
+    p_val  = _parse_gpu_num(g.get("power_draw"))
+    gu_val = _parse_gpu_num(g.get("gpu_util"))
+    mu_val = _parse_gpu_num(g.get("mem_util"))
+    return {"gpu": {
+        "device_name": g.get("device_name", "GPU"),
+        "temp":        g.get("temp", "??"),
+        "t_cls":       _gpu_cls(t_val,  55, 65),
+        "fan_speed":   g.get("fan_speed", "??"),
+        "f_cls":       _gpu_cls(f_val,  50, 75),
+        "power_draw":  g.get("power_draw", "??"),
+        "p_cls":       _gpu_cls(p_val,  250, 380),
+        "gpu_util":    g.get("gpu_util", "??"),
+        "gu_cls":      _gpu_cls(gu_val, 30, 60),
+        "gu_val":      min(100.0, gu_val),
+        "mem_util":    g.get("mem_util", "??"),
+        "mu_cls":      _gpu_cls(mu_val, 30, 60),
+        "mu_val":      min(100.0, mu_val),
+    }}
+
+
+def _render_gpu(s: dict) -> str:
+    return _jinja_env.get_template("gpu.html").render(**_vm_gpu(s))
 
 
 def _vm_progress(s: dict) -> dict:
@@ -504,6 +509,8 @@ class VBCRequestHandler(BaseHTTPRequestHandler):
 
             if path == "/api/header":
                 self._send_html(_render_header(s))
+            elif path == "/api/gpu":
+                self._send_html(_render_gpu(s))
             elif path == "/api/progress":
                 self._send_html(_render_progress(s))
             elif path == "/api/active":

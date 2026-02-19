@@ -18,6 +18,7 @@
     --pico-h3-color:    #e6edf3;
     --pico-h4-color:    #cbd5e1;
     --pico-code-color:  #b6c2d1;
+    --vbc-heading:      #38bdf8;
   }
 }
 
@@ -29,6 +30,7 @@
   --pico-h3-color:    #e6edf3;
   --pico-h4-color:    #cbd5e1;
   --pico-code-color:  #b6c2d1;
+  --vbc-heading:      #38bdf8;
 }
 
 @media (prefers-color-scheme: light) {
@@ -36,6 +38,7 @@
     --pico-color:       #0f172a;
     --pico-muted-color: #475569;
     --pico-code-color:  #334155;
+    --vbc-heading:      #0369a1;
   }
 }
 
@@ -43,6 +46,7 @@
   --pico-color:       #0f172a;
   --pico-muted-color: #475569;
   --pico-code-color:  #334155;
+  --vbc-heading:      #0369a1;
 }
 
 /* === VBC semantic accent colors ==================================== */
@@ -74,7 +78,7 @@ body > header > nav ul:first-child li strong {
   font-size: 12px;
   letter-spacing: 0.25em;
   text-transform: uppercase;
-  color: var(--vbc-cyan);
+  color: var(--vbc-heading);
 }
 
 body > header > nav ul:last-child li a {
@@ -103,7 +107,7 @@ article {
 article > header {
   font-size: 10px;
   letter-spacing: 0.18em;
-  color: var(--vbc-cyan);
+  color: var(--vbc-heading);
   text-transform: uppercase;
   font-weight: 700;
   border-bottom: 1px solid var(--pico-muted-border-color);
@@ -116,7 +120,7 @@ article > header {
 .warn { color: var(--vbc-warn); }
 .fail { color: var(--vbc-err); }
 .dim  { color: var(--vbc-dim); }
-.sep  { color: var(--pico-muted-border-color); margin: 0 3px; }
+.sep  { color: var(--pico-muted-border-color); margin: 0 2px; }
 .empty { color: var(--vbc-dim); font-style: italic; font-size: 12px; }
 
 /* === 7-role text hierarchy ========================================= */
@@ -129,7 +133,7 @@ article > header {
 /* 6) KPI label — "ETA:", "Threads:" */
 .vbc-kpi-lbl  { color: var(--vbc-dim); }
 /* 5) KPI value — numbers/metrics to read quickly */
-.vbc-kpi-val  { font-variant-numeric: tabular-nums; }
+.vbc-kpi-val  { font-variant-numeric: tabular-nums; color: var(--pico-color); font-weight: 600; }
 
 /* === Native <progress> — gradient fills, Zinc track =============== */
 progress {
@@ -243,7 +247,7 @@ progress.bar-job::-moz-progress-bar {
 .q-more  { font-size: 11px; color: var(--vbc-dim); font-style: italic; margin-top: 6px; }
 
 /* === GPU panel ===================================================== */
-.gpu-panel { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--pico-muted-border-color); }
+.gpu-panel { }
 .gpu-name  { font-size: 9px; color: var(--vbc-dim); margin-bottom: 5px; letter-spacing: 0.1em; text-transform: uppercase; }
 .gpu-metrics { display: flex; flex-wrap: wrap; gap: 3px 8px; font-size: 11px; margin-bottom: 7px; }
 .gpu-bar-row { display: flex; align-items: center; gap: 8px; }

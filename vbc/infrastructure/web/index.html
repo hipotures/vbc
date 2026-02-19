@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <title>VBC Dashboard</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.classless.zinc.min.css">
-  <link rel="stylesheet" href="/static/style.css?v=100">
+  <link rel="stylesheet" href="/static/style.css?v=102">
 </head>
 <body>
   <header>
@@ -18,13 +18,12 @@
         <li><a href="#" data-theme-switcher="dark">Dark</a></li>
       </ul>
     </nav>
-    <div id="slot-header" hx-get="/api/header" hx-trigger="load, every 2s" hx-swap="outerHTML">
-      <p aria-busy="true">Connecting&hellip;</p>
-    </div>
   </header>
   <main>
-    <div id="slot-progress" hx-get="/api/progress" hx-trigger="load, every 2s" hx-swap="outerHTML">
-      <article aria-busy="true"></article>
+    <div class="vbc-grid">
+      <div id="slot-header"   hx-get="/api/header"   hx-trigger="load, every 2s" hx-swap="outerHTML"><article aria-busy="true"></article></div>
+      <div id="slot-progress" hx-get="/api/progress" hx-trigger="load, every 2s" hx-swap="outerHTML"><article aria-busy="true"></article></div>
+      <div id="slot-gpu"      hx-get="/api/gpu"      hx-trigger="load, every 2s" hx-swap="outerHTML"><article aria-busy="true"></article></div>
     </div>
     <div class="vbc-grid">
       <div id="slot-active"   hx-get="/api/active"   hx-trigger="load, every 2s" hx-swap="outerHTML"><article aria-busy="true"></article></div>

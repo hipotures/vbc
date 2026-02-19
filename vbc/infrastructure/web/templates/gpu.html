@@ -1,0 +1,30 @@
+{% if gpu %}
+<article id="slot-gpu"
+         hx-get="/api/gpu"
+         hx-trigger="every 2s"
+         hx-swap="outerHTML">
+  <header>{{ gpu.device_name }}</header>
+  <div class="gpu-metrics">
+    <span class="vbc-kpi-val">{{ gpu.temp }}</span>
+    <span class="sep">•</span>
+    <span class="vbc-kpi-lbl">fan</span> <span class="vbc-kpi-val">{{ gpu.fan_speed }}</span>
+    <span class="sep">•</span>
+    <span class="vbc-kpi-lbl">pwr</span> <span class="vbc-kpi-val">{{ gpu.power_draw }}</span>
+    <span class="sep">•</span>
+    <span class="vbc-kpi-lbl">gpu</span> <span class="vbc-kpi-val">{{ gpu.gpu_util }}</span>
+    <span class="sep">•</span>
+    <span class="vbc-kpi-lbl">mem</span> <span class="vbc-kpi-val">{{ gpu.mem_util }}</span>
+  </div>
+  <div class="gpu-bar-row">
+    <span class="gpu-bar-lbl">gpu</span>
+    <div class="mini-track"><div class="mini-fill {{ gpu.gu_cls }}" style="width:{{ gpu.gu_val|int }}%"></div></div>
+    <span class="gpu-bar-lbl">mem</span>
+    <div class="mini-track"><div class="mini-fill {{ gpu.mu_cls }}" style="width:{{ gpu.mu_val|int }}%"></div></div>
+  </div>
+</article>
+{% else %}
+<div id="slot-gpu"
+     hx-get="/api/gpu"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"></div>
+{% endif %}
