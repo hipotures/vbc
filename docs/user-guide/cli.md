@@ -287,6 +287,37 @@ uv run vbc /videos --debug
 - Compression stages (PROCESS_START, PROCESS_END)
 - Metadata cache misses
 
+#### `--wait` / `--no-wait`
+
+Wait for user input after all tasks finish instead of auto-exiting.
+
+**Default:** `--no-wait`
+
+```bash
+uv run vbc /videos --wait
+```
+
+When wait mode is active, VBC shows **WAITING** status and accepts:
+
+- **R** — restart scan and process new files
+- **S** or **Ctrl+C** — exit
+
+#### `--bell` / `--no-bell`
+
+Play a terminal bell (BEL character) as a completion notification.
+
+**Default:** `--no-bell`
+
+```bash
+uv run vbc /videos --bell --wait
+```
+
+Bell triggers:
+
+- When entering wait state (`--wait` mode)
+- Just before exit (without `--wait`)
+- After FLV repair completes with repaired files
+
 #### `--log-path PATH`
 
 Path to log file (overrides config).

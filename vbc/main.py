@@ -99,6 +99,8 @@ def compress(
     debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable verbose debug logging"),
     web: bool = typer.Option(False, "--web", help="Enable read-only HTMX web dashboard (overrides config)"),
     web_port: Optional[int] = typer.Option(None, "--web-port", help="Web dashboard port (overrides config)"),
+    wait_on_finish: bool = typer.Option(False, "--wait/--no-wait", help="Wait for R (restart) or S (exit) instead of auto-exiting after all tasks finish"),
+    bell_on_finish: bool = typer.Option(False, "--bell/--no-bell", help="Play terminal bell when processing finishes or repair completes"),
 ):
     """Batch compress videos in a directory with full feature parity."""
     cli_input_dirs = parse_cli_input_dirs(input_dirs_arg)
@@ -213,6 +215,10 @@ def compress(
             config.web_server.enabled = True
         if web_port is not None:
             config.web_server.port = web_port
+        if wait_on_finish:
+            config.general.wait_on_finish = True
+        if bell_on_finish:
+            config.general.bell_on_finish = True
 
         demo_config = load_demo_config(demo_config_path) if demo else None
 
@@ -740,13 +746,17 @@ def compress(
                         )
 
                 if config.general.repair_corrupted_flv and moved_files:
-                    process_repairs(
+                    n_repaired = process_repairs(
                         input_dirs,
                         errors_dir_map,
                         config.general.extensions,
                         logger=logger,
                         target_files=moved_files,
                     )
+                    if config.general.bell_on_finish and n_repaired > 0:
+                        import sys
+                        sys.stdout.write('\x07')
+                        sys.stdout.flush()
 
             # Warning for files skipped because they were already encoded by VBC
             if not demo and orchestrator and getattr(orchestrator, "skipped_vbc_count", 0) > 0:

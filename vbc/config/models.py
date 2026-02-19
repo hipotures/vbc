@@ -259,6 +259,8 @@ class GeneralConfig(BaseModel):
     min_compression_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
     repair_corrupted_flv: bool = False
     debug: bool = False
+    wait_on_finish: bool = False
+    bell_on_finish: bool = False
 
     @field_validator("queue_sort")
     @classmethod

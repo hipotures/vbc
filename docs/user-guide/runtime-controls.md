@@ -168,6 +168,36 @@ Result: "Refreshed: +3 new files"
 
 **Note:** Files already completed or in queue are not duplicated.
 
+## Wait Mode
+
+When `wait_on_finish: true` (or `--wait` CLI flag) is set, VBC does not exit automatically after all tasks complete. Instead, it shows **WAITING** status in the top bar and waits for user input.
+
+**Behavior:**
+
+- After all files are processed, the status bar changes to **WAITING** with the hint line `R = restart scan  │  S / Ctrl+C = exit`
+- Press **R** to restart the scan (full re-discovery and processing of any new files)
+- Press **S** or **Ctrl+C** to exit VBC
+
+**Use case:** Run VBC repeatedly without restarting the application — for example, processing batches as files arrive.
+
+**Example:**
+```bash
+uv run vbc /videos --wait --bell
+```
+
+```
+# VBC finishes processing 20 files
+# Status changes to WAITING, terminal bell rings (--bell)
+# User copies more files, presses R
+# VBC re-scans, finds 5 new files, processes them
+# Status changes to WAITING again
+# User presses S → VBC exits cleanly
+```
+
+**Bell integration:**
+
+When `bell_on_finish: true` (or `--bell`), a terminal bell plays when VBC enters the wait state. This lets you know processing is done without watching the screen.
+
 ## Configuration Overlay (`C`)
 
 Toggles full configuration display.

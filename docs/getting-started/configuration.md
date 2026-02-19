@@ -534,6 +534,25 @@ Dashboard display settings.
   - `true`: When a file fails processing and is moved to errors folder, attempts to repair it
   - `false`: No repair attempt
 
+#### `wait_on_finish`
+- **Type**: Boolean
+- **Default**: false
+- **CLI**: `--wait` / `--no-wait`
+- **Description**: After all tasks complete, wait for user input instead of auto-exiting
+- **Behavior**:
+  - `true`: Displays WAITING status; press **R** to restart scan or **S**/**Ctrl+C** to exit
+  - `false`: VBC exits automatically when processing finishes
+
+#### `bell_on_finish`
+- **Type**: Boolean
+- **Default**: false
+- **CLI**: `--bell` / `--no-bell`
+- **Description**: Play a terminal bell (BEL character) as a completion notification
+- **Triggers**:
+  - When entering wait state (if `wait_on_finish=true`)
+  - Just before exit (if `wait_on_finish=false`)
+  - After FLV repair completes with at least one repaired file
+
 ### UI/Display
 
 #### `strip_unicode_display`

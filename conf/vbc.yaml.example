@@ -154,6 +154,16 @@ general:
   # Enable verbose debug logging.
   debug: false
 
+  # Wait for user input (R=restart, S/Ctrl+C=exit) instead of auto-exiting.
+  # Useful for repeated batch runs without restarting VBC.
+  # CLI: --wait / --no-wait
+  wait_on_finish: false
+
+  # Play a terminal bell (BEL char) when processing finishes (while waiting)
+  # or just before exit (if wait_on_finish=false), and after FLV repair.
+  # CLI: --bell / --no-bell
+  bell_on_finish: false
+
 # --- GPU Monitoring Settings ---
 
 gpu_config:

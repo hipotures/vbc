@@ -136,6 +136,8 @@ class Orchestrator:
         self._refresh_requested = False
         self._refresh_lock = threading.Lock()
         self._shutdown_event = threading.Event()  # Signal workers to stop
+        self._wait_event = threading.Event()       # Signals wait loop to unblock
+        self._restart_after_wait = False           # True = R pressed; False = S/Ctrl+C
 
         # Stats
         self.skipped_vbc_count = 0
@@ -169,6 +171,7 @@ class Orchestrator:
             else:
                 self._shutdown_requested = True
                 message = "SHUTDOWN requested (press S to cancel)"
+                self._wait_event.set()  # Wake up wait loop if waiting
             self._thread_lock.notify_all()
         # Publish feedback message
         from vbc.domain.events import ActionMessage
@@ -195,6 +198,9 @@ class Orchestrator:
     def _on_refresh_request(self, event):
         with self._refresh_lock:
             self._refresh_requested = True
+        # Also wake the wait loop (if active) with restart intent
+        self._restart_after_wait = True
+        self._wait_event.set()
 
     def _on_interrupt_requested(self, event: InterruptRequested):
         """Handle Ctrl+C interrupt from keyboard listener."""
@@ -209,6 +215,9 @@ class Orchestrator:
         with self._thread_lock:
             self._shutdown_requested = True
             self._thread_lock.notify_all()
+
+        # Wake up wait loop if waiting
+        self._wait_event.set()
 
     def _get_output_dir(self, input_dir: Path) -> Path:
         """Get output directory for given input directory."""
@@ -1578,6 +1587,40 @@ class Orchestrator:
 
     def run(self, input_dirs: Union[Path, List[Path]]):
         input_dirs = self._normalize_input_dirs(input_dirs)
+        while True:
+            self._run_once(input_dirs)
+
+            if not self.config.general.wait_on_finish:
+                break
+            if self._shutdown_requested or self._shutdown_event.is_set():
+                break
+
+            # Emit bell before entering wait state (if configured)
+            if self.config.general.bell_on_finish:
+                import sys
+                sys.stdout.write('\x07')
+                sys.stdout.flush()
+
+            # Publish WAITING state for UI
+            from vbc.domain.events import WaitingForInput
+            self.event_bus.publish(WaitingForInput())
+
+            # Block until R (restart) or S/Ctrl+C (exit)
+            self._wait_event.clear()
+            self._restart_after_wait = False
+            self._wait_event.wait()
+
+            if self._shutdown_requested or self._shutdown_event.is_set():
+                break
+
+            # User pressed R — reset state and loop for next cycle
+            self._restart_after_wait = False
+            self._shutdown_requested = False
+            with self._refresh_lock:
+                self._refresh_requested = False
+            self._wait_event.clear()
+
+    def _run_once(self, input_dirs: List[Path]):
         self.logger.info(f"Discovery started: {len(input_dirs)} folders")
         for input_dir in input_dirs:
             self.event_bus.publish(DiscoveryStarted(directory=input_dir))
@@ -1605,6 +1648,10 @@ class Orchestrator:
         if len(files_to_process) == 0:
             self.logger.info("No files to process, exiting")
             self.event_bus.publish(ProcessingFinished())
+            if self.config.general.bell_on_finish and not self.config.general.wait_on_finish:
+                import sys
+                sys.stdout.write('\x07')
+                sys.stdout.flush()
             return
 
         # Submit-on-demand pattern (like original vbc.py)
@@ -1725,6 +1772,10 @@ class Orchestrator:
                 time.sleep(1.5)
                 if not self._shutdown_requested:
                     self.event_bus.publish(ProcessingFinished())
+                    if self.config.general.bell_on_finish and not self.config.general.wait_on_finish:
+                        import sys
+                        sys.stdout.write('\x07')
+                        sys.stdout.flush()
                 self.logger.info("All files processed, exiting")
 
             except KeyboardInterrupt:

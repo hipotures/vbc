@@ -8,6 +8,7 @@ from vbc.domain.events import (
     JobProgressUpdated, HardwareCapabilityExceeded, QueueUpdated,
     ActionMessage, ProcessingFinished, RefreshFinished,
     ThreadControlEvent, RequestShutdown, InterruptRequested,
+    WaitingForInput,
 )
 from vbc.config.input_dirs import STATUS_OK
 from vbc.ui.gpu_sparkline import (
@@ -54,9 +55,12 @@ class UIManager:
         self.bus.subscribe(ActionMessage, self.on_action_message)
         self.bus.subscribe(RefreshFinished, self.on_refresh_finished)
         self.bus.subscribe(ProcessingFinished, self.on_processing_finished)
+        self.bus.subscribe(WaitingForInput, self.on_waiting_for_input)
 
     def on_discovery_started(self, event: DiscoveryStarted):
         self.state.discovery_finished = False
+        self.state.waiting_for_input = False
+        self.state.finished = False
 
     def on_discovery_finished(self, event: DiscoveryFinished):
         # Debug: log when discovery counters are updated
@@ -321,3 +325,9 @@ class UIManager:
     def on_processing_finished(self, event: ProcessingFinished):
         with self.state._lock:
             self.state.finished = True
+            self.state.waiting_for_input = False
+
+    def on_waiting_for_input(self, event: WaitingForInput):
+        with self.state._lock:
+            self.state.finished = False
+            self.state.waiting_for_input = True

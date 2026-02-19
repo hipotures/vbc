@@ -134,3 +134,9 @@ class ProcessingFinished(Event):
     """Event emitted when all tasks finish normally."""
 
     pass
+
+
+class WaitingForInput(Event):
+    """Emitted by orchestrator when wait_on_finish=True and processing is done.
+    Signals UI to display WAITING status and R/S hint."""
+    pass

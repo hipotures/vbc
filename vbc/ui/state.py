@@ -78,6 +78,7 @@ class UIState:
         self.shutdown_requested = False
         self.interrupt_requested = False
         self.finished = False
+        self.waiting_for_input = False
         self.strip_unicode_display = True
         self.ui_title = "VBC"
         # Tabbed overlay state

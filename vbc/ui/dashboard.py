@@ -653,7 +653,10 @@ class Dashboard:
         with self.state._lock:
             # L1: Status + Threads
             indicator = "[green]●[/]"
-            if self.state.finished:
+            if self.state.waiting_for_input:
+                status = "[yellow]WAITING[/]"
+                indicator = "[yellow]⏸[/]"
+            elif self.state.finished:
                 status = "[green]FINISHED[/]"
             elif self.state.interrupt_requested:
                 status = "[bright_red]INTERRUPTED[/]"
@@ -731,7 +734,10 @@ class Dashboard:
             # 2. Build Left Content (Fixed 3 lines)
             l1 = f"{indicator} {status} • Threads: {threads_display}{paused}"
             l2 = f"ETA: {eta_str} • {throughput_str} • {saved} saved ({(1-ratio)*100:.1f}%)"
-            l3 = "[dim]Press M for menu[/]"
+            if self.state.waiting_for_input:
+                l3 = "[dim]R = restart scan  │  S / Ctrl+C = exit[/]"
+            else:
+                l3 = "[dim]Press M for menu[/]"
             left_content = f"{l1}\n{l2}\n{l3}"
 
             # 3. GPU Metrics (Right Side)
