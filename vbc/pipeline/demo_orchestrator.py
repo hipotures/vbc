@@ -312,6 +312,12 @@ class DemoOrchestrator:
                 self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
                 return False
 
+            if self._shutdown_requested:
+                job.status = JobStatus.INTERRUPTED
+                job.error_message = "Stopped by user"
+                self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
+                return False
+
             elapsed = time.monotonic() - start
             if elapsed >= duration_s:
                 break
@@ -467,30 +473,50 @@ class DemoOrchestrator:
 
             submit_batch()
 
-            while in_flight:
-                done, _ = concurrent.futures.wait(
-                    set(in_flight.keys()),
-                    timeout=0.5,
-                    return_when=concurrent.futures.FIRST_COMPLETED,
-                )
+            try:
+                while in_flight:
+                    done, _ = concurrent.futures.wait(
+                        set(in_flight.keys()),
+                        timeout=0.5,
+                        return_when=concurrent.futures.FIRST_COMPLETED,
+                    )
 
-                for future in done:
-                    try:
-                        future.result()
-                    except Exception as exc:
-                        self.logger.error(f"Demo future failed: {exc}")
-                    del in_flight[future]
+                    for future in done:
+                        try:
+                            future.result()
+                        except Exception as exc:
+                            self.logger.error(f"Demo future failed: {exc}")
+                        del in_flight[future]
 
-                with self._refresh_lock:
-                    if self._refresh_requested:
-                        self._refresh_requested = False
-                        self.event_bus.publish(RefreshFinished(added=0, removed=0))
-                        self.event_bus.publish(ActionMessage(message="Refreshed: no changes (demo)"))
+                    with self._refresh_lock:
+                        if self._refresh_requested:
+                            self._refresh_requested = False
+                            self.event_bus.publish(RefreshFinished(added=0, removed=0))
+                            self.event_bus.publish(ActionMessage(message="Refreshed: no changes (demo)"))
 
-                submit_batch()
+                    submit_batch()
 
-                if self._shutdown_requested and not in_flight:
-                    break
+                    if self._shutdown_requested and not in_flight:
+                        break
+
+            except KeyboardInterrupt:
+                self.logger.info("Ctrl+C detected in demo - interrupting active jobs...")
+                self.event_bus.publish(InterruptRequested())
+                self.event_bus.publish(ActionMessage(message="Ctrl+C - interrupting active compressions..."))
+                self._shutdown_event.set()
+                self._shutdown_requested = True
+                with self._thread_lock:
+                    self._thread_lock.notify_all()
+                for future in list(in_flight.keys()):
+                    future.cancel()
+                deadline = time.monotonic() + 3.0
+                while True:
+                    running = [f for f in in_flight if not f.done()]
+                    if not running or time.monotonic() >= deadline:
+                        break
+                    concurrent.futures.wait(running, timeout=0.2, return_when=concurrent.futures.FIRST_COMPLETED)
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise
 
             time.sleep(0.8)
             if not self._shutdown_requested:
