@@ -1115,7 +1115,7 @@ class DirsOverlay:
             path, status, file_count, size_bytes = entry_tuple[:4]
             fs_status = entry_tuple[4] if len(entry_tuple) > 4 else None
             is_cursor = idx == self.cursor
-            arrow = f"[bold {COLORS['accent_green']}]►[/]" if is_cursor else " "
+            arrow = f"[bold yellow]►[/]" if is_cursor else " "
             badge = self._status_badge(status, fs_status)
             cursor_badge = f"{arrow}{badge}"
             note = self._status_note(status)
@@ -1124,7 +1124,7 @@ class DirsOverlay:
 
             # Row styling
             if is_cursor:
-                path_markup = f"[bold white]{display_path}[/]{note}"
+                path_markup = f"[bold yellow]{display_path}[/]{note}"
             elif status == "disabled":
                 path_markup = f"[{COLORS['dim']}]{display_path}[/]{note}"
             elif status == "pending_remove":
