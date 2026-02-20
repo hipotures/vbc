@@ -15,6 +15,7 @@ Wszystkie panele zachowują 100% obecnej funkcjonalności, ale prezentują
 ją w bardziej przejrzysty i nowoczesny sposób.
 """
 
+import time
 from typing import List, Optional, Tuple
 from rich.console import Console, Group, RenderableType
 from rich.panel import Panel
@@ -1159,7 +1160,8 @@ class DirsOverlay:
         content_items: List[RenderableType] = [input_card, out_err_card]
 
         if self.input_mode:
-            cursor_block = f"[bold {COLORS['accent_green']}]█[/]"
+            cursor_visible = int(time.monotonic() * 2) % 2 == 0
+            cursor_block = f"[bold {COLORS['accent_green']}]█[/]" if cursor_visible else " "
             buffer_display = self.input_buffer + cursor_block
             input_line = Text.from_markup(
                 f"  [{COLORS['muted']}]Add path:[/] [white]{buffer_display}[/]"
