@@ -1099,7 +1099,9 @@ class DirsOverlay:
             display_path = path
 
             # Row styling
-            if is_cursor:
+            if is_cursor and status == "pending_remove":
+                path_markup = f"[bold {COLORS['error_red']}]{display_path}[/]"
+            elif is_cursor:
                 path_markup = f"[bold yellow]{display_path}[/]{note}"
             elif status == "disabled":
                 path_markup = f"[{COLORS['dim']}]{display_path}[/]{note}"
