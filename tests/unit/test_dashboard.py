@@ -117,7 +117,7 @@ def test_dashboard_panels_with_state(tmp_path):
     # Footer returns RenderableType, not necessarily Panel
 
 
-def test_dashboard_activity_item_shows_double_checkmark_when_verified(tmp_path):
+def test_dashboard_activity_item_shows_heavy_checkmark_when_verified(tmp_path):
     state = UIState()
     dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
 
@@ -134,7 +134,7 @@ def test_dashboard_activity_item_shows_double_checkmark_when_verified(tmp_path):
     console.print(renderable)
     rendered = console.export_text()
 
-    assert "✓✓" in rendered
+    assert "✔" in rendered
 
 
 def test_dashboard_create_display_overlay():

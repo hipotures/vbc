@@ -517,7 +517,7 @@ class Dashboard:
 
         if job.status == JobStatus.COMPLETED:
             verified = bool(getattr(job, "verification_passed", False))
-            icon = "[green]✓✓[/]" if verified else "[green]✓[/]"
+            icon = "[green]✔[/]" if verified else "[green]✓[/]"
             in_s = job.source_file.size_bytes
             out_s = job.output_size_bytes
             diff = in_s - out_s
@@ -544,8 +544,7 @@ class Dashboard:
                 filename_max = max(25, panel_w - 3)  # Reserve only for icon + space
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
                 l1 = f"{icon} {filename}"
-                indent = "   " if verified else "  "
-                l2 = f"{indent}[green]{q_val}{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
+                l2 = f"  [green]{q_val}{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
                 return Group(l1, l2)
             else: # B: 1 line
                 # ✓ filename  |  size → size (ratio%) • duration (left-aligned)
