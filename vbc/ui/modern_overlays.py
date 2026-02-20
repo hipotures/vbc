@@ -439,12 +439,7 @@ class IoOverlay:
         # === LAYOUT ===
         row1 = make_two_column_layout(io_card, queue_card)
 
-        hint = Text.from_markup(
-            f"[{COLORS['dim']}]Use [white on {COLORS['border']}] D [/] to manage input/output directories[/]",
-            justify="center",
-        )
-
-        return Group(row1, hint)
+        return Group(row1)
 
     def render(self) -> Panel:
         """Returns complete Panel with footer (for backward compatibility)."""
@@ -748,30 +743,10 @@ class ShortcutsOverlay:
             "Session logs (errors)"
         )
         panels_table.add_row(
-            key_badge("I"),
-            "Cycle overlay dim level"
-        )
-        panels_table.add_row(
-            key_badge("W"),
-            "Cycle GPU sparkline preset"
-        )
-        panels_table.add_row(
-            key_badge("P"),
-            "Cycle GPU sparkline palette"
-        )
-        panels_table.add_row(
             key_badge("G"),
             "Rotate GPU metric graph"
         )
-        panels_table.add_row(
-            key_badge("["),
-            "Logs: previous page"
-        )
-        panels_table.add_row(
-            key_badge("]"),
-            "Logs: next page"
-        )
-        
+
         panels_card = Panel(
             panels_table,
             title=f"[bold {COLORS['accent_cyan']}]{ICONS['panels']} PANELS[/]",
