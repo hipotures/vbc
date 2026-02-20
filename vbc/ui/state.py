@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from collections import deque
-from typing import List, Optional, Dict, Any, ClassVar, Tuple
+from typing import List, Optional, Dict, Any, ClassVar, Tuple, Set
 from vbc.domain.models import CompressionJob
 from vbc.ui.gpu_sparkline import (
     DEFAULT_GPU_SPARKLINE_PALETTE,
@@ -31,7 +31,7 @@ class UIState:
     """Thread-safe state manager for the interactive UI."""
 
     # Tab order for cycling (shortcuts first as it's the main menu)
-    OVERLAY_TABS: ClassVar[List[str]] = ["shortcuts", "settings", "io", "tui", "reference", "logs"]
+    OVERLAY_TABS: ClassVar[List[str]] = ["shortcuts", "settings", "io", "dirs", "tui", "reference", "logs"]
     OVERLAY_DIM_LEVELS: ClassVar[List[str]] = ["light", "mid", "dark"]
 
     def __init__(self, activity_feed_max_items: int = 5):
@@ -83,7 +83,7 @@ class UIState:
         self.ui_title = "VBC"
         # Tabbed overlay state
         self.show_overlay = False
-        self.active_tab = "shortcuts"  # "shortcuts" | "settings" | "io" | "tui" | "reference" | "logs"
+        self.active_tab = "shortcuts"  # "shortcuts" | "settings" | "io" | "dirs" | "tui" | "reference" | "logs"
         self.overlay_dim_level = "mid"  # "light" | "mid" | "dark"
         self.show_info = False
         self.info_message = ""
@@ -101,6 +101,16 @@ class UIState:
 
         self.last_action: str = ""
         self.last_action_time: Optional[datetime] = None
+
+        # Dirs tab state
+        self.dirs_cursor: int = 0
+        self.dirs_input_mode: bool = False
+        self.dirs_input_buffer: str = ""
+        self.dirs_pending_toggle: Dict[str, bool] = {}   # path → new enabled state (True=enable, False=disable)
+        self.dirs_pending_add: List[str] = []
+        self.dirs_pending_remove: Set[str] = set()
+        self.dirs_disabled_entries: List[str] = []  # dirs from config.disabled_input_dirs
+        self.dirs_error_msg: str = ""  # error shown inside Dirs overlay
 
         # GPU Metrics
         self.gpu_data: Optional[Dict[str, Any]] = None
@@ -196,6 +206,61 @@ class UIState:
                     self.last_action = ""
                     self.last_action_time = None
             return self.last_action
+
+    def dirs_get_all_entries(self) -> List[Tuple[str, str, Optional[int], Optional[int], Optional[str]]]:
+        """Return combined list of (path, status, file_count, size_bytes, fs_status) for Dirs tab.
+
+        Status values:
+        - "active"            → green  — currently active dir
+        - "disabled"          → dim    — disabled (from disabled_input_dirs)
+        - "pending_add"       → yellow — staged for adding
+        - "pending_remove"    → red    — staged for deletion
+        - "pending_toggle_off"→ yellow — active, pending disable
+        - "pending_toggle_on" → yellow — disabled, pending enable
+
+        fs_status: "ok" | "missing" | "no_access" | None (for disabled/pending)
+        """
+        with self._lock:
+            entries: List[Tuple[str, str, Optional[int], Optional[int], Optional[str]]] = []
+
+            # Active dirs
+            for fs, entry, count, size in self.io_input_dir_stats:
+                from vbc.config.input_dirs import STATUS_OK, STATUS_MISSING
+                fs_status = "ok" if fs == STATUS_OK else ("missing" if fs == STATUS_MISSING else "no_access")
+                if entry in self.dirs_pending_remove:
+                    entries.append((entry, "pending_remove", count, size, fs_status))
+                elif entry in self.dirs_pending_toggle and not self.dirs_pending_toggle[entry]:
+                    entries.append((entry, "pending_toggle_off", count, size, fs_status))
+                else:
+                    entries.append((entry, "active", count, size, fs_status))
+
+            # Disabled dirs (skip any already present in active dirs)
+            active_paths = {e for _, e, _, _ in self.io_input_dir_stats}
+            for entry in self.dirs_disabled_entries:
+                if entry in active_paths:
+                    continue
+                import os as _os
+                p = Path(entry)
+                if not p.exists():
+                    dis_fs = "missing"
+                elif not _os.access(p, _os.R_OK | _os.X_OK):
+                    dis_fs = "no_access"
+                else:
+                    dis_fs = "ok"
+                if entry in self.dirs_pending_remove:
+                    entries.append((entry, "pending_remove", None, None, dis_fs))
+                elif entry in self.dirs_pending_toggle and self.dirs_pending_toggle[entry]:
+                    entries.append((entry, "pending_toggle_on", None, None, dis_fs))
+                else:
+                    entries.append((entry, "disabled", None, None, dis_fs))
+
+            # Pending add dirs (skip duplicates already in active/disabled)
+            existing = {e for _, e, _, _ in self.io_input_dir_stats} | set(self.dirs_disabled_entries)
+            for entry in self.dirs_pending_add:
+                if entry not in existing:
+                    entries.append((entry, "pending_add", None, None, None))
+
+            return entries
 
     def open_overlay(self, tab: Optional[str] = None) -> None:
         """Open overlay, optionally on a specific tab."""

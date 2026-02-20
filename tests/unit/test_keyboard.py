@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 from vbc.domain.events import ActionMessage, RefreshRequested, RequestShutdown, ThreadControlEvent
 from vbc.ui.keyboard import (
     CycleLogsPage,
+    CycleOverlayDim,
     KeyboardListener,
     ToggleOverlayTab,
     CloseOverlay,
@@ -41,24 +42,47 @@ def test_thread_control_event():
 
 
 def test_keyboard_listener_run_handles_keys(monkeypatch):
-    """Test _run publishes events for supported keys."""
-    keys = ['.', ',', 's', 'r', 'c', 'l', 'e', '[', ']', '\x1b', '\x03']
+    """Test _run publishes events for supported keys.
+
+    Key changes vs old mapping:
+    - D → ToggleOverlayTab(tab="dirs")  (was CycleOverlayDim)
+    - I → CycleOverlayDim               (new)
+    - \\x1b is a plain Esc → CloseOverlay (fake select returns empty after \\x1b).
+
+    Note: the listener now uses os.read(fd) instead of sys.stdin.read() to avoid
+    Python buffer/select mismatch with escape sequences. We patch os.read accordingly.
+    """
+    keys = ['.', ',', 's', 'r', 'c', 'l', 'e', '[', ']', 'd', 'i', '\x1b', '\x03']
+
+    # After os.read returns \x1b the listener calls _try_read() → select.select.
+    # We flag it so fake_select returns "no data" (plain Esc → CloseOverlay).
+    after_escape = [False]
+
+    FAKE_FD = 42  # arbitrary fake file descriptor
 
     class FakeStdin:
         def isatty(self):
             return True
 
         def fileno(self):
-            return 0
-
-        def read(self, _count):
-            return keys.pop(0)
+            return FAKE_FD
 
     fake_stdin = FakeStdin()
     monkeypatch.setattr("vbc.ui.keyboard.sys.stdin", fake_stdin)
 
+    def fake_os_read(_fd, _n):
+        ch = keys.pop(0)
+        if ch == '\x1b':
+            after_escape[0] = True
+        return ch.encode('utf-8')
+
+    monkeypatch.setattr("vbc.ui.keyboard.os.read", fake_os_read)
+
     def fake_select(_read, _write, _err, _timeout):
-        return ([fake_stdin], [], []) if keys else ([], [], [])
+        if after_escape[0]:
+            after_escape[0] = False
+            return ([], [], [])
+        return ([FAKE_FD], [], []) if keys else ([], [], [])
 
     monkeypatch.setattr("vbc.ui.keyboard.select.select", fake_select)
     monkeypatch.setattr("vbc.ui.keyboard.termios.tcgetattr", MagicMock(return_value="old"))
@@ -80,6 +104,10 @@ def test_keyboard_listener_run_handles_keys(monkeypatch):
     assert any(isinstance(e, ToggleOverlayTab) and e.tab == "settings" for e in published)
     assert any(isinstance(e, ToggleOverlayTab) and e.tab == "logs" for e in published)
     assert any(isinstance(e, ToggleOverlayTab) and e.tab == "reference" for e in published)
+    # D now opens Dirs tab (was CycleOverlayDim)
+    assert any(isinstance(e, ToggleOverlayTab) and e.tab == "dirs" for e in published)
+    # I now cycles dim level (was D)
+    assert any(isinstance(e, CycleOverlayDim) and e.direction == 1 for e in published)
     assert any(isinstance(e, CycleLogsPage) and e.direction == -1 for e in published)
     assert any(isinstance(e, CycleLogsPage) and e.direction == 1 for e in published)
     assert any(isinstance(e, CloseOverlay) for e in published)

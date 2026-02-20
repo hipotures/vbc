@@ -406,6 +406,7 @@ class AppConfig(BaseModel):
 
     general: GeneralConfig
     input_dirs: List[str] = Field(default_factory=list)
+    disabled_input_dirs: List[str] = Field(default_factory=list)
     output_dirs: List[str] = Field(default_factory=list)
     suffix_output_dirs: Optional[str] = Field(default="_out")
     errors_dirs: List[str] = Field(default_factory=list)

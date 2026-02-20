@@ -31,6 +31,7 @@ from vbc.ui.modern_overlays import (
     render_shortcuts_content,
     render_io_content,
     render_tui_content,
+    render_dirs_content,
 )
 
 # Layout Constants
@@ -1058,6 +1059,12 @@ class Dashboard:
             sparkline_preset = self.state.gpu_sparkline_preset
             sparkline_palette = self.state.gpu_sparkline_palette
             sparkline_mode = self.state.gpu_sparkline_mode
+            # Dirs tab snapshot
+            dirs_cursor = self.state.dirs_cursor
+            dirs_input_mode = self.state.dirs_input_mode
+            dirs_input_buffer = self.state.dirs_input_buffer
+            dirs_error_msg = self.state.dirs_error_msg
+        dirs_entries = self.state.dirs_get_all_entries()
 
         # Get console dimensions for responsive sizing
         w = self.console.size.width
@@ -1065,6 +1072,7 @@ class Dashboard:
 
         # === TAB HEADER ===
         tabs_table = Table(show_header=False, box=None, expand=True, padding=0)
+        tabs_table.add_column(ratio=1)
         tabs_table.add_column(ratio=1)
         tabs_table.add_column(ratio=1)
         tabs_table.add_column(ratio=1)
@@ -1081,11 +1089,12 @@ class Dashboard:
         shortcuts_text, shortcuts_border, shortcuts_box = tab_style("shortcuts")
         settings_text, settings_border, settings_box = tab_style("settings")
         io_text, io_border, io_box = tab_style("io")
+        dirs_text, dirs_border, dirs_box = tab_style("dirs")
         tui_text, tui_border, tui_box = tab_style("tui")
         reference_text, reference_border, reference_box = tab_style("reference")
         logs_text, logs_border, logs_box = tab_style("logs")
 
-        # Tab order: Keys (M), Prefs (C), I/O (F), TUI (T), Ref (E), Logs (L)
+        # Tab order: Keys (M), Prefs (C), Files (F), Dirs (D), TUI (T), Ref (E), Logs (L)
         tabs_table.add_row(
             Panel(
                 f"[{shortcuts_text}]⌨ Keys[/] [{shortcuts_text}][M][/]",
@@ -1100,9 +1109,15 @@ class Dashboard:
                 padding=(0, 0),
             ),
             Panel(
-                f"[{io_text}]📁 I/O[/] [{io_text}][F][/]",
+                f"[{io_text}]📁 Files[/] [{io_text}][F][/]",
                 border_style=io_border,
                 box=io_box,
+                padding=(0, 0),
+            ),
+            Panel(
+                f"[{dirs_text}]📁 Dirs[/] [{dirs_text}][D][/]",
+                border_style=dirs_border,
+                box=dirs_box,
                 padding=(0, 0),
             ),
             Panel(
@@ -1140,6 +1155,18 @@ class Dashboard:
                 suffix_errors_dirs,
                 queue_sort,
                 queue_seed,
+            )
+        elif active_tab == "dirs":
+            content = render_dirs_content(
+                dirs_entries,
+                dirs_cursor,
+                dirs_input_mode,
+                dirs_input_buffer,
+                suffix_output_dirs,
+                suffix_errors_dirs,
+                output_dir_lines,
+                errors_dir_lines,
+                error_msg=dirs_error_msg,
             )
         elif active_tab == "tui":
             content = render_tui_content(dim_level, sparkline_preset, sparkline_palette, sparkline_mode)

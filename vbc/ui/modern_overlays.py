@@ -398,31 +398,12 @@ class IoOverlay:
             title_color=COLORS['accent_blue'],
         )
 
-    def _render_input_dir_table(self) -> Table:
-        table = Table(show_header=False, box=None, padding=(0, 1), expand=True)
-        table.add_column(ratio=1)
-        table.add_column(justify="right", no_wrap=True)
-        table.add_column(justify="right", no_wrap=True)
-        table.add_row("", f"[{COLORS['dim']}]Files[/]", f"[{COLORS['dim']}]Size[/]")
-        if not self.input_dir_stats:
-            table.add_row(f"[{COLORS['dim']}]None[/]", "", "")
-            return table
-        for idx, (status, entry, file_count, size_bytes) in enumerate(self.input_dir_stats, start=1):
-            icon = render_status_icon(status).rstrip()
-            is_empty = file_count == 0
-            row_style = COLORS["dim"] if is_empty else None
-            label = f"{icon} {idx}. {entry}"
-            count_str = "—" if file_count is None else str(file_count)
-            size_str = format_size(size_bytes)
-            if row_style:
-                label = f"[{row_style}]{label}[/]"
-                count_str = f"[{row_style}]{count_str}[/]"
-                size_str = f"[{row_style}]{size_str}[/]"
-            table.add_row(label, count_str, size_str)
-        return table
-
     def _render_content(self) -> Group:
-        """Returns content without outer Panel or footer (for tabbed overlay)."""
+        """Returns content without outer Panel or footer (for tabbed overlay).
+
+        Shows INPUT/OUTPUT summary and QUEUE settings only.
+        Directory listings are managed in the Dirs [D] tab.
+        """
         # === INPUT/OUTPUT CARD ===
         input_folders = self._get("input_folders", "1")
         extensions = self._get("extensions", ".mp4, .mov, .avi")
@@ -455,36 +436,15 @@ class IoOverlay:
             title_color=COLORS['accent_blue']
         )
 
-        # === DIRECTORIES ===
-        input_card = make_card(
-            "INPUT DIRS",
-            self._render_input_dir_table(),
-            icon=ICONS['io'],
-            title_color=COLORS['accent_blue'],
-        )
-        output_card = None
-        errors_card = None
-        if self.output_dir_lines or self.suffix_output_dirs:
-            output_card = self._render_dir_card("OUTPUT DIRS", self.output_dir_lines, self.suffix_output_dirs)
-        if self.errors_dir_lines or self.suffix_errors_dirs:
-            errors_card = self._render_dir_card("ERRORS DIRS", self.errors_dir_lines, self.suffix_errors_dirs)
-
         # === LAYOUT ===
         row1 = make_two_column_layout(io_card, queue_card)
 
-        content_items: List[RenderableType] = [
-            row1,
-            input_card,
-        ]
+        hint = Text.from_markup(
+            f"[{COLORS['dim']}]Use [white on {COLORS['border']}] D [/] to manage input/output directories[/]",
+            justify="center",
+        )
 
-        if output_card and errors_card:
-            content_items.append(make_two_column_layout(output_card, errors_card))
-        elif output_card:
-            content_items.append(output_card)
-        elif errors_card:
-            content_items.append(errors_card)
-
-        return Group(*content_items)
+        return Group(row1, hint)
 
     def render(self) -> Panel:
         """Returns complete Panel with footer (for backward compatibility)."""
@@ -722,7 +682,7 @@ class ShortcutsOverlay:
 
         key_labels = [
             "M", "Esc", "Ctrl+C",
-            "C", "F", "E", "L", "T", "D", "W", "P", "G",
+            "C", "F", "D", "E", "L", "T", "I", "W", "P", "G",
             "[", "]", "S", "R", "< ,", "> .",
             "< >", "S", "R",
         ]
@@ -769,7 +729,11 @@ class ShortcutsOverlay:
         )
         panels_table.add_row(
             key_badge("F"),
-            "I/O folders & queue"
+            "Files: I/O summary & queue"
+        )
+        panels_table.add_row(
+            key_badge("D"),
+            "Dirs: manage input directories"
         )
         panels_table.add_row(
             key_badge("T"),
@@ -784,7 +748,7 @@ class ShortcutsOverlay:
             "Session logs (errors)"
         )
         panels_table.add_row(
-            key_badge("D"),
+            key_badge("I"),
             "Cycle overlay dim level"
         )
         panels_table.add_row(
@@ -987,7 +951,7 @@ class TuiOverlay:
         options_table.add_column(ratio=1)
         options_table.add_row(
             "Overlay dim",
-            f"{self._render_dim_levels()}  [{COLORS['dim']}][D] cycle[/]",
+            f"{self._render_dim_levels()}  [{COLORS['dim']}][I] cycle[/]",
         )
 
         options_card = make_card(
@@ -1027,7 +991,7 @@ class TuiOverlay:
         """Returns complete Panel with footer (for backward compatibility)."""
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] D [/] Dim level • "
+            f"[white on {COLORS['border']}] I [/] Dim level • "
             f"[white on {COLORS['border']}] W [/] Sparkline • "
             f"[white on {COLORS['border']}] P [/] Palette[/]",
             justify="center",
@@ -1044,6 +1008,220 @@ class TuiOverlay:
             title=f"[bold white]{ICONS['tui']} TUI[/]",
             subtitle=f"[{COLORS['dim']}][T] to toggle[/]",
             border_style=COLORS['accent_purple'],
+            box=ROUNDED,
+            padding=(1, 2),
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DIRS OVERLAY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class DirsOverlay:
+    """Interactive directory manager panel (Dirs [D] tab).
+
+    Displays all input directories (active + disabled + pending changes) with
+    cursor navigation and status indicators. Output/Errors dir suffixes shown
+    read-only at the bottom.
+
+    Entry status labels:
+      [ON]  green  — currently active directory
+      [OFF] dim    — disabled (in disabled_input_dirs)
+      [ON*] yellow — pending add or pending enable
+      [DEL] red    — pending deletion
+      [~]   yellow — pending toggle (active→disabled or disabled→active)
+    """
+
+    MAX_DIRS = 10  # Maximum total directories (active + disabled)
+
+    def __init__(
+        self,
+        entries: List[Tuple[str, str, Optional[int], Optional[int]]],
+        cursor: int,
+        input_mode: bool,
+        input_buffer: str,
+        suffix_output_dirs: Optional[str],
+        suffix_errors_dirs: Optional[str],
+        output_dir_lines: List[str],
+        errors_dir_lines: List[str],
+        error_msg: str = "",
+    ):
+        self.entries = entries  # (path, status, file_count, size_bytes)
+        self.cursor = max(0, min(cursor, max(0, len(entries) - 1)))
+        self.input_mode = input_mode
+        self.input_buffer = input_buffer
+        self.suffix_output_dirs = suffix_output_dirs
+        self.suffix_errors_dirs = suffix_errors_dirs
+        self.output_dir_lines = output_dir_lines
+        self.errors_dir_lines = errors_dir_lines
+        self.error_msg = error_msg
+
+    def _status_badge(self, status: str, fs_status: Optional[str] = None) -> str:
+        """Return a Rich markup badge for the given status.
+
+        Active dirs show filesystem status inside brackets:
+          [✓] green  = active, accessible
+          [✗] red    = active, path missing
+          [⚡] yellow = active, no read access
+        Disabled/pending use standard badges.
+        """
+        if status == "active":
+            if fs_status == "missing":
+                return f"[bold {COLORS['error_red']}][✗][/]"
+            if fs_status == "no_access":
+                return f"[bold {COLORS['warning_yellow']}][!][/]"
+            return f"[bold {COLORS['accent_green']}][✓][/]"
+        if status == "disabled":
+            if fs_status == "missing":
+                return f"[{COLORS['error_red']}][✗][/]"
+            if fs_status == "no_access":
+                return f"[{COLORS['warning_yellow']}][!][/]"
+            return f"[{COLORS['dim']}][ ][/]"
+        if status in ("pending_add", "pending_toggle_on"):
+            return f"[bold {COLORS['warning_yellow']}][✓][/]"
+        if status == "pending_toggle_off":
+            if fs_status == "missing":
+                return f"[bold {COLORS['error_red']}][✗][/]"
+            if fs_status == "no_access":
+                return f"[bold {COLORS['warning_yellow']}][!][/]"
+            return f"[bold {COLORS['warning_yellow']}][ ][/]"
+        if status == "pending_remove":
+            return f"[bold {COLORS['error_red']}][✗][/]"
+        return f"[{COLORS['dim']}][ ][/]"
+
+    def _status_note(self, status: str) -> str:
+        return ""
+
+    def _render_input_dirs_table(self) -> Table:
+        table = Table(show_header=False, box=None, padding=(0, 0), expand=True)
+        table.add_column(width=6, no_wrap=True)   # cursor + badge together
+        table.add_column(ratio=1)                  # path + note
+        table.add_column(justify="right", width=7, no_wrap=True)   # files
+        table.add_column(justify="right", width=8, no_wrap=True)   # size
+
+        # Header row
+        table.add_row(
+            "",
+            "",
+            f"[{COLORS['dim']}]Files[/]",
+            f"[{COLORS['dim']}]Size[/]",
+        )
+
+        if not self.entries:
+            table.add_row("", f"[{COLORS['dim']}]No directories configured[/]", "", "")
+            return table
+
+        for idx, entry_tuple in enumerate(self.entries):
+            path, status, file_count, size_bytes = entry_tuple[:4]
+            fs_status = entry_tuple[4] if len(entry_tuple) > 4 else None
+            is_cursor = idx == self.cursor
+            arrow = f"[bold {COLORS['accent_green']}]►[/]" if is_cursor else " "
+            badge = self._status_badge(status, fs_status)
+            cursor_badge = f"{arrow}{badge}"
+            note = self._status_note(status)
+
+            display_path = path
+
+            # Row styling
+            if is_cursor:
+                path_markup = f"[bold white]{display_path}[/]{note}"
+            elif status == "disabled":
+                path_markup = f"[{COLORS['dim']}]{display_path}[/]{note}"
+            elif status == "pending_remove":
+                path_markup = f"[{COLORS['error_red']}]{display_path}[/]{note}"
+            elif status in ("pending_add", "pending_toggle_off", "pending_toggle_on"):
+                path_markup = f"[{COLORS['warning_yellow']}]{display_path}[/]{note}"
+            elif fs_status in ("missing", "no_access"):
+                path_markup = f"[{COLORS['dim']}]{display_path}[/]{note}"
+            else:
+                path_markup = f"[white]{display_path}[/]{note}"
+
+            count_str = "—" if file_count is None else str(file_count)
+            size_str = format_size(size_bytes) if size_bytes is not None else "—"
+
+            if status in ("disabled", "pending_remove") or fs_status in ("missing", "no_access"):
+                count_str = f"[{COLORS['dim']}]{count_str}[/]"
+                size_str = f"[{COLORS['dim']}]{size_str}[/]"
+
+            table.add_row(cursor_badge, path_markup, count_str, size_str)
+
+        return table
+
+    def _render_content(self) -> Group:
+        """Returns content without outer Panel or footer (for tabbed overlay)."""
+        # === INPUT DIRS TABLE ===
+        input_card = make_card(
+            "INPUT DIRS",
+            self._render_input_dirs_table(),
+            icon=ICONS['io'],
+            title_color=COLORS['accent_blue'],
+        )
+
+        # === OUTPUT + ERRORS summary (read-only) ===
+        def _suffix_line(label: str, suffix: Optional[str], lines: List[str]) -> str:
+            if suffix:
+                return f"[{COLORS['muted']}]{label}:[/] [white]Suffix: {suffix}[/]"
+            if lines:
+                return f"[{COLORS['muted']}]{label}:[/] [white]{lines[0]}[/]"
+            return f"[{COLORS['muted']}]{label}:[/] [{COLORS['dim']}]—[/]"
+
+        out_line = _suffix_line("Output", self.suffix_output_dirs, self.output_dir_lines)
+        err_line = _suffix_line("Errors", self.suffix_errors_dirs, self.errors_dir_lines)
+
+        out_err_table = Table(show_header=False, box=None, padding=(0, 2), expand=True)
+        out_err_table.add_column(ratio=1)
+        out_err_table.add_column(ratio=1)
+        out_err_table.add_row(out_line, err_line)
+
+        out_err_card = make_card(
+            "OUTPUT / ERRORS DIRS",
+            out_err_table,
+            icon=ICONS['io'],
+            title_color=COLORS['muted'],
+        )
+
+        # === ADD PATH INPUT (visible only in add mode) ===
+        content_items: List[RenderableType] = [input_card, out_err_card]
+
+        if self.input_mode:
+            cursor_block = f"[bold {COLORS['accent_green']}]█[/]"
+            buffer_display = self.input_buffer + cursor_block
+            input_line = Text.from_markup(
+                f"  [{COLORS['muted']}]Add path:[/] [white]{buffer_display}[/]"
+            )
+            content_items.append(input_line)
+
+        # === FOOTER HINT ===
+        if self.input_mode:
+            footer_hint = Text.from_markup(
+                f"[{COLORS['dim']}]"
+                f"[white on {COLORS['border']}] Enter [/] confirm  "
+                f"[white on {COLORS['border']}] Esc [/] cancel"
+                f"[/]",
+                justify="center",
+            )
+        else:
+            footer_hint = Text.from_markup(
+                f"[{COLORS['dim']}]"
+                f"[white on {COLORS['border']}] ↑↓ [/] navigate  "
+                f"[white on {COLORS['border']}] Space [/] toggle  "
+                f"[white on {COLORS['border']}] A [/] add  "
+                f"[white on {COLORS['border']}] Del [/] remove  "
+                f"[white on {COLORS['border']}] S [/] apply"
+                f"[/]",
+                justify="center",
+            )
+
+        content_items.append(footer_hint)
+        return Group(*content_items)
+
+    def render(self) -> Panel:
+        """Returns complete Panel with footer (for backward compatibility)."""
+        return Panel(
+            self._render_content(),
+            title="[bold white]📁 DIRS[/]",
+            subtitle=f"[{COLORS['dim']}][D] to toggle[/]",
+            border_style=COLORS['accent_green'],
             box=ROUNDED,
             padding=(1, 2),
         )
@@ -1180,6 +1358,42 @@ def render_tui_content(
 ) -> RenderableType:
     """Render TUI tab content (without outer Panel or footer)."""
     return TuiOverlay(dim_level, sparkline_preset, sparkline_palette, sparkline_mode)._render_content()
+
+
+def render_dirs_content(
+    entries: List[Tuple[str, str, Optional[int], Optional[int]]],
+    cursor: int,
+    input_mode: bool,
+    input_buffer: str,
+    suffix_output_dirs: Optional[str],
+    suffix_errors_dirs: Optional[str],
+    output_dir_lines: List[str],
+    errors_dir_lines: List[str],
+    error_msg: str = "",
+) -> RenderableType:
+    """Render Dirs tab content (without outer Panel or footer).
+
+    Args:
+        entries: List of (path, status, file_count, size_bytes) from UIState.dirs_get_all_entries().
+        cursor: Current cursor position (0-based).
+        input_mode: True when add-path input mode is active.
+        input_buffer: Current add-path input text.
+        suffix_output_dirs: Output directory suffix (e.g. "_out").
+        suffix_errors_dirs: Errors directory suffix (e.g. "_err").
+        output_dir_lines: Explicit output directory paths (for non-suffix mode).
+        errors_dir_lines: Explicit errors directory paths (for non-suffix mode).
+    """
+    return DirsOverlay(
+        entries,
+        cursor,
+        input_mode,
+        input_buffer,
+        suffix_output_dirs,
+        suffix_errors_dirs,
+        output_dir_lines,
+        errors_dir_lines,
+        error_msg=error_msg,
+    )._render_content()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

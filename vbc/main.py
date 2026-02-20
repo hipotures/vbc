@@ -380,6 +380,7 @@ def compress(
         ui_state.current_threads = config.general.threads
         ui_state.strip_unicode_display = config.general.strip_unicode_display
         ui_state.ui_title = "VBC - demo" if demo else "VBC"
+        ui_state.dirs_disabled_entries = list(config.disabled_input_dirs or [])
 
         start_time = datetime.now()
 
@@ -581,7 +582,7 @@ def compress(
             logger.warning("Camera filtering requires EXIF analysis. Enabling use_exif automatically.")
             config.general.use_exif = True
 
-        UIManager(bus, ui_state, demo_mode=demo)
+        UIManager(bus, ui_state, demo_mode=demo, config_path=config_path)
 
         web_server = None
         if config.web_server.enabled:
@@ -646,7 +647,7 @@ def compress(
                 cli_overrides=cli_overrides,
             )
         
-        keyboard = KeyboardListener(bus)
+        keyboard = KeyboardListener(bus, state=ui_state)
         
         gpu_monitor = None
         # GPU config migration: use new gpu_config if available, fallback to general.gpu

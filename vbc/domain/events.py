@@ -101,6 +101,10 @@ class RefreshRequested(Event):
     """Event to trigger re-scanning for new files."""
     pass
 
+class InputDirsChanged(Event):
+    """Event emitted when active input_dirs list changes (Dirs tab apply)."""
+    active_dirs: List[str]
+
 class RefreshFinished(Event):
     """Event emitted after refresh completes (used for UI counters)."""
     added: int = 0
@@ -139,4 +143,47 @@ class ProcessingFinished(Event):
 class WaitingForInput(Event):
     """Emitted by orchestrator when wait_on_finish=True and processing is done.
     Signals UI to display WAITING status and R/S hint."""
+    pass
+
+
+# ── Dirs tab events ────────────────────────────────────────────────────────────
+
+class DirsCursorMove(Event):
+    """Move cursor up/down in the Dirs tab list."""
+    direction: int  # -1 = up, +1 = down
+
+
+class DirsToggleSelected(Event):
+    """Toggle enabled/disabled state of the entry under cursor."""
+    pass
+
+
+class DirsEnterAddMode(Event):
+    """Enter add-path input mode in Dirs tab."""
+    pass
+
+
+class DirsMarkDelete(Event):
+    """Mark the entry under cursor for deletion (pending)."""
+    pass
+
+
+class DirsInputChar(Event):
+    """Append a character to the add-path input buffer.
+    Use char='\\x7f' for backspace (removes last character)."""
+    char: str
+
+
+class DirsConfirmAdd(Event):
+    """Confirm the current input buffer as a new pending directory."""
+    pass
+
+
+class DirsCancelInput(Event):
+    """Cancel add-path input mode without saving."""
+    pass
+
+
+class DirsApplyChanges(Event):
+    """Apply all pending Dirs changes, save to YAML, and trigger refresh."""
     pass

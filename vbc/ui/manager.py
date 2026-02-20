@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from vbc.infrastructure.event_bus import EventBus
 from vbc.ui.state import UIState
 from vbc.domain.events import (
@@ -8,7 +9,9 @@ from vbc.domain.events import (
     JobProgressUpdated, HardwareCapabilityExceeded, QueueUpdated,
     ActionMessage, ProcessingFinished, RefreshFinished,
     ThreadControlEvent, RequestShutdown, InterruptRequested,
-    WaitingForInput,
+    WaitingForInput, RefreshRequested, InputDirsChanged,
+    DirsCursorMove, DirsToggleSelected, DirsEnterAddMode, DirsMarkDelete,
+    DirsInputChar, DirsConfirmAdd, DirsCancelInput, DirsApplyChanges,
 )
 from vbc.config.input_dirs import STATUS_OK
 from vbc.ui.gpu_sparkline import (
@@ -22,14 +25,16 @@ from vbc.ui.keyboard import (
     ToggleOverlayTab, CycleOverlayTab, CloseOverlay, CycleOverlayDim, RotateGpuMetric,
     CycleSparklinePreset, CycleSparklinePalette, CycleLogsPage,
 )
+from vbc.ui.modern_overlays import DirsOverlay
 
 class UIManager:
     """Subscribes to EventBus and updates UIState."""
 
-    def __init__(self, bus: EventBus, state: UIState, demo_mode: bool = False):
+    def __init__(self, bus: EventBus, state: UIState, demo_mode: bool = False, config_path: Optional[Path] = None):
         self.bus = bus
         self.state = state
         self.demo_mode = demo_mode
+        self.config_path = config_path
         self._setup_subscriptions()
 
     def _setup_subscriptions(self):
@@ -56,6 +61,15 @@ class UIManager:
         self.bus.subscribe(RefreshFinished, self.on_refresh_finished)
         self.bus.subscribe(ProcessingFinished, self.on_processing_finished)
         self.bus.subscribe(WaitingForInput, self.on_waiting_for_input)
+        # Dirs tab events
+        self.bus.subscribe(DirsCursorMove, self.on_dirs_cursor_move)
+        self.bus.subscribe(DirsToggleSelected, self.on_dirs_toggle_selected)
+        self.bus.subscribe(DirsEnterAddMode, self.on_dirs_enter_add_mode)
+        self.bus.subscribe(DirsMarkDelete, self.on_dirs_mark_delete)
+        self.bus.subscribe(DirsInputChar, self.on_dirs_input_char)
+        self.bus.subscribe(DirsConfirmAdd, self.on_dirs_confirm_add)
+        self.bus.subscribe(DirsCancelInput, self.on_dirs_cancel_input)
+        self.bus.subscribe(DirsApplyChanges, self.on_dirs_apply_changes)
 
     def on_discovery_started(self, event: DiscoveryStarted):
         self.state.discovery_finished = False
@@ -331,3 +345,220 @@ class UIManager:
         with self.state._lock:
             self.state.finished = False
             self.state.waiting_for_input = True
+
+    # ── Dirs tab event handlers ────────────────────────────────────────────────
+
+    def on_dirs_cursor_move(self, event: DirsCursorMove):
+        """Move cursor in the Dirs tab directory list."""
+        with self.state._lock:
+            if not self.state.show_overlay or self.state.active_tab != "dirs":
+                return
+            entries = self.state.dirs_get_all_entries()
+            if not entries:
+                return
+            new_pos = self.state.dirs_cursor + event.direction
+            self.state.dirs_cursor = max(0, min(new_pos, len(entries) - 1))
+
+    def on_dirs_toggle_selected(self, event: DirsToggleSelected):
+        """Toggle enabled/disabled state of the dir under cursor."""
+        with self.state._lock:
+            if not self.state.show_overlay or self.state.active_tab != "dirs":
+                return
+            entries = self.state.dirs_get_all_entries()
+            if not entries or self.state.dirs_cursor >= len(entries):
+                return
+            entry = entries[self.state.dirs_cursor]
+            path, status = entry[0], entry[1]
+            fs_status = entry[4] if len(entry) > 4 else None
+
+            # Cannot toggle pending_add or pending_remove entries
+            if status in ("pending_add", "pending_remove"):
+                return
+
+            if status in ("active", "pending_toggle_off"):
+                # Toggle between active and pending-disable
+                if status == "pending_toggle_off":
+                    del self.state.dirs_pending_toggle[path]
+                else:
+                    self.state.dirs_pending_toggle[path] = False
+
+            elif status in ("disabled", "pending_toggle_on"):
+                # Block enabling if path doesn't exist or isn't accessible
+                from pathlib import Path as _Path
+                import os as _os
+                p = _Path(path)
+                if not p.exists():
+                    self.state.dirs_error_msg = "Cannot enable: path does not exist"
+                    return
+                if not _os.access(p, _os.R_OK | _os.X_OK):
+                    self.state.dirs_error_msg = "Cannot enable: no read access"
+                    return
+                self.state.dirs_error_msg = ""
+                # Toggle between disabled and pending-enable
+                if status == "pending_toggle_on":
+                    del self.state.dirs_pending_toggle[path]
+                else:
+                    self.state.dirs_pending_toggle[path] = True
+
+    def on_dirs_enter_add_mode(self, event: DirsEnterAddMode):
+        """Enter add-path input mode."""
+        with self.state._lock:
+            if not self.state.show_overlay or self.state.active_tab != "dirs":
+                return
+            self.state.dirs_input_mode = True
+            self.state.dirs_input_buffer = ""
+
+    def on_dirs_mark_delete(self, event: DirsMarkDelete):
+        """Mark the dir under cursor for deletion (or unmark if already marked)."""
+        with self.state._lock:
+            if not self.state.show_overlay or self.state.active_tab != "dirs":
+                return
+            entries = self.state.dirs_get_all_entries()
+            if not entries or self.state.dirs_cursor >= len(entries):
+                return
+            path, status = entries[self.state.dirs_cursor][:2]
+
+            if status == "pending_remove":
+                # Unmark
+                self.state.dirs_pending_remove.discard(path)
+            elif status == "pending_add":
+                # Cancel the pending add
+                if path in self.state.dirs_pending_add:
+                    self.state.dirs_pending_add.remove(path)
+                # Cursor may be out of bounds after removal — clamp
+                new_max = max(0, len(self.state.dirs_get_all_entries()) - 1)
+                self.state.dirs_cursor = min(self.state.dirs_cursor, new_max)
+            else:
+                self.state.dirs_pending_remove.add(path)
+
+    def on_dirs_input_char(self, event: DirsInputChar):
+        """Append a character to (or backspace from) the add-path input buffer."""
+        with self.state._lock:
+            if not self.state.dirs_input_mode:
+                return
+            if event.char == '\x7f':
+                self.state.dirs_input_buffer = self.state.dirs_input_buffer[:-1]
+            else:
+                self.state.dirs_input_buffer += event.char
+
+    def on_dirs_confirm_add(self, event: DirsConfirmAdd):
+        """Validate and stage the input buffer as a pending add."""
+        with self.state._lock:
+            if not self.state.dirs_input_mode:
+                return
+            path = self.state.dirs_input_buffer.strip()
+            self.state.dirs_input_mode = False
+            self.state.dirs_input_buffer = ""
+
+            if not path:
+                return
+
+            # Check total directory limit
+            total = (
+                len(self.state.io_input_dir_stats)
+                + len(self.state.dirs_disabled_entries)
+                + len(self.state.dirs_pending_add)
+            )
+            if total >= DirsOverlay.MAX_DIRS:
+                self.state.set_last_action(
+                    f"Dirs limit reached ({DirsOverlay.MAX_DIRS} max). Remove a directory first."
+                )
+                return
+
+            # Skip duplicates
+            existing = (
+                {e for _, e, _, _ in self.state.io_input_dir_stats}
+                | set(self.state.dirs_disabled_entries)
+                | set(self.state.dirs_pending_add)
+            )
+            if path in existing:
+                self.state.set_last_action(f"Directory already in list: {path}")
+                return
+
+            self.state.dirs_pending_add.append(path)
+
+    def on_dirs_cancel_input(self, event: DirsCancelInput):
+        """Cancel add-path input mode."""
+        with self.state._lock:
+            self.state.dirs_input_mode = False
+            self.state.dirs_input_buffer = ""
+
+    def on_dirs_apply_changes(self, event: DirsApplyChanges):
+        """Apply all pending Dirs changes, persist to YAML, and trigger re-scan."""
+        with self.state._lock:
+            current_active = [entry for _, entry, _, _ in self.state.io_input_dir_stats]
+            current_disabled = list(self.state.dirs_disabled_entries)
+            pending_toggle = dict(self.state.dirs_pending_toggle)
+            pending_add = list(self.state.dirs_pending_add)
+            pending_remove = set(self.state.dirs_pending_remove)
+
+        # Compute new active list
+        new_active: list = []
+        for d in current_active:
+            if d in pending_remove:
+                continue
+            if pending_toggle.get(d) is False:
+                continue  # toggled off → goes to disabled
+            new_active.append(d)
+        for d in current_disabled:
+            if d in pending_remove:
+                continue
+            if pending_toggle.get(d) is True:
+                new_active.append(d)  # toggled on → becomes active
+        for d in pending_add:
+            if d not in pending_remove:
+                new_active.append(d)
+
+        # Compute new disabled list
+        new_disabled: list = []
+        for d in current_disabled:
+            if d in pending_remove:
+                continue
+            if pending_toggle.get(d) is True:
+                continue  # moved to active
+            new_disabled.append(d)
+        for d in current_active:
+            if d in pending_remove:
+                continue
+            if pending_toggle.get(d) is False:
+                new_disabled.append(d)  # toggled off → becomes disabled
+
+        # Persist to YAML
+        if self.config_path:
+            try:
+                from vbc.config.loader import save_dirs_config
+                save_dirs_config(self.config_path, new_active, new_disabled)
+            except Exception as exc:
+                self.state.set_last_action(f"ERROR saving config: {exc}")
+                return
+
+        # Update state
+        new_disabled_set = set(new_disabled)
+        existing_active = {entry for _, entry, _, _ in self.state.io_input_dir_stats}
+        with self.state._lock:
+            self.state.dirs_disabled_entries = new_disabled
+            # Remove disabled/removed dirs from io_input_dir_stats.
+            self.state.io_input_dir_stats = [
+                (label, entry, count, size)
+                for label, entry, count, size in self.state.io_input_dir_stats
+                if entry not in new_disabled_set and entry not in pending_remove
+            ]
+            # Add newly-activated dirs (were disabled, now active) to io_input_dir_stats.
+            for d in new_active:
+                if d not in existing_active:
+                    from vbc.config.input_dirs import STATUS_OK
+                    self.state.io_input_dir_stats.append((STATUS_OK, d, None, None))
+            self.state.dirs_pending_toggle.clear()
+            self.state.dirs_pending_add.clear()
+            self.state.dirs_pending_remove.clear()
+            self.state.dirs_input_mode = False
+            self.state.dirs_input_buffer = ""
+
+        n_active = len(new_active)
+        n_disabled = len(new_disabled)
+        self.state.set_last_action(
+            f"Dirs saved: {n_active} active, {n_disabled} disabled"
+        )
+        self.bus.publish(InputDirsChanged(active_dirs=new_active))
+        self.bus.publish(RefreshRequested())
+

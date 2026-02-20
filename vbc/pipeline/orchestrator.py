@@ -165,14 +165,18 @@ class Orchestrator:
         self._output_dir_map_override: Dict[Path, Path] = output_dir_map or {}
         self._use_output_dir_map_override = output_dir_map is not None
 
+        # Dynamic input dirs (updated via InputDirsChanged event)
+        self._pending_input_dirs: Optional[List[Path]] = None
+
         self._setup_subscriptions()
 
     def _setup_subscriptions(self):
-        from vbc.domain.events import RefreshRequested
+        from vbc.domain.events import RefreshRequested, InputDirsChanged
         self.event_bus.subscribe(RequestShutdown, self._on_shutdown_request)
         self.event_bus.subscribe(ThreadControlEvent, self._on_thread_control)
         self.event_bus.subscribe(RefreshRequested, self._on_refresh_request)
         self.event_bus.subscribe(InterruptRequested, self._on_interrupt_requested)
+        self.event_bus.subscribe(InputDirsChanged, self._on_input_dirs_changed)
 
     def _normalize_input_dirs(self, input_dirs: Union[Path, List[Path]]) -> List[Path]:
         if isinstance(input_dirs, (list, tuple)):
@@ -212,6 +216,10 @@ class Orchestrator:
         elif requested < self._current_max_threads:
             self.event_bus.publish(ActionMessage(message=f"Threads: {self._current_max_threads} (min)"))
 
+    def _on_input_dirs_changed(self, event) -> None:
+        """Update active input dirs for the next re-scan cycle."""
+        self._pending_input_dirs = [Path(d) for d in event.active_dirs]
+
     def _on_refresh_request(self, event):
         with self._refresh_lock:
             self._refresh_requested = True
@@ -244,7 +252,11 @@ class Orchestrator:
         if self._use_output_dir_map_override:
             mapped = self._output_dir_map_override.get(input_dir)
             if mapped is None:
-                raise ValueError(f"Output directory mapping missing for {input_dir}")
+                # New dir added at runtime — fall back to suffix
+                suffix = self.config.suffix_output_dirs
+                if not suffix:
+                    raise ValueError(f"Output directory mapping missing for {input_dir}")
+                return input_dir.with_name(f"{input_dir.name}{suffix}")
             return mapped
         if self.config.output_dirs:
             raise ValueError(f"Output directory mapping missing for {input_dir}")
@@ -1025,7 +1037,11 @@ class Orchestrator:
                 if self._use_output_dir_map_override:
                     output_dir = self._output_dir_map_override.get(input_dir)
                     if output_dir is None:
-                        raise ValueError(f"Output directory mapping missing for {input_dir}")
+                        # New dir added at runtime — fall back to suffix
+                        suffix = self.config.suffix_output_dirs
+                        if not suffix:
+                            raise ValueError(f"Output directory mapping missing for {input_dir}")
+                        output_dir = input_dir.with_name(f"{input_dir.name}{suffix}")
                 else:
                     output_dir = self._resolve_output_dir(input_dir, idx)
                 self._folder_mapping[input_dir] = output_dir
@@ -1605,6 +1621,10 @@ class Orchestrator:
     def run(self, input_dirs: Union[Path, List[Path]]):
         input_dirs = self._normalize_input_dirs(input_dirs)
         while True:
+            # Use updated dirs if changed via Dirs tab
+            if self._pending_input_dirs is not None:
+                input_dirs = self._pending_input_dirs
+                self._pending_input_dirs = None
             self._run_once(input_dirs)
 
             if not self.config.general.wait_on_finish:
@@ -1726,8 +1746,19 @@ class Orchestrator:
                     with self._refresh_lock:
                         if self._refresh_requested:
                             self._refresh_requested = False
-                            # Perform new discovery on all folders
-                            new_files, new_stats = self._perform_discovery(list(self._folder_mapping.keys()))
+                            # Use updated dirs if changed via Dirs tab
+                            if self._pending_input_dirs is not None:
+                                refresh_dirs = self._pending_input_dirs
+                                self._pending_input_dirs = None
+                                # Remove stale entries from folder mapping
+                                refresh_set = set(refresh_dirs)
+                                for old_dir in list(self._folder_mapping.keys()):
+                                    if old_dir not in refresh_set:
+                                        del self._folder_mapping[old_dir]
+                            else:
+                                refresh_dirs = list(self._folder_mapping.keys())
+                            # Perform new discovery on active folders
+                            new_files, new_stats = self._perform_discovery(refresh_dirs)
                             
                             # Identify currently processing files to exclude them from queue
                             in_flight_paths = {vf.path for vf in in_flight.values()}
