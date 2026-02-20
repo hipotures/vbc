@@ -342,6 +342,8 @@ def compress(
                 raise typer.Exit(code=1)
         else:
             input_dirs = []
+            suffix_output_dirs = config.suffix_output_dirs
+            suffix_errors_dirs = config.suffix_errors_dirs
 
         # Setup output directory and logging FIRST
         if demo:
