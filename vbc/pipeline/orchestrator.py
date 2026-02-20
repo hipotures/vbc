@@ -1064,6 +1064,9 @@ class Orchestrator:
         """Handle verification failure according to configured action."""
         from vbc.domain.events import ActionMessage
 
+        # Audible alert for detected bad compression (double bell helper).
+        _emit_bell()
+
         normalized_action = str(action).strip().lower()
         if normalized_action == "pause":
             if not self._pause_requested:

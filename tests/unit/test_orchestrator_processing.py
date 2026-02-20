@@ -590,7 +590,9 @@ def test_process_file_verify_output_failure_logs_error_and_continues(tmp_path):
     orchestrator._write_vbc_tags = MagicMock()
 
     video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
-    orchestrator._process_file(video_file, input_dir)
+    with patch("vbc.pipeline.orchestrator._emit_bell") as mock_bell:
+        orchestrator._process_file(video_file, input_dir)
+    mock_bell.assert_called_once()
 
     assert failed_events
     assert failed_events[0].job.status == JobStatus.FAILED
