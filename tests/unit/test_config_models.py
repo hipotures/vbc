@@ -36,6 +36,7 @@ def test_config_defaults():
     assert gen.log_path == "/tmp/vbc/compression.log"
     assert gen.cpu_fallback is False
     assert gen.ffmpeg_cpu_threads is None
+    assert gen.verify_fail_action == "false"
     assert "-cq 45" in config.gpu_encoder.common_args
     assert "-crf 32" in config.cpu_encoder.common_args
     assert config.errors_dirs == []
@@ -105,6 +106,11 @@ def test_ffmpeg_cpu_threads_requires_positive_value():
 def test_rate_mode_requires_bps():
     with pytest.raises(ValidationError):
         GeneralConfig(threads=1, extensions=[".mp4"], quality_mode="rate")
+
+
+def test_verify_fail_action_invalid_mode():
+    with pytest.raises(ValidationError):
+        GeneralConfig(threads=1, extensions=[".mp4"], verify_fail_action="halt")
 
 
 def test_rate_mode_rejects_mixed_classes():

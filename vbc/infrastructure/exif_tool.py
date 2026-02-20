@@ -53,6 +53,17 @@ class ExifToolAdapter:
                     return mts_map.get(value_str, value_str)
         return None
 
+    def extract_tags(self, file_path: Path) -> Dict[str, Any]:
+        """Extract raw ExifTool tags as a dictionary for verification checks."""
+        if not self.et.running:
+            self.et.run()
+
+        with self._lock:
+            metadata_list = self.et.execute_json(str(file_path))
+        if not metadata_list:
+            raise ValueError(f"Could not extract metadata for {file_path}")
+        return metadata_list[0]
+
     def extract_metadata(self, file: VideoFile) -> VideoMetadata:
         """Extracts metadata from a video file using ExifTool."""
         if not self.et.running:

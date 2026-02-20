@@ -161,6 +161,8 @@ def _compute_stats(state: "UIState") -> dict:
         is_finished = state.finished
         is_interrupted = state.interrupt_requested
         is_shutdown = state.shutdown_requested
+        is_error_paused = state.error_paused
+        error_message = state.error_message
 
         # Job snapshots (shallow copies of references)
         active_jobs = list(state.active_jobs)
@@ -224,7 +226,7 @@ def _compute_stats(state: "UIState") -> dict:
         space_saved = max(0, total_in - total_out)
         ratio = (total_out / total_in) if total_in > 0 else 0.0
         active_count = len(active_jobs)
-        target_threads = 0 if (is_shutdown or is_waiting) else state.current_threads
+        target_threads = 0 if (is_shutdown or is_waiting or is_error_paused) else state.current_threads
         source_folders = state.source_folders_count
 
         hw_cap_count       = state.hw_cap_count
@@ -242,6 +244,8 @@ def _compute_stats(state: "UIState") -> dict:
         "is_finished": is_finished,
         "is_interrupted": is_interrupted,
         "is_shutdown": is_shutdown,
+        "is_error_paused": is_error_paused,
+        "error_message": error_message,
         "active_jobs": active_jobs,
         "recent_jobs": recent_jobs,
         "pending_files": pending_files,
@@ -273,7 +277,9 @@ def _compute_stats(state: "UIState") -> dict:
 # ---------------------------------------------------------------------------
 
 def _vm_header(s: dict) -> dict:
-    if s["is_waiting"]:
+    if s["is_error_paused"]:
+        badge_cls, label = "badge-interrupt", "ERROR"
+    elif s["is_waiting"]:
         badge_cls, label = "badge-waiting", "WAITING"
     elif s["is_finished"]:
         badge_cls, label = "badge-done", "FINISHED"
@@ -446,6 +452,7 @@ def _vm_activity(s: dict) -> dict:
             "status":   status,
             "stat_str": stat_str,
             "error":    error,
+            "verified": bool(getattr(job, "verification_passed", False)),
         })
     return {"jobs": job_items}
 

@@ -148,6 +148,16 @@ class RefreshFinished(Event):
 **Subscribers:** UIManager
 **Purpose:** Report results after refresh completes (used for UI counters)
 
+#### InputDirsChanged
+```python
+class InputDirsChanged(Event):
+    active_dirs: List[str]
+```
+
+**Publisher:** UIManager (Dirs apply)
+**Subscribers:** Orchestrator
+**Purpose:** Update active input directory set for next scan cycle
+
 ### Control Events
 
 !!! note "Control Events Location"
@@ -267,6 +277,77 @@ class ProcessingFinished(Event):
 **Publisher:** Orchestrator
 **Subscribers:** UIManager
 **Purpose:** All jobs completed normally
+
+#### ProcessingPausedOnError
+```python
+class ProcessingPausedOnError(Event):
+    message: str
+    reason: str = "verification_failed"
+```
+
+**Publisher:** Orchestrator
+**Subscribers:** UIManager
+**Purpose:** Pause processing after a verification failure and show ERROR state
+
+#### WaitingForInput
+```python
+class WaitingForInput(Event):
+    pass
+```
+
+**Publisher:** Orchestrator
+**Subscribers:** UIManager
+**Purpose:** Enter WAITING state (`R` restart / `S` exit)
+
+### Dirs Tab Events
+
+#### DirsCursorMove
+```python
+class DirsCursorMove(Event):
+    direction: int
+```
+
+#### DirsToggleSelected
+```python
+class DirsToggleSelected(Event):
+    pass
+```
+
+#### DirsEnterAddMode
+```python
+class DirsEnterAddMode(Event):
+    pass
+```
+
+#### DirsMarkDelete
+```python
+class DirsMarkDelete(Event):
+    pass
+```
+
+#### DirsInputChar
+```python
+class DirsInputChar(Event):
+    char: str
+```
+
+#### DirsConfirmAdd
+```python
+class DirsConfirmAdd(Event):
+    pass
+```
+
+#### DirsCancelInput
+```python
+class DirsCancelInput(Event):
+    pass
+```
+
+#### DirsApplyChanges
+```python
+class DirsApplyChanges(Event):
+    pass
+```
 
 ## Event Flow Examples
 

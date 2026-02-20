@@ -117,6 +117,26 @@ def test_dashboard_panels_with_state(tmp_path):
     # Footer returns RenderableType, not necessarily Panel
 
 
+def test_dashboard_activity_item_shows_double_checkmark_when_verified(tmp_path):
+    state = UIState()
+    dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
+
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"x" * 100)
+    vf = VideoFile(path=source, size_bytes=source.stat().st_size)
+    completed_job = CompressionJob(source_file=vf, status=JobStatus.COMPLETED)
+    completed_job.output_size_bytes = 90
+    completed_job.duration_seconds = 2.0
+    completed_job.verification_passed = True
+
+    renderable = dashboard._render_activity_item(completed_job, "A")
+    console = Console(width=120, record=True)
+    console.print(renderable)
+    rendered = console.export_text()
+
+    assert "✓✓" in rendered
+
+
 def test_dashboard_create_display_overlay():
     state = UIState()
     state.show_overlay = True

@@ -8,6 +8,7 @@ from vbc.domain.events import (
     JobStarted, JobCompleted, JobFailed,
     JobProgressUpdated, HardwareCapabilityExceeded, QueueUpdated,
     ActionMessage, ProcessingFinished, RefreshFinished,
+    ProcessingPausedOnError,
     ThreadControlEvent, RequestShutdown, InterruptRequested,
     WaitingForInput, RefreshRequested, InputDirsChanged,
     DirsCursorMove, DirsToggleSelected, DirsEnterAddMode, DirsMarkDelete,
@@ -60,6 +61,7 @@ class UIManager:
         self.bus.subscribe(ActionMessage, self.on_action_message)
         self.bus.subscribe(RefreshFinished, self.on_refresh_finished)
         self.bus.subscribe(ProcessingFinished, self.on_processing_finished)
+        self.bus.subscribe(ProcessingPausedOnError, self.on_processing_paused_on_error)
         self.bus.subscribe(WaitingForInput, self.on_waiting_for_input)
         # Dirs tab events
         self.bus.subscribe(DirsCursorMove, self.on_dirs_cursor_move)
@@ -75,6 +77,9 @@ class UIManager:
         self.state.discovery_finished = False
         self.state.waiting_for_input = False
         self.state.finished = False
+        self.state.error_paused = False
+        self.state.error_status_text = None
+        self.state.error_message = None
 
     def on_discovery_finished(self, event: DiscoveryFinished):
         # Debug: log when discovery counters are updated
@@ -340,6 +345,17 @@ class UIManager:
         with self.state._lock:
             self.state.finished = True
             self.state.waiting_for_input = False
+            self.state.error_paused = False
+            self.state.error_status_text = None
+            self.state.error_message = None
+
+    def on_processing_paused_on_error(self, event: ProcessingPausedOnError):
+        with self.state._lock:
+            self.state.finished = False
+            self.state.waiting_for_input = True
+            self.state.error_paused = True
+            self.state.error_status_text = "ERROR"
+            self.state.error_message = event.message
 
     def on_waiting_for_input(self, event: WaitingForInput):
         with self.state._lock:
@@ -561,4 +577,3 @@ class UIManager:
         )
         self.bus.publish(InputDirsChanged(active_dirs=new_active))
         self.bus.publish(RefreshRequested())
-

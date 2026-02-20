@@ -77,6 +77,9 @@ class UIState:
         self.source_folders_count = 1
         self.shutdown_requested = False
         self.interrupt_requested = False
+        self.error_paused = False
+        self.error_status_text: Optional[str] = None
+        self.error_message: Optional[str] = None
         self.finished = False
         self.waiting_for_input = False
         self.strip_unicode_display = True

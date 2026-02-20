@@ -33,6 +33,22 @@ def test_main_rejects_quality_override_in_rate_mode(monkeypatch):
     assert "--quality cannot be used with quality mode 'rate'" in result.output
 
 
+def test_main_rejects_invalid_verify_fail_action(monkeypatch):
+    runner = CliRunner()
+
+    def fake_load_config(_path):
+        return AppConfig(
+            general=GeneralConfig(threads=1, extensions=[".mp4"]),
+            autorotate=AutoRotateConfig(patterns={}),
+        )
+
+    monkeypatch.setattr(vbc_main, "load_config", fake_load_config)
+    result = runner.invoke(vbc_main.app, ["--verify-fail-action", "halt"])
+
+    assert result.exit_code == 1
+    assert "--verify-fail-action must be one of: false, log, pause, exit" in result.output
+
+
 def test_main_compress_applies_overrides(tmp_path, monkeypatch):
     runner = CliRunner()
     input_dir = tmp_path / "input"
@@ -69,7 +85,7 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
             created["run_dir"] = directory
 
     class DummyKeyboard:
-        def __init__(self, _bus):
+        def __init__(self, _bus, state=None):
             pass
 
         def start(self):
@@ -120,6 +136,8 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
             "--queue-seed",
             "99",
             "--clean-errors",
+            "--verify-fail-action",
+            "pause",
             "--skip-av1",
             "--min-size",
             "123",
@@ -137,6 +155,7 @@ def test_main_compress_applies_overrides(tmp_path, monkeypatch):
     assert config.general.queue_sort == "size-desc"
     assert config.general.queue_seed == 99
     assert config.general.clean_errors is True
+    assert config.general.verify_fail_action == "pause"
     assert config.general.skip_av1 is True
     assert config.general.min_size_bytes == 123
     assert config.general.manual_rotation == 180
@@ -195,7 +214,7 @@ def test_main_uses_config_input_dirs_when_cli_missing(tmp_path, monkeypatch):
             created["run_dir"] = directory
 
     class DummyKeyboard:
-        def __init__(self, _bus):
+        def __init__(self, _bus, state=None):
             pass
 
         def start(self):

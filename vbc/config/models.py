@@ -225,6 +225,7 @@ class GeneralConfig(BaseModel):
         extensions: Video file extensions to process.
         min_size_bytes: Skip files smaller than this (default 1MiB).
         clean_errors: Remove .err markers and retry failed jobs.
+        verify_fail_action: Output verification mode (false, log, pause, exit).
         skip_av1: Skip files already encoded in AV1 codec.
         strip_unicode_display: Remove unicode chars from displayed filenames (UI safety).
         manual_rotation: Force rotation angle (0, 90, 180, 270) for all videos (None = auto).
@@ -253,6 +254,7 @@ class GeneralConfig(BaseModel):
     extensions: List[str] = Field(default_factory=lambda: [".mp4", ".mov", ".avi", ".flv", ".webm"])
     min_size_bytes: int = Field(default=1048576)
     clean_errors: bool = False
+    verify_fail_action: Literal["false", "log", "pause", "exit"] = "false"
     skip_av1: bool = False
     strip_unicode_display: bool = True
     manual_rotation: Optional[int] = Field(default=None)
@@ -270,6 +272,11 @@ class GeneralConfig(BaseModel):
     @field_validator("quality_mode", mode="before")
     @classmethod
     def normalize_quality_mode(cls, v: str) -> str:
+        return str(v).strip().lower()
+
+    @field_validator("verify_fail_action", mode="before")
+    @classmethod
+    def normalize_verify_fail_action(cls, v: str) -> str:
         return str(v).strip().lower()
 
     @field_validator("log_path")

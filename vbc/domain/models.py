@@ -109,6 +109,8 @@ class CompressionJob(BaseModel):
         quality_value: CQ/CRF numeric value used for this job (legacy field).
         quality_display: Human-readable quality label (e.g., "CQ45", "200 Mbps").
         config_source: Configuration source (GLOBAL, LOCAL, or CLI).
+        verification_passed: Output verification result for completed jobs.
+        verification_error: Verification error details when verification fails.
     """
 
     source_file: VideoFile
@@ -122,3 +124,5 @@ class CompressionJob(BaseModel):
     quality_value: Optional[int] = None
     quality_display: Optional[str] = None
     config_source: ConfigSource = ConfigSource.GLOBAL
+    verification_passed: bool = False
+    verification_error: Optional[str] = None

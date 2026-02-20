@@ -26,6 +26,7 @@ _ALLOWED_GENERAL_KEYS = {
     "extensions",
     "min_size_bytes",
     "clean_errors",
+    "verify_fail_action",
     "skip_av1",
     "manual_rotation",
     "min_compression_ratio",
@@ -53,6 +54,7 @@ class CliConfigOverrides:
     queue_seed: Optional[int] = None
     log_path: Optional[str] = None
     clean_errors: bool = False
+    verify_fail_action: Optional[str] = None
     skip_av1: bool = False
     min_size: Optional[int] = None
     min_ratio: Optional[float] = None
@@ -75,6 +77,7 @@ class CliConfigOverrides:
                 self.queue_sort,
                 self.queue_seed,
                 self.log_path,
+                self.verify_fail_action,
                 self.min_size,
                 self.min_ratio,
                 self.camera,
@@ -107,6 +110,8 @@ class CliConfigOverrides:
             config.general.log_path = str(self.log_path)
         if self.clean_errors:
             config.general.clean_errors = True
+        if self.verify_fail_action is not None:
+            config.general.verify_fail_action = self.verify_fail_action
         if self.skip_av1:
             config.general.skip_av1 = True
         if self.min_size is not None:

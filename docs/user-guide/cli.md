@@ -269,6 +269,26 @@ uv run vbc /videos --clean-errors
 
 **Use case:** Fixed issue causing errors, want to retry.
 
+#### `--verify-fail-action TEXT`
+
+Output verification mode: `false`, `log`, `pause`, or `exit`.
+
+**Default:** from config (`general.verify_fail_action`, default `false`)
+
+```bash
+uv run vbc /videos --verify-fail-action pause
+```
+
+**Modes:**
+- `false`: disable output verification
+- `log`: mark failure and continue
+- `pause`: mark failure and pause queue in `ERROR` state (wait for `R`/`S`)
+- `exit`: mark failure and stop process with error
+
+**Verification checks** (when mode is not `false`):
+- `ffprobe` reads output without errors
+- VBC EXIF tags are present (`VBCOriginalName`, `VBCOriginalSize`, `VBCQuality`, `VBCOriginalBitrate`, `VBCEncoder`, `VBCFinishedAt`)
+
 ### Logging
 
 #### `--debug` / `--no-debug`
@@ -330,6 +350,28 @@ uv run vbc /videos --log-path /tmp/vbc/compression.log
 - If `log_path` is `null`, logs are written to `<output_dir>/compression.log`.
 - Uncaught fatal exceptions are appended to `error.log` in the current working directory.
 - Per-file failures create `.err` markers (moved to errors dir after processing).
+
+### Web Dashboard
+
+#### `--web`
+
+Enable read-only HTMX web dashboard.
+
+**Default:** from config (`web_server.enabled`, default `false`)
+
+```bash
+uv run vbc /videos --web
+```
+
+#### `--web-port INT`
+
+Override web dashboard port.
+
+**Default:** from config (`web_server.port`, default `8765`)
+
+```bash
+uv run vbc /videos --web --web-port 8765
+```
 
 ### Demo
 

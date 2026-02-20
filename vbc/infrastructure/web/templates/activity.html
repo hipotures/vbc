@@ -9,7 +9,11 @@
   {% for j in jobs %}
   <div class="act-row">
     {% if j.status == "COMPLETED" %}
+    {% if j.verified %}
+    <span class="act-icon ok">&#10003;&#10003;</span>
+    {% else %}
     <span class="act-icon ok">&#10003;</span>
+    {% endif %}
     <div class="act-body">
       <div class="act-name vbc-primary">{{ j.fname }}</div>
       <small class="act-stat vbc-meta">{{ j.stat_str }}</small>

@@ -23,7 +23,7 @@ from vbc.infrastructure.ffmpeg import (
     replace_quality_value,
 )
 from vbc.infrastructure.housekeeping import HousekeepingService
-from vbc.pipeline.orchestrator import Orchestrator
+from vbc.pipeline.orchestrator import Orchestrator, VerificationAbortError
 from vbc.pipeline.demo_orchestrator import DemoOrchestrator
 from vbc.pipeline.error_file_mover import move_failed_files, collect_error_entries
 from vbc.pipeline.repair import process_repairs
@@ -91,6 +91,11 @@ def compress(
         help="Path to log file (overrides config)"
     ),
     clean_errors: bool = typer.Option(False, "--clean-errors", help="Remove existing .err markers and retry"),
+    verify_fail_action: Optional[str] = typer.Option(
+        None,
+        "--verify-fail-action",
+        help="Verification mode: false (disabled), log, pause, exit",
+    ),
     skip_av1: bool = typer.Option(False, "--skip-av1", help="Skip files already encoded in AV1"),
     min_size: Optional[int] = typer.Option(None, "--min-size", help="Minimum input size in bytes to process"),
     min_ratio: Optional[float] = typer.Option(None, "--min-ratio", help="Minimum compression ratio required (0.0-1.0)"),
@@ -127,6 +132,16 @@ def compress(
         effective_bps = bps if bps is not None else config.general.bps
         effective_minrate = minrate if minrate is not None else config.general.minrate
         effective_maxrate = maxrate if maxrate is not None else config.general.maxrate
+        validated_verify_fail_action = None
+        if verify_fail_action is not None:
+            validated_verify_fail_action = verify_fail_action.strip().lower()
+            if validated_verify_fail_action not in {"false", "log", "pause", "exit"}:
+                typer.secho(
+                    "Error: --verify-fail-action must be one of: false, log, pause, exit.",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                raise typer.Exit(code=1)
 
         if quality is not None and effective_quality_mode == "rate":
             typer.secho("Error: --quality cannot be used with quality mode 'rate'.", fg=typer.colors.RED, err=True)
@@ -165,6 +180,7 @@ def compress(
             queue_seed=queue_seed,
             log_path=str(log_path) if log_path else None,
             clean_errors=clean_errors,
+            verify_fail_action=validated_verify_fail_action,
             skip_av1=skip_av1,
             min_size=min_size,
             min_ratio=min_ratio,
@@ -199,6 +215,8 @@ def compress(
             config.general.log_path = str(log_path)
         if clean_errors:
             config.general.clean_errors = True
+        if validated_verify_fail_action is not None:
+            config.general.verify_fail_action = validated_verify_fail_action
         if skip_av1:
             config.general.skip_av1 = True
         if min_size is not None:
@@ -541,6 +559,7 @@ def compress(
                 f"Queue sort: {queue_sort_info}",
                 f"CPU fallback: {config.general.cpu_fallback} | CPU threads per worker: {config.general.ffmpeg_cpu_threads or 'auto'}",
                 f"Min size: {format_size(config.general.min_size_bytes)} | Skip AV1: {config.general.skip_av1}",
+                f"Verification mode: {config.general.verify_fail_action}",
                 f"Demo files: {demo_config.files.count} | Errors: {demo_config.errors.total} | Kept original: {demo_config.kept_original.count}",
                 f"Demo sizes: {demo_config.sizes.min_mb:.0f}-{demo_config.sizes.max_mb:.0f} MB ({demo_config.sizes.distribution})",
                 f"Demo speed: {demo_config.processing.throughput_mb_s:.1f} MB/s (±{int(demo_config.processing.jitter_pct * 100)}%)",
@@ -566,6 +585,7 @@ def compress(
                 f"Queue sort: {queue_sort_info}",
                 f"CPU fallback: {config.general.cpu_fallback} | CPU threads per worker: {config.general.ffmpeg_cpu_threads or 'auto'}",
                 f"Min size: {format_size(config.general.min_size_bytes)} | Skip AV1: {config.general.skip_av1}",
+                f"Verification mode: {config.general.verify_fail_action}",
                 f"Clean errors: {config.general.clean_errors} | Strip Unicode: {config.general.strip_unicode_display}",
                 f"Debug logging: {config.general.debug}",
             ]
@@ -770,6 +790,10 @@ def compress(
         # Ctrl+C was already handled by orchestrator - just exit gracefully
         typer.secho("\n✓ Compression stopped by user (Ctrl+C)", fg=typer.colors.YELLOW)
         raise typer.Exit(code=130)
+
+    except VerificationAbortError as e:
+        typer.secho(f"\n✗ Verification failed - compression interrupted: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
 
     except typer.Exit:
         raise

@@ -12,6 +12,7 @@
 !conf/*.conf
 !conf/demo.yaml
 !conf/vbc.yaml.example
+conf/vbc.yaml
 
 # Allow video directory and its contents
 !video/

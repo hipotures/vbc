@@ -135,6 +135,13 @@ general:
   # Remove existing .err markers on startup and retry those files.
   clean_errors: false
 
+  # Output verification mode:
+  # - "false": disable verification
+  # - "log": mark as failed and continue processing
+  # - "pause": mark as failed and pause queue (ERROR state; wait for R/S)
+  # - "exit": mark as failed and terminate process with error
+  verify_fail_action: "false"
+
   # Skip files already encoded in AV1 codec.
   skip_av1: false
 

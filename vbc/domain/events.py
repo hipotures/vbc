@@ -140,6 +140,13 @@ class ProcessingFinished(Event):
     pass
 
 
+class ProcessingPausedOnError(Event):
+    """Emitted when processing is paused due to a runtime verification failure."""
+
+    message: str
+    reason: str = "verification_failed"
+
+
 class WaitingForInput(Event):
     """Emitted by orchestrator when wait_on_finish=True and processing is done.
     Signals UI to display WAITING status and R/S hint."""

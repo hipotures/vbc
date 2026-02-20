@@ -516,7 +516,8 @@ class Dashboard:
             panel_w = max(40, term_w - 4)  # 1-column mode: full width
 
         if job.status == JobStatus.COMPLETED:
-            icon = "[green]✓[/]"
+            verified = bool(getattr(job, "verification_passed", False))
+            icon = "[green]✓✓[/]" if verified else "[green]✓[/]"
             in_s = job.source_file.size_bytes
             out_s = job.output_size_bytes
             diff = in_s - out_s
@@ -543,7 +544,8 @@ class Dashboard:
                 filename_max = max(25, panel_w - 3)  # Reserve only for icon + space
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
                 l1 = f"{icon} {filename}"
-                l2 = f"  [green]{q_val}{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
+                indent = "   " if verified else "  "
+                l2 = f"{indent}[green]{q_val}{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
                 return Group(l1, l2)
             else: # B: 1 line
                 # ✓ filename  |  size → size (ratio%) • duration (left-aligned)
@@ -654,7 +656,10 @@ class Dashboard:
         with self.state._lock:
             # L1: Status + Threads
             indicator = "[green]●[/]"
-            if self.state.waiting_for_input:
+            if self.state.error_paused:
+                status = "[bright_red]ERROR[/]"
+                indicator = "[red]●[/]"
+            elif self.state.waiting_for_input:
                 status = "[yellow]WAITING[/]"
                 indicator = "[yellow]⏸[/]"
             elif self.state.finished:
@@ -725,7 +730,7 @@ class Dashboard:
 
             # Thread display: show single number or transition
             # During shutdown or waiting, target is 0; otherwise use configured threads
-            target_threads = 0 if (self.state.shutdown_requested or self.state.waiting_for_input) else self.state.current_threads
+            target_threads = 0 if (self.state.shutdown_requested or self.state.waiting_for_input or self.state.error_paused) else self.state.current_threads
 
             if active_threads == target_threads:
                 threads_display = str(active_threads)
@@ -735,7 +740,7 @@ class Dashboard:
             # 2. Build Left Content (Fixed 3 lines)
             l1 = f"{indicator} {status} • Threads: {threads_display}{paused}"
             l2 = f"ETA: {eta_str} • {throughput_str} • {saved} saved ({(1-ratio)*100:.1f}%)"
-            if self.state.waiting_for_input:
+            if self.state.waiting_for_input or self.state.error_paused:
                 l3 = "[dim]R = restart scan  │  S / Ctrl+C = exit[/]"
             else:
                 l3 = "[dim]Press M for menu[/]"

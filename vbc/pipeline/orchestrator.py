@@ -68,6 +68,19 @@ from vbc.domain.events import (
 )
 from vbc.pipeline.queue_sorting import sort_files
 
+_REQUIRED_VBC_VERIFY_TAGS = {
+    "vbcoriginalname",
+    "vbcoriginalsize",
+    "vbcquality",
+    "vbcoriginalbitrate",
+    "vbcencoder",
+    "vbcfinishedat",
+}
+
+
+class VerificationAbortError(RuntimeError):
+    """Raised when verification_fail_action='exit' requests process termination."""
+
 
 def _emit_bell() -> None:
     """Write two terminal bells 0.3s apart directly to /dev/tty, bypassing Rich's stdout capture."""
@@ -155,6 +168,9 @@ class Orchestrator:
         self._shutdown_event = threading.Event()  # Signal workers to stop
         self._wait_event = threading.Event()       # Signals wait loop to unblock
         self._restart_after_wait = False           # True = R pressed; False = S/Ctrl+C
+        self._pause_requested = False
+        self._pause_message: Optional[str] = None
+        self._verification_abort_message: Optional[str] = None
 
         # Stats
         self.skipped_vbc_count = 0
@@ -1016,6 +1032,59 @@ class Orchestrator:
         except Exception as e:
             self.logger.warning(f"Failed to write VBC tags for {output_path.name}: {e}")
 
+    @staticmethod
+    def _normalize_exif_tag_name(tag_key: str) -> str:
+        """Normalize ExifTool key names like 'XMP:VBCEncoder' for robust comparisons."""
+        tail = str(tag_key).split(":")[-1]
+        return re.sub(r"[^a-z0-9]", "", tail.lower())
+
+    def _verify_output_file(self, output_path: Path) -> Tuple[bool, Optional[str]]:
+        """Verify output by probing readability and checking required VBC EXIF tags."""
+        if not output_path.exists():
+            return False, "output file missing"
+
+        try:
+            self.ffprobe_adapter.get_stream_info(output_path)
+        except Exception as exc:
+            return False, f"ffprobe check failed: {exc}"
+
+        try:
+            tags = self.exif_adapter.extract_tags(output_path)
+        except Exception as exc:
+            return False, f"ExifTool tag read failed: {exc}"
+
+        normalized_keys = {self._normalize_exif_tag_name(k) for k in tags.keys()}
+        missing = sorted(tag for tag in _REQUIRED_VBC_VERIFY_TAGS if tag not in normalized_keys)
+        if missing:
+            return False, f"missing VBC tags: {', '.join(missing)}"
+
+        return True, None
+
+    def _handle_verification_failure(self, message: str, action: str) -> None:
+        """Handle verification failure according to configured action."""
+        from vbc.domain.events import ActionMessage
+
+        normalized_action = str(action).strip().lower()
+        if normalized_action == "pause":
+            if not self._pause_requested:
+                self._pause_requested = True
+                self._pause_message = message
+            self.event_bus.publish(ActionMessage(message=f"ERROR: verification failed, pausing queue ({message})"))
+            return
+
+        if normalized_action == "exit":
+            with self._thread_lock:
+                self._shutdown_requested = True
+                self._thread_lock.notify_all()
+            self._shutdown_event.set()
+            self._verification_abort_message = message
+            self._wait_event.set()
+            self.event_bus.publish(ActionMessage(message=f"ERROR: verification failed, aborting ({message})"))
+            return
+
+        # Default: log and continue
+        self.event_bus.publish(ActionMessage(message=f"Verification failed, continuing ({message})"))
+
     def _perform_discovery(self, input_dirs: Union[Path, List[Path]]) -> tuple:
         """Performs file discovery across multiple directories and returns (files_to_process, discovery_stats)."""
         import os
@@ -1490,6 +1559,7 @@ class Orchestrator:
 
             # Check final status after compression
             if job.status == JobStatus.COMPLETED:
+                kept_original = False
                 if job.output_path.exists():
                     out_size = job.output_path.stat().st_size
                     in_size = video_file.size_bytes
@@ -1553,6 +1623,39 @@ class Orchestrator:
                             self.logger.warning(
                                 f"RATE_OUTPUT: {filename} failed to probe output bitrate: {exc}"
                             )
+
+                if (
+                    job_config.general.verify_fail_action != "false"
+                    and not kept_original
+                    and job.output_path is not None
+                ):
+                    self.logger.info(f"VERIFY_START: {filename}")
+                    verify_ok, verify_error = self._verify_output_file(job.output_path)
+                    if verify_ok:
+                        job.verification_passed = True
+                        self.logger.info(f"VERIFY_OK: {filename}")
+                    else:
+                        details = verify_error or "unknown verification error"
+                        job.status = JobStatus.FAILED
+                        job.verification_passed = False
+                        job.verification_error = details
+                        job.error_message = f"Verification failed: {details}"
+                        self.logger.error(f"VERIFY_FAIL: {filename} ({details})")
+                        try:
+                            err_path.write_text(job.error_message)
+                        except Exception:
+                            pass
+                        self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
+                        self._handle_verification_failure(
+                            job.error_message,
+                            job_config.general.verify_fail_action,
+                        )
+                        if self.config.general.debug and start_time:
+                            elapsed = time.monotonic() - start_time
+                            self.logger.info(
+                                f"PROCESS_END: {filename} status=failed reason=verification elapsed={elapsed:.2f}s"
+                            )
+                        return
 
                 self.event_bus.publish(JobCompleted(job=job))
                 if self.config.general.debug and start_time:
@@ -1626,6 +1729,30 @@ class Orchestrator:
                 input_dirs = self._pending_input_dirs
                 self._pending_input_dirs = None
             self._run_once(input_dirs)
+
+            if self._verification_abort_message:
+                raise VerificationAbortError(self._verification_abort_message)
+
+            if self._pause_requested:
+                from vbc.domain.events import ProcessingPausedOnError
+                self.event_bus.publish(
+                    ProcessingPausedOnError(message=self._pause_message or "Verification failed")
+                )
+                self._wait_event.clear()
+                self._restart_after_wait = False
+                self._wait_event.wait()
+
+                if self._shutdown_requested or self._shutdown_event.is_set():
+                    break
+
+                # User pressed R — resume with fresh discovery.
+                self._pause_requested = False
+                self._pause_message = None
+                self._restart_after_wait = False
+                with self._refresh_lock:
+                    self._refresh_requested = False
+                self._wait_event.clear()
+                continue
 
             if not self.config.general.wait_on_finish:
                 break
@@ -1705,7 +1832,12 @@ class Orchestrator:
             def submit_batch():
                 """Submit files up to max_inflight limit"""
                 max_inflight = self.config.general.prefetch_factor * self._current_max_threads
-                while len(in_flight) < max_inflight and pending and not self._shutdown_requested:
+                while (
+                    len(in_flight) < max_inflight
+                    and pending
+                    and not self._shutdown_requested
+                    and not self._pause_requested
+                ):
                     vf = pending.popleft()
                     if vf.path in self._metadata_failed_paths:
                         continue
@@ -1808,13 +1940,18 @@ class Orchestrator:
                     submit_batch()
 
                     # Exit if shutdown requested and no more in flight
-                    if self._shutdown_requested and not in_flight:
-                        self.logger.info("Shutdown requested, exiting processing loop")
+                    if (self._shutdown_requested or self._pause_requested) and not in_flight:
+                        if self._pause_requested:
+                            self.logger.info("Pause requested after verification failure, exiting processing loop")
+                        else:
+                            self.logger.info("Shutdown requested, exiting processing loop")
                         break
 
                 # After all futures done, give UI one more refresh cycle
                 time.sleep(1.5)
-                if not self._shutdown_requested:
+                if self._verification_abort_message:
+                    raise VerificationAbortError(self._verification_abort_message)
+                if not self._shutdown_requested and not self._pause_requested:
                     self.event_bus.publish(ProcessingFinished())
                     if self.config.general.bell_on_finish and not self.config.general.wait_on_finish:
                         _emit_bell()

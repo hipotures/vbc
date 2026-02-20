@@ -481,6 +481,222 @@ def test_process_file_success_ratio_pass_writes_tags(tmp_path):
     orchestrator._write_vbc_tags.assert_called_once()
 
 
+def _required_vbc_tags_for_test() -> dict:
+    return {
+        "XMP:VBCOriginalName": "in.mp4",
+        "XMP:VBCOriginalSize": "1000",
+        "XMP:VBCQuality": "CQ40",
+        "XMP:VBCOriginalBitrate": "40 Mbps",
+        "XMP:VBCEncoder": "NVENC",
+        "XMP:VBCFinishedAt": "2026-01-01T00:00:00+00:00",
+    }
+
+
+def test_process_file_verify_output_success_marks_job_verified(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    source = input_dir / "video.mp4"
+    source.write_bytes(b"a" * 1000)
+
+    config = _make_config(
+        use_exif=False,
+        copy_metadata=False,
+        verify_fail_action="log",
+    )
+    bus = EventBus()
+    completed_events = []
+    bus.subscribe(JobCompleted, lambda e: completed_events.append(e))
+
+    ffprobe = MagicMock()
+    ffprobe.get_stream_info.return_value = {
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "fps": 30.0,
+    }
+
+    ffmpeg = MagicMock()
+
+    def fake_compress(job, job_config, use_gpu=False, rotate=None, shutdown_event=None, input_path=None, **kwargs):
+        job.status = JobStatus.COMPLETED
+        job.output_path.write_bytes(b"b" * 600)
+
+    ffmpeg.compress.side_effect = fake_compress
+
+    exif = MagicMock()
+    exif.extract_tags.return_value = _required_vbc_tags_for_test()
+
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=FileScanner([".mp4"], 0),
+        exif_adapter=exif,
+        ffprobe_adapter=ffprobe,
+        ffmpeg_adapter=ffmpeg,
+    )
+    orchestrator._check_and_fix_color_space = MagicMock(return_value=(source, None))
+    orchestrator._write_vbc_tags = MagicMock()
+
+    video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
+    orchestrator._process_file(video_file, input_dir)
+
+    assert completed_events
+    assert completed_events[0].job.verification_passed is True
+
+
+def test_process_file_verify_output_failure_logs_error_and_continues(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    source = input_dir / "video.mp4"
+    source.write_bytes(b"a" * 1000)
+
+    config = _make_config(
+        use_exif=False,
+        copy_metadata=False,
+        verify_fail_action="log",
+    )
+    bus = EventBus()
+    failed_events = []
+    bus.subscribe(JobFailed, lambda e: failed_events.append(e))
+
+    ffprobe = MagicMock()
+    ffprobe.get_stream_info.return_value = {
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "fps": 30.0,
+    }
+
+    ffmpeg = MagicMock()
+
+    def fake_compress(job, job_config, use_gpu=False, rotate=None, shutdown_event=None, input_path=None, **kwargs):
+        job.status = JobStatus.COMPLETED
+        job.output_path.write_bytes(b"b" * 600)
+
+    ffmpeg.compress.side_effect = fake_compress
+
+    exif = MagicMock()
+    exif.extract_tags.return_value = {"XMP:VBCEncoder": "NVENC"}
+
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=FileScanner([".mp4"], 0),
+        exif_adapter=exif,
+        ffprobe_adapter=ffprobe,
+        ffmpeg_adapter=ffmpeg,
+    )
+    orchestrator._check_and_fix_color_space = MagicMock(return_value=(source, None))
+    orchestrator._write_vbc_tags = MagicMock()
+
+    video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
+    orchestrator._process_file(video_file, input_dir)
+
+    assert failed_events
+    assert failed_events[0].job.status == JobStatus.FAILED
+    assert "Verification failed" in (failed_events[0].job.error_message or "")
+    assert orchestrator._pause_requested is False
+    assert orchestrator._verification_abort_message is None
+
+
+def test_process_file_verify_output_failure_requests_pause(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    source = input_dir / "video.mp4"
+    source.write_bytes(b"a" * 1000)
+
+    config = _make_config(
+        use_exif=False,
+        copy_metadata=False,
+        verify_fail_action="pause",
+    )
+
+    ffprobe = MagicMock()
+    ffprobe.get_stream_info.return_value = {
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "fps": 30.0,
+    }
+
+    ffmpeg = MagicMock()
+
+    def fake_compress(job, job_config, use_gpu=False, rotate=None, shutdown_event=None, input_path=None, **kwargs):
+        job.status = JobStatus.COMPLETED
+        job.output_path.write_bytes(b"b" * 600)
+
+    ffmpeg.compress.side_effect = fake_compress
+
+    exif = MagicMock()
+    exif.extract_tags.return_value = {"XMP:VBCEncoder": "NVENC"}
+
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=FileScanner([".mp4"], 0),
+        exif_adapter=exif,
+        ffprobe_adapter=ffprobe,
+        ffmpeg_adapter=ffmpeg,
+    )
+    orchestrator._check_and_fix_color_space = MagicMock(return_value=(source, None))
+    orchestrator._write_vbc_tags = MagicMock()
+
+    video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
+    orchestrator._process_file(video_file, input_dir)
+
+    assert orchestrator._pause_requested is True
+    assert orchestrator._pause_message is not None
+
+
+def test_process_file_verify_output_failure_requests_exit(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    source = input_dir / "video.mp4"
+    source.write_bytes(b"a" * 1000)
+
+    config = _make_config(
+        use_exif=False,
+        copy_metadata=False,
+        verify_fail_action="exit",
+    )
+
+    ffprobe = MagicMock()
+    ffprobe.get_stream_info.return_value = {
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "fps": 30.0,
+    }
+
+    ffmpeg = MagicMock()
+
+    def fake_compress(job, job_config, use_gpu=False, rotate=None, shutdown_event=None, input_path=None, **kwargs):
+        job.status = JobStatus.COMPLETED
+        job.output_path.write_bytes(b"b" * 600)
+
+    ffmpeg.compress.side_effect = fake_compress
+
+    exif = MagicMock()
+    exif.extract_tags.return_value = {"XMP:VBCEncoder": "NVENC"}
+
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=FileScanner([".mp4"], 0),
+        exif_adapter=exif,
+        ffprobe_adapter=ffprobe,
+        ffmpeg_adapter=ffmpeg,
+    )
+    orchestrator._check_and_fix_color_space = MagicMock(return_value=(source, None))
+    orchestrator._write_vbc_tags = MagicMock()
+
+    video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
+    orchestrator._process_file(video_file, input_dir)
+
+    assert orchestrator._shutdown_requested is True
+    assert orchestrator._verification_abort_message is not None
+
+
 def test_run_refresh_adds_new_files(monkeypatch, tmp_path):
     config = _make_config(use_exif=False, copy_metadata=False, prefetch_factor=1)
     bus = EventBus()

@@ -14,6 +14,7 @@ from vbc.domain.events import (
     JobFailed,
     JobProgressUpdated,
     JobStarted,
+    ProcessingPausedOnError,
     ProcessingFinished,
     QueueUpdated,
     RequestShutdown,
@@ -336,6 +337,19 @@ def test_ui_manager_queue_action_and_finish(tmp_path):
 
     bus.publish(ProcessingFinished())
     assert state.finished is True
+
+
+def test_ui_manager_paused_on_error_sets_error_wait_state():
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+
+    bus.publish(ProcessingPausedOnError(message="Verification failed"))
+
+    assert state.waiting_for_input is True
+    assert state.error_paused is True
+    assert state.error_status_text == "ERROR"
+    assert state.error_message == "Verification failed"
 
 
 def test_ui_manager_cycle_logs_page_only_when_logs_tab_active(tmp_path):

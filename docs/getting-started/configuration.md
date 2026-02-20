@@ -91,6 +91,7 @@ general:
 
   # === Error Handling ===
   clean_errors: false           # Remove .err markers on startup
+  verify_fail_action: false     # false | log | pause | exit
 
   # === UI/Display ===
   strip_unicode_display: true   # Replace emoji/unicode with '?' in UI
@@ -526,6 +527,20 @@ Dashboard display settings.
   - `false`: Skip files with `.err` markers
   - `true`: Delete `.err` files and retry compression
 
+#### `verify_fail_action`
+- **Type**: String
+- **Default**: `false`
+- **CLI**: `--verify-fail-action`
+- **Values**:
+  - `false`: disable output verification
+  - `log`: mark job as failed and continue
+  - `pause`: mark job as failed and pause queue with `ERROR` status (wait for `R`/`S`)
+  - `exit`: mark job as failed and terminate processing with error
+- **Verification checks** (when mode is not `false`):
+  - `ffprobe` can read output without errors
+  - VBC tags exist: `VBCOriginalName`, `VBCOriginalSize`, `VBCQuality`,
+    `VBCOriginalBitrate`, `VBCEncoder`, `VBCFinishedAt`
+
 #### `repair_corrupted_flv`
 - **Type**: Boolean
 - **Default**: false
@@ -601,6 +616,7 @@ Only a subset of config keys can be overridden via CLI flags:
 - `general.queue_sort`, `general.queue_seed` → `--queue-sort`, `--queue-seed`
 - `general.log_path` → `--log-path`
 - `general.clean_errors` → `--clean-errors`
+- `general.verify_fail_action` → `--verify-fail-action`
 - `general.skip_av1` → `--skip-av1`
 - `general.min_size_bytes` → `--min-size`
 - `general.min_compression_ratio` → `--min-ratio`
@@ -643,7 +659,7 @@ VBC scans input directories for `VBC.YAML` and applies the **nearest ancestor** 
 
 **Allowed `general` keys:** `gpu`, `cpu_fallback`, `ffmpeg_cpu_threads`, `copy_metadata`,
 `use_exif`, `filter_cameras`, `dynamic_quality`, `quality_mode`, `bps`, `minrate`, `maxrate`, `rate_target_max_bps`,
-`extensions`, `min_size_bytes`, `clean_errors`, `skip_av1`, `manual_rotation`,
+`extensions`, `min_size_bytes`, `clean_errors`, `verify_fail_action`, `skip_av1`, `manual_rotation`,
 `min_compression_ratio`, `debug`.
 
 **Special key:** `cq` (int 0–63) overrides quality for both GPU and CPU encoder args.
