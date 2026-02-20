@@ -380,7 +380,7 @@ def compress(
         ui_state.current_threads = config.general.threads
         ui_state.strip_unicode_display = config.general.strip_unicode_display
         ui_state.ui_title = "VBC - demo" if demo else "VBC"
-        ui_state.dirs_disabled_entries = list(config.disabled_input_dirs or [])
+        ui_state.dirs_disabled_entries = [] if demo else list(config.disabled_input_dirs or [])
 
         start_time = datetime.now()
 

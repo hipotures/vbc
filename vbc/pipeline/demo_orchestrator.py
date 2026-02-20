@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 from vbc.config.models import AppConfig, DemoConfig, DemoInputFolder
 from vbc.domain.events import (
     ActionMessage,
+    DiscoveryErrorEntry,
     DiscoveryFinished,
     HardwareCapabilityExceeded,
     InterruptRequested,
@@ -418,12 +419,29 @@ class DemoOrchestrator:
 
         stats = self._build_discovery_stats(len(files))
         folder_count = len(self.demo_config.input_folders) if self.demo_config.input_folders else 1
+
+        err_messages = [
+            "File is corrupted or unreadable (ffprobe failed)",
+            "Permission denied: cannot open file for reading",
+            "Unsupported container format",
+            "File truncated or incomplete",
+        ]
+        ignored_err_entries = [
+            DiscoveryErrorEntry(
+                path=Path(f"DEMO/error_{i + 1:03d}.mp4"),
+                size_bytes=None,
+                error_message=err_messages[i % len(err_messages)],
+            )
+            for i in range(stats["ignored_err"])
+        ]
+
         self.event_bus.publish(DiscoveryFinished(
             files_found=stats["files_found"],
             files_to_process=stats["files_to_process"],
             already_compressed=stats["already_compressed"],
             ignored_small=stats["ignored_small"],
             ignored_err=stats["ignored_err"],
+            ignored_err_entries=ignored_err_entries,
             ignored_av1=0,
             source_folders_count=max(1, folder_count),
         ))
