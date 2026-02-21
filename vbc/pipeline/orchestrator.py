@@ -1402,6 +1402,32 @@ class Orchestrator:
                 self.event_bus.publish(JobFailed(job=job, error_message=err_msg))
                 return
 
+            # Reject files with invalid source video dimensions early.
+            try:
+                src_width = int(stream_info.get("width") or 0)
+                src_height = int(stream_info.get("height") or 0)
+            except (TypeError, ValueError):
+                src_width = 0
+                src_height = 0
+            if src_width <= 0 or src_height <= 0:
+                err_msg = (
+                    f"Invalid source video dimensions from ffprobe: "
+                    f"width={src_width}, height={src_height}. Skipped."
+                )
+                try:
+                    err_path.write_text(err_msg)
+                except Exception:
+                    pass
+                self.logger.error(f"Corrupted file detected (invalid dimensions): {filename} - {err_msg}")
+                job = CompressionJob(
+                    source_file=video_file,
+                    status=JobStatus.FAILED,
+                    output_path=output_path,
+                    error_message=err_msg,
+                )
+                self.event_bus.publish(JobFailed(job=job, error_message=err_msg))
+                return
+
             input_path, temp_fixed_file = self._check_and_fix_color_space(video_file.path, output_path, stream_info)
 
             # 1. Metadata & Decision (using thread-safe cache)

@@ -334,6 +334,48 @@ def test_process_file_ffprobe_failure_writes_err(tmp_path):
     assert events[0].job.status == JobStatus.FAILED
 
 
+def test_process_file_invalid_dimensions_writes_err(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+
+    source = input_dir / "invalid_dims.mp4"
+    source.write_bytes(b"x" * 200)
+
+    config = _make_config(use_exif=False, copy_metadata=False)
+    bus = EventBus()
+    events = []
+    bus.subscribe(JobFailed, lambda e: events.append(e))
+
+    ffprobe = MagicMock()
+    ffprobe.get_stream_info.return_value = {
+        "width": 0,
+        "height": 0,
+        "codec": "h264",
+        "fps": 30.0,
+    }
+    ffmpeg = MagicMock()
+
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=FileScanner([".mp4"], 0),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=ffprobe,
+        ffmpeg_adapter=ffmpeg,
+    )
+
+    video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
+    orchestrator._process_file(video_file, input_dir)
+
+    output_dir = input_dir.with_name("input_out")
+    err_path = output_dir / "invalid_dims.err"
+    assert err_path.exists()
+    assert "Invalid source video dimensions" in err_path.read_text()
+    assert events
+    assert events[0].job.status == JobStatus.FAILED
+    assert ffmpeg.compress.call_count == 0
+
+
 def test_process_file_success_ratio_keeps_original(tmp_path):
     input_dir = tmp_path / "input"
     input_dir.mkdir()

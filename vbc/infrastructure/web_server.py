@@ -138,6 +138,15 @@ def _quality_str(job: object) -> str:
     return ""
 
 
+def _compact_activity_error(error_message: object) -> str:
+    """Shorten verbose verification errors for Activity Feed readability."""
+    text = str(error_message or "error").replace("\n", " ").strip()
+    marker = "No video stream found in "
+    if "Verification failed:" in text and marker in text:
+        return f"{text.split(marker, 1)[0]}No video stream found"
+    return text
+
+
 # ---------------------------------------------------------------------------
 # Stats computation (one lock acquisition, returns plain Python types)
 # ---------------------------------------------------------------------------
@@ -443,7 +452,7 @@ def _vm_activity(s: dict) -> dict:
             stat_parts.append(dur)
             stat_str = " \u2022 ".join(stat_parts)
         elif status == "FAILED":
-            error = getattr(job, "error_message", None) or "error"
+            error = _compact_activity_error(getattr(job, "error_message", None))
         elif status != "INTERRUPTED":
             stat_str = status
 

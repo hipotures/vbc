@@ -248,6 +248,15 @@ class Dashboard:
         part_len = (max_len - 1) // 2
         return f"{filename[:part_len]}…{filename[-part_len:]}"
 
+    @staticmethod
+    def _compact_activity_error(error_message: str) -> str:
+        """Shorten verbose verification errors for Activity Feed readability."""
+        text = (error_message or "error").replace("\n", " ").strip()
+        marker = "No video stream found in "
+        if "Verification failed:" in text and marker in text:
+            return f"{text.split(marker, 1)[0]}No video stream found"
+        return text
+
     def _format_logs_file_line(self, entry) -> str:
         """Format first line in Logs tab: file and best-effort metadata."""
         parts = entry.path.parts
@@ -590,7 +599,7 @@ class Dashboard:
 
         elif job.status == JobStatus.FAILED:
             icon = "[red]✗[/]"
-            err = job.error_message or "error"
+            err = self._compact_activity_error(job.error_message or "error")
             if level == "A":
                 filename_max = max(25, panel_w - 3)
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
