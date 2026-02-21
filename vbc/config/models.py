@@ -387,6 +387,25 @@ class WebServerConfig(BaseModel):
     host: str = "0.0.0.0"
 
 
+class InputDirEntry(BaseModel):
+    """Configured input directory entry with enabled/disabled state."""
+
+    path: str
+    enabled: bool = True
+
+    @field_validator("path", mode="before")
+    @classmethod
+    def normalize_path(cls, v: str) -> str:
+        if v is None:
+            raise ValueError("input_dirs.path cannot be null.")
+        cleaned = str(v).strip()
+        if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in ('"', "'"):
+            cleaned = cleaned[1:-1].strip()
+        if not cleaned:
+            raise ValueError("input_dirs.path cannot be empty.")
+        return cleaned
+
+
 class AppConfig(BaseModel):
     """Top-level VBC application configuration.
 
@@ -394,14 +413,14 @@ class AppConfig(BaseModel):
 
     Directory mapping modes:
     1. Suffix mode: input_dirs + suffix_output_dirs (e.g., /videos -> /videos_out)
-    2. Explicit mode: input_dirs[i] -> output_dirs[i] (1:1 pairing required)
+    2. Explicit mode: enabled input_dirs[i] -> output_dirs[i] (1:1 pairing required)
 
     Attributes:
         general: Core compression settings.
-        input_dirs: List of input directories to scan (empty = must provide via CLI).
-        output_dirs: List of output directories (empty = use suffix mode).
+        input_dirs: Ordered list of input directory entries (path + enabled state).
+        output_dirs: List of output directories for enabled input_dirs (empty = suffix mode).
         suffix_output_dirs: Suffix for auto-generated output dirs (default "_out").
-        errors_dirs: List of .err marker directories (empty = use suffix mode).
+        errors_dirs: List of .err marker directories for enabled input_dirs (empty = suffix mode).
         suffix_errors_dirs: Suffix for auto-generated error dirs (default "_err").
         autorotate: Filename pattern-based rotation rules.
         gpu_config: GPU monitoring configuration.
@@ -412,8 +431,7 @@ class AppConfig(BaseModel):
     """
 
     general: GeneralConfig
-    input_dirs: List[str] = Field(default_factory=list)
-    disabled_input_dirs: List[str] = Field(default_factory=list)
+    input_dirs: List[InputDirEntry] = Field(default_factory=list)
     output_dirs: List[str] = Field(default_factory=list)
     suffix_output_dirs: Optional[str] = Field(default="_out")
     errors_dirs: List[str] = Field(default_factory=list)
@@ -440,6 +458,16 @@ class AppConfig(BaseModel):
             return None
         cleaned = str(v).strip()
         return cleaned or None
+
+    @field_validator("input_dirs")
+    @classmethod
+    def validate_unique_input_dir_paths(cls, v: List[InputDirEntry]) -> List[InputDirEntry]:
+        seen = set()
+        for entry in v:
+            if entry.path in seen:
+                raise ValueError(f"Duplicate input_dirs path: {entry.path}")
+            seen.add(entry.path)
+        return v
 
     @model_validator(mode="after")
     def validate_output_dir_settings(self):

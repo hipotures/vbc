@@ -383,14 +383,19 @@ Create configuration file for persistent settings:
 
 # --- Input/Output Settings ---
 
-# List of directories to scan for videos.
+# Ordered list of input directories.
 # CLI argument overrides this (no merge).
+# UI preserves this exact order.
 input_dirs:
-  - /path/to/videos
-  - /another/path
+  - path: /path/to/videos
+    enabled: true
+  - path: /another/path
+    enabled: true
+  - path: /disabled/path
+    enabled: false
 
-# Explicit output directories (one per input directory, in order).
-# Must have the same count as input_dirs.
+# Explicit output directories (one per enabled input directory, in order).
+# Must have the same count as enabled input_dirs entries.
 # Cannot be used if suffix_output_dirs is set.
 output_dirs: []
 
@@ -399,7 +404,7 @@ output_dirs: []
 # Default: "_out"
 suffix_output_dirs: "_out"
 
-# Explicit directories for failed files (one per input directory, in order).
+# Explicit directories for failed files (one per enabled input directory, in order).
 # Cannot be used if suffix_errors_dirs is set.
 errors_dirs: []
 
@@ -617,7 +622,10 @@ autorotate:
 **Mode 1: Suffix (Default)**
 ```yaml
 input_dirs:
-  - /videos
+  - path: /videos
+    enabled: true
+  - path: /archive
+    enabled: false
 suffix_output_dirs: _out       # Creates /videos_out
 suffix_errors_dirs: _err       # Creates /videos_err
 ```
@@ -625,8 +633,10 @@ suffix_errors_dirs: _err       # Creates /videos_err
 **Mode 2: Explicit (1:1 Pairing)**
 ```yaml
 input_dirs:
-  - /videos
-  - /drone_footage
+  - path: /videos
+    enabled: true
+  - path: /drone_footage
+    enabled: true
 output_dirs:
   - /compressed/videos
   - /compressed/drone

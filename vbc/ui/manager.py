@@ -470,11 +470,7 @@ class UIManager:
                 return
 
             # Check total directory limit
-            total = (
-                len(self.state.io_input_dir_stats)
-                + len(self.state.dirs_disabled_entries)
-                + len(self.state.dirs_pending_add)
-            )
+            total = len(self.state.dirs_config_entries) + len(self.state.dirs_pending_add)
             if total >= DirsOverlay.MAX_DIRS:
                 self.state.set_last_action(
                     f"Dirs limit reached ({DirsOverlay.MAX_DIRS} max). Remove a directory first."
@@ -482,11 +478,7 @@ class UIManager:
                 return
 
             # Skip duplicates
-            existing = (
-                {e for _, e, _, _ in self.state.io_input_dir_stats}
-                | set(self.state.dirs_disabled_entries)
-                | set(self.state.dirs_pending_add)
-            )
+            existing = {entry for entry, _ in self.state.dirs_config_entries} | set(self.state.dirs_pending_add)
             if path in existing:
                 self.state.set_last_action(f"Directory already in list: {path}")
                 return
@@ -502,68 +494,54 @@ class UIManager:
     def on_dirs_apply_changes(self, event: DirsApplyChanges):
         """Apply all pending Dirs changes, persist to YAML, and trigger re-scan."""
         with self.state._lock:
-            current_active = [entry for _, entry, _, _ in self.state.io_input_dir_stats]
-            current_disabled = list(self.state.dirs_disabled_entries)
+            current_entries = list(self.state.dirs_config_entries)
             pending_toggle = dict(self.state.dirs_pending_toggle)
             pending_add = list(self.state.dirs_pending_add)
             pending_remove = set(self.state.dirs_pending_remove)
+            previous_stats = {
+                entry: (label, count, size)
+                for label, entry, count, size in self.state.io_input_dir_stats
+            }
 
-        # Compute new active list
-        new_active: list = []
-        for d in current_active:
-            if d in pending_remove:
+        # Compute new ordered entries
+        new_entries: list = []
+        for path, enabled in current_entries:
+            if path in pending_remove:
                 continue
-            if pending_toggle.get(d) is False:
-                continue  # toggled off → goes to disabled
-            new_active.append(d)
-        for d in current_disabled:
-            if d in pending_remove:
-                continue
-            if pending_toggle.get(d) is True:
-                new_active.append(d)  # toggled on → becomes active
-        for d in pending_add:
-            if d not in pending_remove:
-                new_active.append(d)
-
-        # Compute new disabled list
-        new_disabled: list = []
-        for d in current_disabled:
-            if d in pending_remove:
-                continue
-            if pending_toggle.get(d) is True:
-                continue  # moved to active
-            new_disabled.append(d)
-        for d in current_active:
-            if d in pending_remove:
-                continue
-            if pending_toggle.get(d) is False:
-                new_disabled.append(d)  # toggled off → becomes disabled
+            new_entries.append((path, pending_toggle.get(path, enabled)))
+        for path in pending_add:
+            if path not in pending_remove:
+                new_entries.append((path, True))
+        new_active = [path for path, enabled in new_entries if enabled]
 
         # Persist to YAML
         if self.config_path:
             try:
                 from vbc.config.loader import save_dirs_config
-                save_dirs_config(self.config_path, new_active, new_disabled)
+                serialized_entries = [
+                    {"path": path, "enabled": enabled}
+                    for path, enabled in new_entries
+                ]
+                save_dirs_config(self.config_path, serialized_entries)
             except Exception as exc:
                 self.state.set_last_action(f"ERROR saving config: {exc}")
                 return
 
         # Update state
-        new_disabled_set = set(new_disabled)
-        existing_active = {entry for _, entry, _, _ in self.state.io_input_dir_stats}
+        rebuilt_active_stats = []
+        for path, enabled in new_entries:
+            if not enabled:
+                continue
+            prev = previous_stats.get(path)
+            if prev is None:
+                rebuilt_active_stats.append((STATUS_OK, path, None, None))
+            else:
+                label, count, size = prev
+                rebuilt_active_stats.append((label, path, count, size))
+
         with self.state._lock:
-            self.state.dirs_disabled_entries = new_disabled
-            # Remove disabled/removed dirs from io_input_dir_stats.
-            self.state.io_input_dir_stats = [
-                (label, entry, count, size)
-                for label, entry, count, size in self.state.io_input_dir_stats
-                if entry not in new_disabled_set and entry not in pending_remove
-            ]
-            # Add newly-activated dirs (were disabled, now active) to io_input_dir_stats.
-            for d in new_active:
-                if d not in existing_active:
-                    from vbc.config.input_dirs import STATUS_OK
-                    self.state.io_input_dir_stats.append((STATUS_OK, d, None, None))
+            self.state.dirs_config_entries = new_entries
+            self.state.io_input_dir_stats = rebuilt_active_stats
             self.state.dirs_pending_toggle.clear()
             self.state.dirs_pending_add.clear()
             self.state.dirs_pending_remove.clear()
@@ -571,7 +549,7 @@ class UIManager:
             self.state.dirs_input_buffer = ""
 
         n_active = len(new_active)
-        n_disabled = len(new_disabled)
+        n_disabled = len(new_entries) - n_active
         self.state.set_last_action(
             f"Dirs saved: {n_active} active, {n_disabled} disabled"
         )

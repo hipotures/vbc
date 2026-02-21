@@ -13,7 +13,7 @@ uv run vbc [INPUT_DIR] [OPTIONS]
 ### `INPUT_DIR`
 
 Optional. Directory containing videos to compress.
-If omitted, VBC uses `input_dirs` from the config file (CLI overrides config, no merge).
+If omitted, VBC uses enabled entries (`enabled: true`) from `input_dirs` in config (CLI overrides config, no merge).
 
 ```bash
 uv run vbc /path/to/videos

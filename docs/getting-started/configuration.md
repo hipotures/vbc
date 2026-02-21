@@ -20,8 +20,12 @@ This file controls simulated file counts, size distribution, processing speed, a
 
 ```yaml
 input_dirs:
-  - /path/to/videos
-  - /path/to/folder with spaces
+  - path: /path/to/videos
+    enabled: true
+  - path: /path/to/folder with spaces
+    enabled: true
+  - path: /path/to/disabled-folder
+    enabled: false
 
 # When using output_dirs, set suffix_output_dirs to null.
 output_dirs:
@@ -352,23 +356,25 @@ Dashboard display settings.
 ### Input/Output
 
 #### `input_dirs`
-- **Type**: List of strings
+- **Type**: List of objects (`{path: string, enabled: bool}`)
 - **Default**: `[]` (empty)
-- **Description**: Default input directories when no CLI input is provided
+- **Description**: Ordered input directory entries used when no CLI input is provided
 - **Behavior**:
   - CLI input overrides config input (no merge)
-  - Duplicates ignored (first occurrence wins)
+  - Only entries with `enabled: true` are processed
+  - UI order is exactly the same as YAML order
+  - Duplicate `path` values are rejected (startup validation error)
   - Missing or inaccessible directories are skipped
   - Startup fails if no valid directories remain
-  - Limits: max 50 directories, max 150 characters per entry
+  - Limits: max 50 enabled directories, max 150 characters per path
 
 #### `output_dirs`
 - **Type**: List of strings
 - **Default**: `[]` (empty)
-- **Description**: Explicit output directories (one per input directory, in order)
+- **Description**: Explicit output directories (one per enabled input directory, in order)
 - **Rules**:
   - Must exist and be writable
-  - Count must match input directories
+  - Count must match enabled input directories
   - Cannot be used with `suffix_output_dirs` (set it to `null`)
 
 #### `suffix_output_dirs`
@@ -382,10 +388,10 @@ Dashboard display settings.
 #### `errors_dirs`
 - **Type**: List of strings
 - **Default**: `[]` (empty)
-- **Description**: Explicit directories for failed files (one per input directory, in order)
+- **Description**: Explicit directories for failed files (one per enabled input directory, in order)
 - **Rules**:
   - Must exist and be writable
-  - Count must match input directories
+  - Count must match enabled input directories
   - Cannot be used with `suffix_errors_dirs` (set it to `null`)
 
 #### `suffix_errors_dirs`

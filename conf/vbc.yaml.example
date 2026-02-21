@@ -3,14 +3,19 @@
 
 # --- Input/Output Settings ---
 
-# List of directories to scan for videos.
+# Ordered list of input directories.
 # CLI argument overrides this (no merge).
+# UI preserves this exact order.
 input_dirs:
-  - /path/to/videos
-  - /another/path
+  - path: /path/to/videos
+    enabled: true
+  - path: /another/path
+    enabled: true
+  - path: /disabled/path
+    enabled: false
 
-# Explicit output directories (one per input directory, in order).
-# Must have the same count as input_dirs.
+# Explicit output directories (one per enabled input directory, in order).
+# Must have the same count as enabled input_dirs entries.
 # Cannot be used if suffix_output_dirs is set.
 output_dirs: []
 
@@ -19,7 +24,7 @@ output_dirs: []
 # Default: "_out"
 suffix_output_dirs: "_out"
 
-# Explicit directories for failed files (one per input directory, in order).
+# Explicit directories for failed files (one per enabled input directory, in order).
 # Cannot be used if suffix_errors_dirs is set.
 errors_dirs: []
 

@@ -1,4 +1,5 @@
 import pytest
+import yaml
 from pydantic import ValidationError
 from vbc.config.models import AppConfig, GeneralConfig, AutoRotateConfig
 
@@ -41,6 +42,30 @@ def test_config_defaults():
     assert "-crf 32" in config.cpu_encoder.common_args
     assert config.errors_dirs == []
     assert config.suffix_errors_dirs == "_err"
+
+
+def test_input_dirs_accepts_object_format():
+    config = AppConfig(
+        general=GeneralConfig(threads=1, extensions=[".mp4"]),
+        input_dirs=[
+            {"path": "/tmp/in_a", "enabled": True},
+            {"path": "/tmp/in_b", "enabled": False},
+        ],
+    )
+    assert config.input_dirs[0].path == "/tmp/in_a"
+    assert config.input_dirs[0].enabled is True
+    assert config.input_dirs[1].enabled is False
+
+
+def test_input_dirs_rejects_duplicates():
+    with pytest.raises(ValidationError):
+        AppConfig(
+            general=GeneralConfig(threads=1, extensions=[".mp4"]),
+            input_dirs=[
+                {"path": "/tmp/in_a", "enabled": True},
+                {"path": "/tmp/in_a", "enabled": False},
+            ],
+        )
 
 
 def test_output_dirs_conflict_with_suffix():
@@ -193,3 +218,70 @@ autorotate:
     assert config.general.threads == 8
     assert "-cq 30" in config.gpu_encoder.common_args
     assert config.autorotate.patterns["test.*"] == 90
+
+
+def test_load_config_rejects_legacy_input_dirs_format(tmp_path):
+    d = tmp_path / "conf"
+    d.mkdir()
+    f = d / "vbc.yaml"
+    f.write_text(
+        """
+general: {}
+input_dirs:
+  - /tmp/a
+"""
+    )
+    from vbc.config.loader import load_config
+    with pytest.raises(ValueError, match="Legacy input_dirs list\\[str\\] format"):
+        load_config(f)
+
+
+def test_load_config_rejects_disabled_input_dirs_key(tmp_path):
+    d = tmp_path / "conf"
+    d.mkdir()
+    f = d / "vbc.yaml"
+    f.write_text(
+        """
+general: {}
+input_dirs:
+  - path: /tmp/a
+    enabled: true
+disabled_input_dirs:
+  - /tmp/b
+"""
+    )
+    from vbc.config.loader import load_config
+    with pytest.raises(ValueError, match="disabled_input_dirs"):
+        load_config(f)
+
+
+def test_save_dirs_config_writes_unified_input_dirs(tmp_path):
+    d = tmp_path / "conf"
+    d.mkdir()
+    f = d / "vbc.yaml"
+    f.write_text(
+        """
+general: {}
+input_dirs:
+  - path: /tmp/old
+    enabled: true
+disabled_input_dirs:
+  - /tmp/legacy
+"""
+    )
+    from vbc.config.loader import save_dirs_config
+
+    save_dirs_config(
+        f,
+        [
+            {"path": "/tmp/a", "enabled": True},
+            {"path": "/tmp/b", "enabled": False},
+        ],
+    )
+
+    data = yaml.safe_load(f.read_text())
+    assert data["input_dirs"] == [
+        {"path": "/tmp/a", "enabled": True},
+        {"path": "/tmp/b", "enabled": False},
+    ]
+    assert "disabled_input_dirs" not in data

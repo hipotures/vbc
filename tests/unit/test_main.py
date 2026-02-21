@@ -191,7 +191,11 @@ def test_main_uses_config_input_dirs_when_cli_missing(tmp_path, monkeypatch):
     def fake_load_config(_path):
         return AppConfig(
             general=GeneralConfig(threads=2, gpu=True, use_exif=False, copy_metadata=False),
-            input_dirs=[str(input_dir_a), str(input_dir_b), str(input_dir_a)],
+            input_dirs=[
+                {"path": str(input_dir_a), "enabled": True},
+                {"path": str(tmp_path / "input_disabled"), "enabled": False},
+                {"path": str(input_dir_b), "enabled": True},
+            ],
             autorotate=AutoRotateConfig(patterns={}),
         )
 

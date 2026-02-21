@@ -33,7 +33,6 @@ from vbc.ui.dashboard import Dashboard
 from vbc.ui.keyboard import KeyboardListener
 from vbc.config.input_dirs import (
     parse_cli_input_dirs,
-    normalize_input_dir_entries,
     normalize_output_dir_entries,
     normalize_errors_dir_entries,
     dedupe_preserve_order,
@@ -242,6 +241,7 @@ def compress(
 
         input_dir_status_entries: List[Tuple[str, str]] = []
         requested_input_dirs: List[str] = []
+        configured_input_entries_for_ui: List[Tuple[str, bool]] = []
         output_dir_map: dict = {}
         errors_dir_map: dict = {}
         output_dirs_entries: List[str] = []
@@ -252,7 +252,12 @@ def compress(
             if input_dirs_arg is not None:
                 requested_input_dirs = cli_input_dirs
             else:
-                requested_input_dirs = normalize_input_dir_entries(config.input_dirs or [])
+                configured_input_entries_for_ui = [
+                    (entry.path, entry.enabled) for entry in (config.input_dirs or [])
+                ]
+                requested_input_dirs = [
+                    entry.path for entry in (config.input_dirs or []) if entry.enabled
+                ]
 
             def align_dir_entries(dir_entries: List[str], label: str) -> List[str]:
                 if not dir_entries:
@@ -281,6 +286,8 @@ def compress(
             output_dirs_entries = align_dir_entries(output_dirs_entries, "output_dirs")
             errors_dirs_entries = align_dir_entries(errors_dirs_entries, "errors_dirs")
             requested_input_dirs = dedupe_preserve_order(requested_input_dirs)
+            if input_dirs_arg is not None:
+                configured_input_entries_for_ui = [(entry, True) for entry in requested_input_dirs]
             suffix_output_dirs = config.suffix_output_dirs
             suffix_errors_dirs = config.suffix_errors_dirs
             if input_dirs_arg is not None and not requested_input_dirs:
@@ -400,7 +407,7 @@ def compress(
         ui_state.current_threads = config.general.threads
         ui_state.strip_unicode_display = config.general.strip_unicode_display
         ui_state.ui_title = "VBC - demo" if demo else "VBC"
-        ui_state.dirs_disabled_entries = [] if demo else list(config.disabled_input_dirs or [])
+        ui_state.dirs_config_entries = [] if demo else list(configured_input_entries_for_ui)
 
         start_time = datetime.now()
 

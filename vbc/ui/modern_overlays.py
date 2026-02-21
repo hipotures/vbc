@@ -1002,7 +1002,7 @@ class DirsOverlay:
 
     Entry status labels:
       [ON]  green  — currently active directory
-      [OFF] dim    — disabled (in disabled_input_dirs)
+      [OFF] dim    — currently disabled directory
       [ON*] yellow — pending add or pending enable
       [DEL] red    — pending deletion
       [~]   yellow — pending toggle (active→disabled or disabled→active)
