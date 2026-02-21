@@ -112,6 +112,7 @@ class UIState:
         self.dirs_pending_toggle: Dict[str, bool] = {}   # path → new enabled state (True=enable, False=disable)
         self.dirs_pending_add: List[str] = []
         self.dirs_pending_remove: Set[str] = set()
+        self.dirs_pending_order: List[str] = []          # staged row order (applies on [S])
         self.dirs_config_entries: List[Tuple[str, bool]] = []  # ordered config input_dirs: (path, enabled)
         self.dirs_error_msg: str = ""  # error shown inside Dirs overlay
 
@@ -210,6 +211,64 @@ class UIState:
                     self.last_action_time = None
             return self.last_action
 
+    def _dirs_base_order_unlocked(self) -> List[str]:
+        """Return default visible Dirs order (config entries + pending adds)."""
+        base = [path for path, _ in self.dirs_config_entries]
+        for path in self.dirs_pending_add:
+            if path not in base:
+                base.append(path)
+        return base
+
+    def _dirs_effective_order_unlocked(self) -> List[str]:
+        """Return visible Dirs order after staged reorder is applied."""
+        base = self._dirs_base_order_unlocked()
+        if not self.dirs_pending_order:
+            return base
+
+        base_set = set(base)
+        ordered: List[str] = []
+        seen: Set[str] = set()
+        for path in self.dirs_pending_order:
+            if path in base_set and path not in seen:
+                ordered.append(path)
+                seen.add(path)
+        for path in base:
+            if path not in seen:
+                ordered.append(path)
+        return ordered
+
+    def dirs_effective_order(self) -> List[str]:
+        """Return current row order used by Dirs UI (including staged reorder)."""
+        with self._lock:
+            return list(self._dirs_effective_order_unlocked())
+
+    def dirs_set_pending_order(self, ordered_paths: List[str]) -> None:
+        """Stage a new Dirs row order; clears staged order when equal to base order."""
+        with self._lock:
+            base = self._dirs_base_order_unlocked()
+            base_set = set(base)
+            normalized: List[str] = []
+            seen: Set[str] = set()
+            for path in ordered_paths:
+                if path in base_set and path not in seen:
+                    normalized.append(path)
+                    seen.add(path)
+            for path in base:
+                if path not in seen:
+                    normalized.append(path)
+
+            if normalized == base:
+                self.dirs_pending_order = []
+            else:
+                self.dirs_pending_order = normalized
+
+    def dirs_has_pending_changes(self) -> bool:
+        """Return True when Dirs tab contains any staged changes awaiting apply."""
+        with self._lock:
+            if self.dirs_pending_toggle or self.dirs_pending_add or self.dirs_pending_remove:
+                return True
+            return self._dirs_effective_order_unlocked() != self._dirs_base_order_unlocked()
+
     def dirs_get_all_entries(self) -> List[Tuple[str, str, Optional[int], Optional[int], Optional[str]]]:
         """Return combined list of (path, status, file_count, size_bytes, fs_status) for Dirs tab.
 
@@ -227,42 +286,45 @@ class UIState:
             entries: List[Tuple[str, str, Optional[int], Optional[int], Optional[str]]] = []
             from vbc.config.input_dirs import STATUS_OK, STATUS_MISSING
             stats_by_path = {entry: (fs, count, size) for fs, entry, count, size in self.io_input_dir_stats}
+            enabled_by_path = {path: enabled for path, enabled in self.dirs_config_entries}
+            effective_order = self._dirs_effective_order_unlocked()
+            pending_add_set = set(self.dirs_pending_add)
 
-            for path, enabled in self.dirs_config_entries:
-                fs_entry = stats_by_path.get(path)
-                if fs_entry is not None:
-                    fs, count, size = fs_entry
-                    fs_status = "ok" if fs == STATUS_OK else ("missing" if fs == STATUS_MISSING else "no_access")
-                else:
-                    import os as _os
-                    p = Path(path)
-                    if not p.exists():
-                        fs_status = "missing"
-                    elif not _os.access(p, _os.R_OK | _os.X_OK):
-                        fs_status = "no_access"
+            for path in effective_order:
+                if path in enabled_by_path:
+                    enabled = enabled_by_path[path]
+                    fs_entry = stats_by_path.get(path)
+                    if fs_entry is not None:
+                        fs, count, size = fs_entry
+                        fs_status = "ok" if fs == STATUS_OK else ("missing" if fs == STATUS_MISSING else "no_access")
                     else:
-                        fs_status = "ok"
-                    count, size = None, None
+                        import os as _os
+                        p = Path(path)
+                        if not p.exists():
+                            fs_status = "missing"
+                        elif not _os.access(p, _os.R_OK | _os.X_OK):
+                            fs_status = "no_access"
+                        else:
+                            fs_status = "ok"
+                        count, size = None, None
 
-                if path in self.dirs_pending_remove:
-                    entries.append((path, "pending_remove", count, size, fs_status))
+                    if path in self.dirs_pending_remove:
+                        entries.append((path, "pending_remove", count, size, fs_status))
+                        continue
+
+                    pending_enabled = self.dirs_pending_toggle.get(path)
+                    if pending_enabled is not None:
+                        if pending_enabled:
+                            entries.append((path, "pending_toggle_on", count, size, fs_status))
+                        else:
+                            entries.append((path, "pending_toggle_off", count, size, fs_status))
+                        continue
+
+                    entries.append((path, "active" if enabled else "disabled", count, size, fs_status))
                     continue
 
-                pending_enabled = self.dirs_pending_toggle.get(path)
-                if pending_enabled is not None:
-                    if pending_enabled:
-                        entries.append((path, "pending_toggle_on", count, size, fs_status))
-                    else:
-                        entries.append((path, "pending_toggle_off", count, size, fs_status))
-                    continue
-
-                entries.append((path, "active" if enabled else "disabled", count, size, fs_status))
-
-            # Pending add dirs (skip duplicates already in config list)
-            existing = {entry for entry, _ in self.dirs_config_entries}
-            for entry in self.dirs_pending_add:
-                if entry not in existing:
-                    entries.append((entry, "pending_add", None, None, None))
+                if path in pending_add_set:
+                    entries.append((path, "pending_add", None, None, None))
 
             return entries
 

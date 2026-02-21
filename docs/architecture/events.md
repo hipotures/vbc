@@ -307,6 +307,12 @@ class DirsCursorMove(Event):
     direction: int
 ```
 
+#### DirsSwapSelected
+```python
+class DirsSwapSelected(Event):
+    direction: int
+```
+
 #### DirsToggleSelected
 ```python
 class DirsToggleSelected(Event):

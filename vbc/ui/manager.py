@@ -11,7 +11,7 @@ from vbc.domain.events import (
     ProcessingPausedOnError,
     ThreadControlEvent, RequestShutdown, InterruptRequested,
     WaitingForInput, RefreshRequested, InputDirsChanged,
-    DirsCursorMove, DirsToggleSelected, DirsEnterAddMode, DirsMarkDelete,
+    DirsCursorMove, DirsSwapSelected, DirsToggleSelected, DirsEnterAddMode, DirsMarkDelete,
     DirsInputChar, DirsConfirmAdd, DirsCancelInput, DirsApplyChanges,
 )
 from vbc.config.input_dirs import STATUS_OK
@@ -65,6 +65,7 @@ class UIManager:
         self.bus.subscribe(WaitingForInput, self.on_waiting_for_input)
         # Dirs tab events
         self.bus.subscribe(DirsCursorMove, self.on_dirs_cursor_move)
+        self.bus.subscribe(DirsSwapSelected, self.on_dirs_swap_selected)
         self.bus.subscribe(DirsToggleSelected, self.on_dirs_toggle_selected)
         self.bus.subscribe(DirsEnterAddMode, self.on_dirs_enter_add_mode)
         self.bus.subscribe(DirsMarkDelete, self.on_dirs_mark_delete)
@@ -416,6 +417,27 @@ class UIManager:
                 else:
                     self.state.dirs_pending_toggle[path] = True
 
+    def on_dirs_swap_selected(self, event: DirsSwapSelected):
+        """Swap row under cursor with adjacent row in selected direction."""
+        with self.state._lock:
+            if not self.state.show_overlay or self.state.active_tab != "dirs":
+                return
+            if self.state.dirs_input_mode:
+                return
+            entries = self.state.dirs_get_all_entries()
+            if not entries or self.state.dirs_cursor >= len(entries):
+                return
+
+            src_idx = self.state.dirs_cursor
+            dst_idx = src_idx + event.direction
+            if dst_idx < 0 or dst_idx >= len(entries):
+                return
+
+            ordered_paths = [entry[0] for entry in entries]
+            ordered_paths[src_idx], ordered_paths[dst_idx] = ordered_paths[dst_idx], ordered_paths[src_idx]
+            self.state.dirs_set_pending_order(ordered_paths)
+            self.state.dirs_cursor = dst_idx
+
     def on_dirs_enter_add_mode(self, event: DirsEnterAddMode):
         """Enter add-path input mode."""
         with self.state._lock:
@@ -498,20 +520,39 @@ class UIManager:
             pending_toggle = dict(self.state.dirs_pending_toggle)
             pending_add = list(self.state.dirs_pending_add)
             pending_remove = set(self.state.dirs_pending_remove)
+            effective_order = self.state.dirs_effective_order()
             previous_stats = {
                 entry: (label, count, size)
                 for label, entry, count, size in self.state.io_input_dir_stats
             }
 
         # Compute new ordered entries
+        enabled_by_path = {path: enabled for path, enabled in current_entries}
+        pending_add_set = set(pending_add)
         new_entries: list = []
-        for path, enabled in current_entries:
-            if path in pending_remove:
+        seen_paths: set[str] = set()
+
+        for path in effective_order:
+            if path in seen_paths or path in pending_remove:
                 continue
+            seen_paths.add(path)
+            if path in enabled_by_path:
+                new_entries.append((path, pending_toggle.get(path, enabled_by_path[path])))
+            elif path in pending_add_set:
+                new_entries.append((path, True))
+
+        # Include leftovers defensively (should rarely happen, but keeps behavior robust).
+        for path, enabled in current_entries:
+            if path in seen_paths or path in pending_remove:
+                continue
+            seen_paths.add(path)
             new_entries.append((path, pending_toggle.get(path, enabled)))
         for path in pending_add:
-            if path not in pending_remove:
-                new_entries.append((path, True))
+            if path in seen_paths or path in pending_remove:
+                continue
+            seen_paths.add(path)
+            new_entries.append((path, True))
+
         new_active = [path for path, enabled in new_entries if enabled]
 
         # Persist to YAML
@@ -545,6 +586,7 @@ class UIManager:
             self.state.dirs_pending_toggle.clear()
             self.state.dirs_pending_add.clear()
             self.state.dirs_pending_remove.clear()
+            self.state.dirs_pending_order.clear()
             self.state.dirs_input_mode = False
             self.state.dirs_input_buffer = ""
 

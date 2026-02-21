@@ -160,6 +160,11 @@ class DirsCursorMove(Event):
     direction: int  # -1 = up, +1 = down
 
 
+class DirsSwapSelected(Event):
+    """Swap the entry under cursor with adjacent entry (-1 up, +1 down)."""
+    direction: int  # -1 = up, +1 = down
+
+
 class DirsToggleSelected(Event):
     """Toggle enabled/disabled state of the entry under cursor."""
     pass

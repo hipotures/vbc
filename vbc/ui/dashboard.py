@@ -1077,6 +1077,7 @@ class Dashboard:
             dirs_input_mode = self.state.dirs_input_mode
             dirs_input_buffer = self.state.dirs_input_buffer
             dirs_error_msg = self.state.dirs_error_msg
+            dirs_has_pending_changes = self.state.dirs_has_pending_changes()
         dirs_entries = self.state.dirs_get_all_entries()
 
         # Get console dimensions for responsive sizing
@@ -1175,6 +1176,7 @@ class Dashboard:
                 dirs_cursor,
                 dirs_input_mode,
                 dirs_input_buffer,
+                dirs_has_pending_changes,
                 suffix_output_dirs,
                 suffix_errors_dirs,
                 output_dir_lines,

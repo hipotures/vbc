@@ -8,7 +8,10 @@ from vbc.domain.events import (
     DiscoveryErrorEntry,
     DiscoveryFinished,
     DiscoveryStarted,
+    DirsApplyChanges,
+    DirsSwapSelected,
     HardwareCapabilityExceeded,
+    InputDirsChanged,
     InterruptRequested,
     JobCompleted,
     JobFailed,
@@ -17,6 +20,7 @@ from vbc.domain.events import (
     ProcessingPausedOnError,
     ProcessingFinished,
     QueueUpdated,
+    RefreshRequested,
     RequestShutdown,
     ThreadControlEvent,
 )
@@ -375,3 +379,86 @@ def test_ui_manager_cycle_logs_page_only_when_logs_tab_active(tmp_path):
     bus.publish(ToggleOverlayTab(tab="logs"))
     bus.publish(CycleLogsPage(direction=1))
     assert state.logs_page_index == 1
+
+
+def test_ui_manager_dirs_swap_moves_row_and_cursor():
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+
+    state.show_overlay = True
+    state.active_tab = "dirs"
+    state.dirs_config_entries = [
+        ("/a", True),
+        ("/b", False),
+        ("/c", True),
+    ]
+    state.dirs_cursor = 1
+
+    bus.publish(DirsSwapSelected(direction=-1))
+
+    order = [entry[0] for entry in state.dirs_get_all_entries()]
+    assert order == ["/b", "/a", "/c"]
+    assert state.dirs_cursor == 0
+    assert state.dirs_pending_order == ["/b", "/a", "/c"]
+    assert state.dirs_has_pending_changes() is True
+
+
+def test_ui_manager_dirs_swap_noop_at_boundaries():
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+
+    state.show_overlay = True
+    state.active_tab = "dirs"
+    state.dirs_config_entries = [
+        ("/a", True),
+        ("/b", True),
+    ]
+
+    state.dirs_cursor = 0
+    bus.publish(DirsSwapSelected(direction=-1))
+    assert [entry[0] for entry in state.dirs_get_all_entries()] == ["/a", "/b"]
+    assert state.dirs_pending_order == []
+
+    state.dirs_cursor = 1
+    bus.publish(DirsSwapSelected(direction=1))
+    assert [entry[0] for entry in state.dirs_get_all_entries()] == ["/a", "/b"]
+    assert state.dirs_pending_order == []
+
+
+def test_ui_manager_dirs_apply_changes_respects_staged_order_and_clears_pending():
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+
+    state.show_overlay = True
+    state.active_tab = "dirs"
+    state.dirs_config_entries = [
+        ("/a", True),
+        ("/b", False),
+        ("/c", True),
+    ]
+    state.dirs_pending_add = ["/d"]
+    state.dirs_pending_toggle = {"/b": True}
+    state.dirs_pending_remove = {"/c"}
+    state.dirs_set_pending_order(["/b", "/a", "/d", "/c"])
+
+    published: list = []
+    bus.subscribe(InputDirsChanged, lambda event: published.append(event))
+    bus.subscribe(RefreshRequested, lambda event: published.append(event))
+
+    bus.publish(DirsApplyChanges())
+
+    assert state.dirs_config_entries == [
+        ("/b", True),
+        ("/a", True),
+        ("/d", True),
+    ]
+    assert state.dirs_pending_toggle == {}
+    assert state.dirs_pending_add == []
+    assert state.dirs_pending_remove == set()
+    assert state.dirs_pending_order == []
+    assert state.dirs_has_pending_changes() is False
+    assert any(isinstance(event, InputDirsChanged) and event.active_dirs == ["/b", "/a", "/d"] for event in published)
+    assert any(isinstance(event, RefreshRequested) for event in published)

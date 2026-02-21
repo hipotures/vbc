@@ -14,6 +14,7 @@ from vbc.domain.events import (
     RequestShutdown,
     ThreadControlEvent,
     DirsCursorMove,
+    DirsSwapSelected,
     DirsToggleSelected,
     DirsEnterAddMode,
     DirsMarkDelete,
@@ -96,6 +97,20 @@ class KeyboardListener:
     def _dirs_input_mode(self) -> bool:
         """Return True when the Dirs add-path input mode is active."""
         return self._dirs_active() and self.state.dirs_input_mode  # type: ignore[union-attr]
+
+    def _dirs_has_pending_changes(self) -> bool:
+        """Return True when Dirs tab has staged changes awaiting apply."""
+        if self.state is None:
+            return False
+        checker = getattr(self.state, "dirs_has_pending_changes", None)
+        if callable(checker):
+            return bool(checker())
+        return bool(
+            getattr(self.state, "dirs_pending_add", None)
+            or getattr(self.state, "dirs_pending_remove", None)
+            or getattr(self.state, "dirs_pending_toggle", None)
+            or getattr(self.state, "dirs_pending_order", None)
+        )
 
     def _try_read(self, fd: int, timeout: float = 0.1) -> Optional[str]:
         """Non-blocking raw read directly from fd (bypasses Python's internal buffer).
@@ -180,9 +195,13 @@ class KeyboardListener:
         elif seq == '3~':  # Delete key: \x1b[3~
             if self._dirs_active():
                 self.event_bus.publish(DirsMarkDelete())
+        elif self._dirs_active() and ';2' in seq and seq.endswith(('A', 'B')):
+            # Shift+Arrow in Dirs tab swaps current row with adjacent row.
+            direction = -1 if seq.endswith('A') else 1
+            self.event_bus.publish(DirsSwapSelected(direction=direction))
+            return
         elif seq.endswith('A') or seq.endswith('B'):
-            # Modified arrows (e.g., Shift+Up = 1;2A) are parsed and consumed,
-            # but intentionally ignored for now to prevent accidental key leaks.
+            # Other modified arrows are parsed and consumed to prevent key leaks.
             return
         # All other sequences: silently ignored
 
@@ -241,11 +260,7 @@ class KeyboardListener:
                             continue
                         elif key in ('S', 's'):
                             # In dirs tab: S applies pending changes (if any)
-                            has_pending = bool(
-                                self.state.dirs_pending_add  # type: ignore[union-attr]
-                                or self.state.dirs_pending_remove  # type: ignore[union-attr]
-                                or self.state.dirs_pending_toggle  # type: ignore[union-attr]
-                            )
+                            has_pending = self._dirs_has_pending_changes()
                             if has_pending:
                                 self.event_bus.publish(DirsApplyChanges())
                             else:

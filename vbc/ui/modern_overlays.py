@@ -1016,6 +1016,7 @@ class DirsOverlay:
         cursor: int,
         input_mode: bool,
         input_buffer: str,
+        has_pending_changes: bool,
         suffix_output_dirs: Optional[str],
         suffix_errors_dirs: Optional[str],
         output_dir_lines: List[str],
@@ -1026,6 +1027,7 @@ class DirsOverlay:
         self.cursor = max(0, min(cursor, max(0, len(entries) - 1)))
         self.input_mode = input_mode
         self.input_buffer = input_buffer
+        self.has_pending_changes = has_pending_changes
         self.suffix_output_dirs = suffix_output_dirs
         self.suffix_errors_dirs = suffix_errors_dirs
         self.output_dir_lines = output_dir_lines
@@ -1180,13 +1182,20 @@ class DirsOverlay:
                 justify="center",
             )
         else:
+            if self.has_pending_changes:
+                blink_visible = int(time.monotonic() * 1) % 2 == 0
+                s_style = f"bold {COLORS['warning_yellow']}" if blink_visible else COLORS["dim"]
+                apply_badge = f"[{s_style} on {COLORS['border']}] S [/]"
+            else:
+                apply_badge = f"[white on {COLORS['border']}] S [/]"
+
             footer_hint = Text.from_markup(
                 f"[{COLORS['dim']}]"
                 f"[white on {COLORS['border']}] ↑↓ [/] navigate  "
                 f"[white on {COLORS['border']}] Space [/] toggle  "
                 f"[white on {COLORS['border']}] A [/] add  "
                 f"[white on {COLORS['border']}] Del [/] remove  "
-                f"[white on {COLORS['border']}] S [/] apply"
+                f"{apply_badge} apply"
                 f"[/]",
                 justify="center",
             )
@@ -1344,6 +1353,7 @@ def render_dirs_content(
     cursor: int,
     input_mode: bool,
     input_buffer: str,
+    has_pending_changes: bool,
     suffix_output_dirs: Optional[str],
     suffix_errors_dirs: Optional[str],
     output_dir_lines: List[str],
@@ -1357,6 +1367,7 @@ def render_dirs_content(
         cursor: Current cursor position (0-based).
         input_mode: True when add-path input mode is active.
         input_buffer: Current add-path input text.
+        has_pending_changes: True when staged Dirs changes require [S] apply.
         suffix_output_dirs: Output directory suffix (e.g. "_out").
         suffix_errors_dirs: Errors directory suffix (e.g. "_err").
         output_dir_lines: Explicit output directory paths (for non-suffix mode).
@@ -1367,6 +1378,7 @@ def render_dirs_content(
         cursor,
         input_mode,
         input_buffer,
+        has_pending_changes,
         suffix_output_dirs,
         suffix_errors_dirs,
         output_dir_lines,
