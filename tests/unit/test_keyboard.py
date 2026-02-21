@@ -1,6 +1,14 @@
 from unittest.mock import MagicMock
 
-from vbc.domain.events import ActionMessage, RefreshRequested, RequestShutdown, ThreadControlEvent
+from types import SimpleNamespace
+from vbc.domain.events import (
+    ActionMessage,
+    DirsEnterAddMode,
+    InterruptRequested,
+    RefreshRequested,
+    RequestShutdown,
+    ThreadControlEvent,
+)
 from vbc.ui.keyboard import (
     CycleLogsPage,
     CycleOverlayDim,
@@ -158,3 +166,41 @@ def test_keyboard_listener_start_stop_joins_thread(monkeypatch):
 
     listener.stop()
     assert listener._thread.joined
+
+
+def test_shift_arrow_up_in_dirs_does_not_trigger_add_mode(monkeypatch):
+    """Shift+Up CSI sequence should be fully consumed and not leak 'A' key."""
+    keys = ['\x1b', '[', '1', ';', '2', 'A', '\x03']
+    FAKE_FD = 42
+
+    class FakeStdin:
+        def isatty(self):
+            return True
+
+        def fileno(self):
+            return FAKE_FD
+
+    monkeypatch.setattr("vbc.ui.keyboard.sys.stdin", FakeStdin())
+
+    def fake_os_read(_fd, _n):
+        ch = keys.pop(0)
+        return ch.encode('utf-8')
+
+    monkeypatch.setattr("vbc.ui.keyboard.os.read", fake_os_read)
+
+    def fake_select(_read, _write, _err, _timeout):
+        return ([FAKE_FD], [], []) if keys else ([], [], [])
+
+    monkeypatch.setattr("vbc.ui.keyboard.select.select", fake_select)
+    monkeypatch.setattr("vbc.ui.keyboard.termios.tcgetattr", MagicMock(return_value="old"))
+    monkeypatch.setattr("vbc.ui.keyboard.termios.tcsetattr", MagicMock())
+    monkeypatch.setattr("vbc.ui.keyboard.tty.setcbreak", MagicMock())
+
+    bus = MagicMock()
+    state = SimpleNamespace(show_overlay=True, active_tab="dirs", dirs_input_mode=False)
+    listener = KeyboardListener(bus, state=state)
+    listener._run()
+
+    published = [call.args[0] for call in bus.publish.call_args_list]
+    assert any(isinstance(e, InterruptRequested) for e in published)
+    assert not any(isinstance(e, DirsEnterAddMode) for e in published)

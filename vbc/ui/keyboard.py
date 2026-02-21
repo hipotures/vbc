@@ -112,6 +112,33 @@ class KeyboardListener:
                 return None
         return None
 
+    @staticmethod
+    def _is_csi_final(ch: str) -> bool:
+        """Return True for a CSI final byte (ASCII range 0x40-0x7E)."""
+        return len(ch) == 1 and '@' <= ch <= '~'
+
+    def _read_csi_sequence(self, fd: int, first: str) -> str:
+        """Read the rest of a CSI sequence after ESC[ and return full payload.
+
+        Examples:
+        - Arrow up:      "A"
+        - Delete:        "3~"
+        - Shift+ArrowUp: "1;2A"
+        """
+        seq = first
+        if self._is_csi_final(first):
+            return seq
+
+        # Read bounded continuation bytes to avoid blocking on malformed input.
+        for _ in range(16):
+            nxt = self._try_read(fd, 0.02)
+            if nxt is None:
+                break
+            seq += nxt
+            if self._is_csi_final(nxt):
+                break
+        return seq
+
     def _handle_escape(self, fd: int) -> None:
         """Handle \\x1b — either a plain Esc key or the start of an escape sequence.
 
@@ -138,21 +165,25 @@ class KeyboardListener:
         seq2 = self._try_read(fd, 0.1)
         if seq2 is None:
             return  # Incomplete sequence, ignore
+        seq = self._read_csi_sequence(fd, seq2)
 
         if self._dirs_input_mode():
             # Ignore all escape sequences in input mode
             return
 
-        if seq2 == 'A':  # Up arrow
+        if seq == 'A':  # Up arrow
             if self._dirs_active():
                 self.event_bus.publish(DirsCursorMove(direction=-1))
-        elif seq2 == 'B':  # Down arrow
+        elif seq == 'B':  # Down arrow
             if self._dirs_active():
                 self.event_bus.publish(DirsCursorMove(direction=1))
-        elif seq2 == '3':  # Delete key: \x1b[3~
-            self._try_read(fd, 0.1)  # consume '~'
+        elif seq == '3~':  # Delete key: \x1b[3~
             if self._dirs_active():
                 self.event_bus.publish(DirsMarkDelete())
+        elif seq.endswith('A') or seq.endswith('B'):
+            # Modified arrows (e.g., Shift+Up = 1;2A) are parsed and consumed,
+            # but intentionally ignored for now to prevent accidental key leaks.
+            return
         # All other sequences: silently ignored
 
     def _run(self):
