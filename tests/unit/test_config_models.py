@@ -138,6 +138,21 @@ def test_verify_fail_action_invalid_mode():
         GeneralConfig(threads=1, extensions=[".mp4"], verify_fail_action="halt")
 
 
+@pytest.mark.parametrize("angle", [None, 0, 90, 180, 270, "180"])
+def test_manual_rotation_accepts_allowed_values(angle):
+    config = GeneralConfig(threads=1, extensions=[".mp4"], manual_rotation=angle)
+    if angle is None:
+        assert config.manual_rotation is None
+    else:
+        assert config.manual_rotation == int(angle)
+
+
+@pytest.mark.parametrize("angle", [-90, 45, 360, "left", True])
+def test_manual_rotation_rejects_invalid_values(angle):
+    with pytest.raises(ValidationError):
+        GeneralConfig(threads=1, extensions=[".mp4"], manual_rotation=angle)
+
+
 def test_rate_mode_rejects_mixed_classes():
     with pytest.raises(ValidationError):
         GeneralConfig(

@@ -629,6 +629,8 @@ Only a subset of config keys can be overridden via CLI flags:
 - `general.filter_cameras` → `--camera`
 - `general.manual_rotation` → `--rotate-180`
 - `general.debug` → `--debug`
+- `general.wait_on_finish` → `--wait` / `--no-wait`
+- `general.bell_on_finish` → `--bell` / `--no-bell`
 
 Other settings (for example `prefetch_factor`, `dynamic_quality`, encoder arg lists, directory mappings, and `gpu_config`) must be set in YAML.
 

@@ -210,7 +210,7 @@ class GeneralConfig(BaseModel):
         gpu_refresh_rate: [DEPRECATED] Use gpu_config.sample_interval_s.
         queue_sort: Queue sorting mode (name, rand, dir, size-asc, size-desc, ext).
         queue_seed: Random seed for deterministic 'rand' sorting (None = random).
-        log_path: Path to FFmpeg log file (None = no logging).
+        log_path: Path to FFmpeg log file (None = use <output_dir>/compression.log).
         cpu_fallback: Retry with CPU if GPU hardware capability exceeded.
         ffmpeg_cpu_threads: Limit threads per FFmpeg worker (None = FFmpeg decides).
         copy_metadata: Preserve EXIF/XMP metadata from source video.
@@ -286,6 +286,21 @@ class GeneralConfig(BaseModel):
             return None
         cleaned = str(v).strip()
         return cleaned or None
+
+    @field_validator("manual_rotation", mode="before")
+    @classmethod
+    def validate_manual_rotation(cls, v: Optional[object]) -> Optional[int]:
+        if v is None:
+            return None
+        if isinstance(v, bool):
+            raise ValueError("manual_rotation must be one of: null, 0, 90, 180, 270.")
+        try:
+            angle = int(v)
+        except (TypeError, ValueError):
+            raise ValueError("manual_rotation must be one of: null, 0, 90, 180, 270.") from None
+        if angle not in {0, 90, 180, 270}:
+            raise ValueError("manual_rotation must be one of: null, 0, 90, 180, 270.")
+        return angle
 
     @field_validator("bps", "minrate", "maxrate", "rate_target_max_bps")
     @classmethod
