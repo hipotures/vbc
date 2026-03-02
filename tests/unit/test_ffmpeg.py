@@ -189,10 +189,12 @@ def test_audio_codec_selection_matrix(audio_codec, expected_codec, expected_bitr
     else:
         assert "-b:a" not in cmd
 
-def test_ffmpeg_compress_success():
+def test_ffmpeg_compress_success(tmp_path):
     config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
-    vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)
-    job = CompressionJob(source_file=vf, output_path=Path("output.mp4"))
+    vf = VideoFile(path=tmp_path / "input.mp4", size_bytes=1000)
+    job = CompressionJob(source_file=vf, output_path=tmp_path / "output.mp4")
+    tmp_output = job.output_path.with_suffix(".tmp")
+    tmp_output.write_bytes(b"tmp")
     
     with patch("subprocess.Popen") as mock_popen:
         process_instance = mock_popen.return_value
@@ -205,6 +207,57 @@ def test_ffmpeg_compress_success():
         
         assert job.status == JobStatus.COMPLETED
         assert mock_popen.called
+        assert job.output_path.exists()
+        assert not tmp_output.exists()
+
+
+def test_ffmpeg_compress_missing_tmp_marks_failed(tmp_path):
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
+    vf = VideoFile(path=tmp_path / "input.mp4", size_bytes=1000)
+    job = CompressionJob(source_file=vf, output_path=tmp_path / "output.mp4")
+
+    process_instance = MagicMock()
+    process_instance.stdout = ["frame=1 time=00:00:01.00"]
+    process_instance.poll.return_value = None
+    process_instance.wait.return_value = 0
+    process_instance.returncode = 0
+
+    bus = MagicMock()
+    with patch("subprocess.Popen", return_value=process_instance):
+        adapter = FFmpegAdapter(event_bus=bus)
+        adapter.compress(job, config, use_gpu=True)
+
+    assert job.status == JobStatus.FAILED
+    assert "temporary output file is missing" in (job.error_message or "")
+    assert bus.publish.called
+
+
+def test_ffmpeg_compress_rename_failure_marks_failed(tmp_path):
+    config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
+    vf = VideoFile(path=tmp_path / "input.mp4", size_bytes=1000)
+    job = CompressionJob(source_file=vf, output_path=tmp_path / "output.mp4")
+    tmp_output = job.output_path.with_suffix(".tmp")
+    tmp_output.write_bytes(b"tmp")
+
+    process_instance = MagicMock()
+    process_instance.stdout = ["frame=1 time=00:00:01.00"]
+    process_instance.poll.return_value = None
+    process_instance.wait.return_value = 0
+    process_instance.returncode = 0
+
+    bus = MagicMock()
+    with patch("subprocess.Popen", return_value=process_instance), patch.object(
+        Path,
+        "rename",
+        side_effect=OSError("rename failed"),
+    ):
+        adapter = FFmpegAdapter(event_bus=bus)
+        adapter.compress(job, config, use_gpu=True)
+
+    assert job.status == JobStatus.FAILED
+    assert "failed to finalize output" in (job.error_message or "")
+    assert bus.publish.called
+    assert not tmp_output.exists()
 
 def test_ffmpeg_compress_failure():
     config = AppConfig(general=GeneralConfig(threads=4, gpu=True))
@@ -339,10 +392,12 @@ def test_apply_color_fix_remux_fallback(tmp_path):
 
     colorfix_path = job.output_path.with_name(f"{job.output_path.stem}_colorfix.mp4")
     calls = {"count": 0}
+    recorded_cmds = []
     recorded_path = {"value": None}
 
     def fake_run(cmd, capture_output=True):
         calls["count"] += 1
+        recorded_cmds.append(list(cmd))
         result = MagicMock()
         if calls["count"] == 1:
             result.returncode = 1
@@ -362,6 +417,11 @@ def test_apply_color_fix_remux_fallback(tmp_path):
         adapter._apply_color_fix(job, config, use_gpu=True, quality=None, rate_control=None, rotate=None)
 
     assert calls["count"] == 2
+    first_bsf_idx = recorded_cmds[0].index("-bsf:v")
+    second_bsf_idx = recorded_cmds[1].index("-bsf:v")
+    assert recorded_cmds[0][first_bsf_idx + 1].startswith("hevc_metadata=")
+    assert recorded_cmds[1][second_bsf_idx + 1].startswith("h264_metadata=")
+    assert recorded_cmds[1][5] == "copy"
     assert recorded_path["value"] == colorfix_path
     assert job.source_file.path == vf.path
     assert not colorfix_path.exists()

@@ -593,9 +593,32 @@ class FFmpegAdapter:
                 elapsed = time.monotonic() - start_time
                 self.logger.info(f"FFMPEG_END: {filename} status=failed code={process.returncode} elapsed={elapsed:.2f}s")
         else:
-            # Success - rename .tmp to final output
-            if tmp_path.exists():
+            # Success only when tmp exists and can be atomically renamed to final output.
+            if not tmp_path.exists():
+                job.status = JobStatus.FAILED
+                job.error_message = "ffmpeg succeeded but temporary output file is missing"
+                self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
+                if config.general.debug and start_time:
+                    elapsed = time.monotonic() - start_time
+                    self.logger.info(
+                        f"FFMPEG_END: {filename} status=failed reason=missing_tmp elapsed={elapsed:.2f}s"
+                    )
+                return
+            try:
                 tmp_path.rename(job.output_path)
+            except OSError as exc:
+                job.status = JobStatus.FAILED
+                job.error_message = f"ffmpeg succeeded but failed to finalize output: {exc}"
+                self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
+                # Best effort cleanup of orphan tmp.
+                if tmp_path.exists():
+                    tmp_path.unlink()
+                if config.general.debug and start_time:
+                    elapsed = time.monotonic() - start_time
+                    self.logger.info(
+                        f"FFMPEG_END: {filename} status=failed reason=rename_error elapsed={elapsed:.2f}s"
+                    )
+                return
             job.status = JobStatus.COMPLETED
             if config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
@@ -648,7 +671,17 @@ class FFmpegAdapter:
         res = subprocess.run(remux_cmd, capture_output=True)
         if res.returncode != 0:
             # Try H264 variant
-            remux_cmd[5] = "h264_metadata=color_primaries=1:color_trc=1:colorspace=1"
+            try:
+                bsf_idx = remux_cmd.index("-bsf:v")
+                remux_cmd[bsf_idx + 1] = "h264_metadata=color_primaries=1:color_trc=1:colorspace=1"
+            except (ValueError, IndexError):
+                # Should never happen, but keep explicit fallback to a valid command shape.
+                remux_cmd = [
+                    "ffmpeg", "-y", "-i", str(job.source_file.path),
+                    "-c", "copy",
+                    "-bsf:v", "h264_metadata=color_primaries=1:color_trc=1:colorspace=1",
+                    str(color_fix_path)
+                ]
             res = subprocess.run(remux_cmd, capture_output=True)
 
         if res.returncode == 0:
