@@ -137,6 +137,38 @@ def test_dashboard_activity_item_shows_heavy_checkmark_when_verified(tmp_path):
     assert "✔" in rendered
 
 
+def test_dashboard_active_job_two_line_layout_indents_progress_line(tmp_path):
+    state = UIState()
+    dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
+    # Force 1-column mode where active jobs can use 2-line layout.
+    dashboard.console = Console(width=100, record=True)
+
+    source = tmp_path / "frosty-river.mp4"
+    source.write_bytes(b"x" * 100)
+    vf = VideoFile(
+        path=source,
+        size_bytes=996_500_000,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=59.94,
+            duration=200.0,
+        ),
+    )
+    job = CompressionJob(source_file=vf, status=JobStatus.PROCESSING)
+    job.progress_percent = 46.1
+    state.job_start_times[vf.path.name] = datetime.now() - timedelta(seconds=12)
+
+    renderable = dashboard._render_active_job(job, "dynamic")
+    console = Console(width=100, record=True)
+    console.print(renderable)
+    lines = console.export_text().splitlines()
+
+    assert len(lines) == 2
+    assert lines[1].startswith("  ")
+
+
 def test_dashboard_activity_item_compacts_verification_error_path(tmp_path):
     state = UIState()
     dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)

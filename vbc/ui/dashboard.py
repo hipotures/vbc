@@ -494,12 +494,13 @@ class Dashboard:
 
                 # L2: full-width progress bar
                 # L2: bar + pct + bullet + eta
-                fixed_l2 = pct_width + bullet_width + eta_width
-                column_spacing_l2 = 3  # 4 columns = 3 spaces
+                indent_width_l2 = 1  # Keep same visual left offset as 3-line layout
+                fixed_l2 = indent_width_l2 + pct_width + bullet_width + eta_width
+                column_spacing_l2 = 4  # 5 columns = 4 spaces
                 bar_available_l2 = usable_width - fixed_l2 - column_spacing_l2
                 bar = ProgressBar(total=100, completed=int(pct), width=bar_available_l2)
                 l2_grid = Table.grid(padding=(0, 1))
-                l2_grid.add_row(bar, f"{pct:>5.1f}%", "•", eta_str)
+                l2_grid.add_row(" ", bar, f"{pct:>5.1f}%", "•", eta_str)
                 return Group(l1_grid, l2_grid)
             else:
                 # 3 lines: name | metadata | progress
