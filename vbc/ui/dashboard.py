@@ -424,6 +424,8 @@ class Dashboard:
             if 0 < pct < 100 and elapsed > 0:
                 eta_seconds = (elapsed / pct) * (100 - pct)
                 eta_str = self.format_time(eta_seconds)
+        pct_text = f"{pct:>5.1f}%"
+        eta_text = eta_str
 
         # Build 3 elements: name, metadata, progress bar
         filename_max = max(30, panel_w - 3)  # Uniform truncation for both modes
@@ -442,9 +444,9 @@ class Dashboard:
         meta_width = len(meta_text)  # actual metadata text length
 
         # Progress components: bar + percent + bullet + eta
-        pct_width = 5  # "100.0%" (without leading space)
+        pct_width = len(pct_text)
         bullet_width = 1  # "•"
-        eta_width = 5  # "00:00"
+        eta_width = len(eta_text)
         bar_min_width = 15  # Minimum bar width
 
         # Grid has 6 columns, so 5 spaces between them
@@ -469,9 +471,9 @@ class Dashboard:
                 f"[green]{spinner}[/] {filename}",
                 f"[dim]{meta_text}[/]",
                 bar,
-                f"{pct:>5.1f}%",
+                pct_text,
                 "•",
-                eta_str
+                eta_text
             )
             return l1_grid
         # Option 2: Name + meta on L1 (meta right-aligned), progress on L2
@@ -500,7 +502,7 @@ class Dashboard:
                 bar_available_l2 = usable_width - fixed_l2 - column_spacing_l2
                 bar = ProgressBar(total=100, completed=int(pct), width=bar_available_l2)
                 l2_grid = Table.grid(padding=(0, 1))
-                l2_grid.add_row(" ", bar, f"{pct:>5.1f}%", "•", eta_str)
+                l2_grid.add_row(" ", bar, pct_text, "•", eta_text)
                 return Group(l1_grid, l2_grid)
             else:
                 # 3 lines: name | metadata | progress
@@ -513,7 +515,7 @@ class Dashboard:
 
                 l2 = f"  [dim]{meta_text}[/]"
                 l3_grid = Table.grid(padding=(0, 1))
-                l3_grid.add_row(" ", bar, f"{pct:>5.1f}%", "•", eta_str)
+                l3_grid.add_row(" ", bar, pct_text, "•", eta_text)
                 return Group(name_line, l2, l3_grid)
 
     def _render_activity_item(self, job, level: str) -> RenderableType:

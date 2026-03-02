@@ -137,6 +137,16 @@ def test_dashboard_activity_item_shows_heavy_checkmark_when_verified(tmp_path):
     assert "✔" in rendered
 
 
+def _gap_before_right_border(line: str) -> int:
+    border_idx = line.rfind("│")
+    if border_idx <= 0:
+        return -1
+    idx = border_idx - 1
+    while idx >= 0 and line[idx] == " ":
+        idx -= 1
+    return (border_idx - 1) - idx
+
+
 def test_dashboard_active_job_two_line_layout_indents_progress_line(tmp_path):
     state = UIState()
     dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
@@ -167,6 +177,66 @@ def test_dashboard_active_job_two_line_layout_indents_progress_line(tmp_path):
 
     assert len(lines) == 2
     assert lines[1].startswith("  ")
+
+
+def test_dashboard_active_job_two_line_progress_line_has_single_right_padding(tmp_path):
+    state = UIState()
+    dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
+    dashboard.console = Console(width=100, record=True)
+
+    source = tmp_path / "clear-stone.mov"
+    source.write_bytes(b"x" * 100)
+    vf = VideoFile(
+        path=source,
+        size_bytes=1_600_000_000,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=25.0,
+            duration=354.0,
+        ),
+    )
+    job = CompressionJob(source_file=vf, status=JobStatus.PROCESSING)
+    job.progress_percent = 80.0
+    state.job_start_times[vf.path.name] = datetime.now() - timedelta(seconds=24)
+
+    renderable = dashboard._render_active_job(job, "dynamic")
+    console = Console(width=100, record=True)
+    console.print(Panel(renderable, title="ACTIVE JOBS", border_style="cyan"))
+    progress_line = next(line for line in console.export_text().splitlines() if "%" in line)
+
+    assert _gap_before_right_border(progress_line) == 1
+
+
+def test_dashboard_active_job_three_line_progress_line_has_single_right_padding(tmp_path):
+    state = UIState()
+    dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
+    dashboard.console = Console(width=100, record=True)
+
+    source = tmp_path / "this-is-a-very-very-very-long-filename-that-forces-three-line-layout.mov"
+    source.write_bytes(b"x" * 100)
+    vf = VideoFile(
+        path=source,
+        size_bytes=1_600_000_000,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=25.0,
+            duration=354.0,
+        ),
+    )
+    job = CompressionJob(source_file=vf, status=JobStatus.PROCESSING)
+    job.progress_percent = 80.0
+    state.job_start_times[vf.path.name] = datetime.now() - timedelta(seconds=24)
+
+    renderable = dashboard._render_active_job(job, "dynamic")
+    console = Console(width=100, record=True)
+    console.print(Panel(renderable, title="ACTIVE JOBS", border_style="cyan"))
+    progress_line = next(line for line in console.export_text().splitlines() if "%" in line)
+
+    assert _gap_before_right_border(progress_line) == 1
 
 
 def test_dashboard_activity_item_compacts_verification_error_path(tmp_path):
