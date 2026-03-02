@@ -276,8 +276,8 @@ class UIManager:
         elif event.job.status == JobStatus.INTERRUPTED:
             with self.state._lock:
                 self.state.interrupted_count += 1
-            # Add to recent jobs to show in LAST COMPLETED
-            self.state.recent_jobs.appendleft(event.job)
+            # Add to recent jobs to show in activity feeds (TUI + web)
+            self.state.add_recent_job(event.job)
             self.state.remove_active_job(event.job)
         else:
             self.state.add_failed_job(event.job)

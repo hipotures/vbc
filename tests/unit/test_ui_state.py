@@ -12,6 +12,7 @@ def test_ui_state_initialization():
     assert state.total_output_bytes == 0
     assert len(state.active_jobs) == 0
     assert len(state.recent_jobs) == 0
+    assert len(state.web_recent_jobs) == 0
 
 def test_ui_state_stats_update():
     state = UIState()
@@ -47,9 +48,12 @@ def test_ui_state_recent_limit():
         job = CompressionJob(source_file=vf, status=JobStatus.COMPLETED)
         state.add_completed_job(job, 500)
         
-    # Should only keep 5 most recent
+    # TUI feed keeps compact window
     assert len(state.recent_jobs) == 5
     assert state.recent_jobs[0].source_file.path.name == "test9.mp4"
+    # Web feed keeps deeper history for dynamic panel fill
+    assert len(state.web_recent_jobs) == 10
+    assert state.web_recent_jobs[0].source_file.path.name == "test9.mp4"
 
 
 def test_ui_state_logs_pagination_and_reset():

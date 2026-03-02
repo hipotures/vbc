@@ -64,6 +64,9 @@ class UIState:
         # Job lists
         self.active_jobs: List[CompressionJob] = []
         self.recent_jobs = deque(maxlen=activity_feed_max_items)
+        # Web dashboard can render variable-height Activity Feed,
+        # so keep a deeper history than TUI's compact feed window.
+        self.web_recent_jobs = deque(maxlen=max(80, activity_feed_max_items))
         self.pending_files: List[Any] = []  # VideoFile objects waiting to be submitted
 
         # Job timing tracking
@@ -176,7 +179,7 @@ class UIState:
                 
             # Store output size in job for display
             job.output_size_bytes = output_size
-            self.recent_jobs.appendleft(job)
+            self._add_recent_job_unlocked(job)
             self.remove_active_job(job)
 
     def add_failed_job(self, job: CompressionJob):
@@ -187,8 +190,21 @@ class UIState:
             cutoff = datetime.now().timestamp() - 60
             while self.throughput_history and self.throughput_history[0][0].timestamp() < cutoff:
                 self.throughput_history.popleft()
-            self.recent_jobs.appendleft(job)
+            self._add_recent_job_unlocked(job)
             self.remove_active_job(job)
+
+    def _add_recent_job_unlocked(self, job: CompressionJob):
+        """Append a job to both TUI and web activity histories.
+
+        Caller must hold self._lock.
+        """
+        self.recent_jobs.appendleft(job)
+        self.web_recent_jobs.appendleft(job)
+
+    def add_recent_job(self, job: CompressionJob):
+        """Thread-safe wrapper for adding job to recent activity feeds."""
+        with self._lock:
+            self._add_recent_job_unlocked(job)
 
     def add_skipped_job(self, job: CompressionJob):
         with self._lock:

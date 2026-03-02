@@ -20,6 +20,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
+from urllib.parse import parse_qs, urlsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -29,6 +30,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_PORT = 8765
+_WEB_MIN_ITEMS = 1
+_WEB_MAX_ITEMS = 80
+_WEB_DEFAULT_ACTIVITY_ITEMS = 5
+_WEB_DEFAULT_QUEUE_ITEMS = 5
 
 # ---------------------------------------------------------------------------
 # Static file serving
@@ -147,6 +152,22 @@ def _compact_activity_error(error_message: object) -> str:
     return text
 
 
+def _parse_max_items_param(
+    params: dict[str, list[str]],
+    default: int,
+    *,
+    min_items: int = _WEB_MIN_ITEMS,
+    max_items: int = _WEB_MAX_ITEMS,
+) -> int:
+    """Parse and clamp max-items query param for dynamic panel density."""
+    raw = params.get("max_items", [str(default)])[0]
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(min_items, min(max_items, value))
+
+
 # ---------------------------------------------------------------------------
 # Stats computation (one lock acquisition, returns plain Python types)
 # ---------------------------------------------------------------------------
@@ -176,6 +197,7 @@ def _compute_stats(state: "UIState") -> dict:
         # Job snapshots (shallow copies of references)
         active_jobs = list(state.active_jobs)
         recent_jobs = list(state.recent_jobs)
+        web_recent_jobs = list(getattr(state, "web_recent_jobs", state.recent_jobs))
         pending_files = list(state.pending_files)
         job_start_times = dict(state.job_start_times)
 
@@ -257,6 +279,7 @@ def _compute_stats(state: "UIState") -> dict:
         "error_message": error_message,
         "active_jobs": active_jobs,
         "recent_jobs": recent_jobs,
+        "web_recent_jobs": web_recent_jobs,
         "pending_files": pending_files,
         "job_start_times": job_start_times,
         "gpu_data": gpu_data,
@@ -429,9 +452,11 @@ def _render_active_jobs(s: dict) -> str:
     return _jinja_env.get_template("active_jobs.html").render(**_vm_active_jobs(s))
 
 
-def _vm_activity(s: dict) -> dict:
+def _vm_activity(s: dict, max_items: int = _WEB_DEFAULT_ACTIVITY_ITEMS) -> dict:
+    max_display = max(_WEB_MIN_ITEMS, min(_WEB_MAX_ITEMS, int(max_items)))
+    jobs_source = s.get("web_recent_jobs", s["recent_jobs"])
     job_items = []
-    for job in s["recent_jobs"][:5]:
+    for job in jobs_source[:max_display]:
         fname = job.source_file.path.name
         raw_status = getattr(job, "status", None)
         status = raw_status.value if hasattr(raw_status, "value") else str(raw_status)
@@ -466,16 +491,16 @@ def _vm_activity(s: dict) -> dict:
     return {"jobs": job_items}
 
 
-def _render_activity(s: dict) -> str:
-    return _jinja_env.get_template("activity.html").render(**_vm_activity(s))
+def _render_activity(s: dict, max_items: int = _WEB_DEFAULT_ACTIVITY_ITEMS) -> str:
+    return _jinja_env.get_template("activity.html").render(**_vm_activity(s, max_items=max_items))
 
 
-def _vm_queue(s: dict) -> dict:
+def _vm_queue(s: dict, max_items: int = _WEB_DEFAULT_QUEUE_ITEMS) -> dict:
     files = s["pending_files"]
-    MAX_DISPLAY = 5
-    more = max(0, len(files) - MAX_DISPLAY)
+    max_display = max(_WEB_MIN_ITEMS, min(_WEB_MAX_ITEMS, int(max_items)))
+    more = max(0, len(files) - max_display)
     items = []
-    for f in files[:MAX_DISPLAY]:
+    for f in files[:max_display]:
         size = _fmt_size(getattr(f, "size_bytes", None))
         fps = _fmt_fps(getattr(f, "metadata", None))
         meta_parts = [p for p in [size, fps] if p]
@@ -490,8 +515,8 @@ def _vm_queue(s: dict) -> dict:
     }
 
 
-def _render_queue(s: dict) -> str:
-    return _jinja_env.get_template("queue.html").render(**_vm_queue(s))
+def _render_queue(s: dict, max_items: int = _WEB_DEFAULT_QUEUE_ITEMS) -> str:
+    return _jinja_env.get_template("queue.html").render(**_vm_queue(s, max_items=max_items))
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +562,9 @@ class VBCRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self) -> None:
-        path = self.path.split("?")[0]
+        parsed = urlsplit(self.path)
+        path = parsed.path
+        params = parse_qs(parsed.query)
         try:
             if path in ("/", "/index.html"):
                 self._send_html(_get_index_html())
@@ -558,9 +585,11 @@ class VBCRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/active":
                 self._send_html(_render_active_jobs(s))
             elif path == "/api/activity":
-                self._send_html(_render_activity(s))
+                max_items = _parse_max_items_param(params, default=_WEB_DEFAULT_ACTIVITY_ITEMS)
+                self._send_html(_render_activity(s, max_items=max_items))
             elif path == "/api/queue":
-                self._send_html(_render_queue(s))
+                max_items = _parse_max_items_param(params, default=_WEB_DEFAULT_QUEUE_ITEMS)
+                self._send_html(_render_queue(s, max_items=max_items))
             else:
                 self._send_html("<h1>404</h1>", status=404)
 

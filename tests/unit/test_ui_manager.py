@@ -289,6 +289,7 @@ def test_ui_manager_job_failed_interrupted(tmp_path):
     assert state.interrupted_count == 1
     assert len(state.session_error_logs) == 1
     assert len(state.recent_jobs) == 1
+    assert len(state.web_recent_jobs) == 1
     assert len(state.active_jobs) == 0
 
 
@@ -307,6 +308,7 @@ def test_ui_manager_job_failed_generic(tmp_path):
     assert len(state.session_error_logs) == 1
     assert state.session_error_logs[0].error_message == "Something failed"
     assert len(state.recent_jobs) == 1
+    assert len(state.web_recent_jobs) == 1
     assert len(state.active_jobs) == 0
 
 
