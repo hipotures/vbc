@@ -1,11 +1,10 @@
 """Unit tests for orchestrator.py error handling paths."""
 import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 import subprocess
 from vbc.pipeline.orchestrator import Orchestrator
 from vbc.config.models import AppConfig, GeneralConfig
-from vbc.domain.models import VideoFile, VideoMetadata, CompressionJob, JobStatus
+from vbc.domain.models import VideoFile
 
 
 @pytest.fixture
@@ -157,6 +156,30 @@ class TestDeepMetadataCopyErrors:
 
             assert mock_run.called
 
+    def test_copy_deep_metadata_removes_stale_exiftool_tmp(self, orchestrator, tmp_path):
+        """Remove stale ExifTool temp file before writing metadata."""
+        source = tmp_path / "source.mp4"
+        dest = tmp_path / "dest.mp4"
+        err_path = tmp_path / "test.err"
+        stale_tmp = tmp_path / "dest.mp4_exiftool_tmp"
+        source.write_text("source")
+        dest.write_text("dest")
+        stale_tmp.write_text("stale")
+
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+
+            orchestrator._copy_deep_metadata(
+                source, dest, err_path,
+                quality_label="45",
+                original_bitrate_label="35.9 Mbps",
+                encoder="av1_nvenc",
+                original_size=1000, finished_at="2025-01-01 12:00:00"
+            )
+
+        assert mock_run.called
+        assert not stale_tmp.exists()
+
     def test_copy_deep_metadata_generic_error(self, orchestrator, tmp_path):
         """Test generic error during metadata copy."""
         source = tmp_path / "source.mp4"
@@ -220,7 +243,11 @@ class TestProcessFileEdgeCases:
         calls = orchestrator.event_bus.publish.call_args_list
 
         # Find JobFailed event
-        failed_events = [call for call in calls if len(call[0]) > 0 and 'JobFailed' in str(type(call[0][0]))]
+        failed_events = [
+            event_call
+            for event_call in calls
+            if len(event_call[0]) > 0 and 'JobFailed' in str(type(event_call[0][0]))
+        ]
         assert len(failed_events) > 0
 
 

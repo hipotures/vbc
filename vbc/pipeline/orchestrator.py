@@ -51,6 +51,7 @@ from vbc.infrastructure.ffmpeg import (
     output_extension_for_args,
     infer_encoder_label,
 )
+from vbc.infrastructure.exiftool_tmp import remove_exiftool_tmp_for_target
 from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
 from vbc.domain.events import (
     DiscoveryErrorEntry,
@@ -923,12 +924,14 @@ class Orchestrator:
             for attempt in range(1, max_attempts + 1):
                 try:
                     exif_start = time.monotonic()
+                    remove_exiftool_tmp_for_target(output_path, self.logger)
                     self.logger.info(
                         f"EXIF_COPY_START: {filename} attempt {attempt}/{max_attempts}"
                     )
                     subprocess.run(
                         exiftool_cmd,
                         capture_output=True,
+                        text=True,
                         check=True,
                         timeout=timeout_s
                     )
@@ -951,6 +954,18 @@ class Orchestrator:
                         f"EXIF_COPY_TIMEOUT: {filename} attempt {attempt}/{max_attempts} "
                         f"elapsed={exif_elapsed:.2f}s"
                     )
+                except subprocess.CalledProcessError as e:
+                    exif_elapsed = time.monotonic() - exif_start
+                    stderr = (e.stderr or "").strip()
+                    stdout = (e.stdout or "").strip()
+                    self.logger.warning(
+                        f"EXIF_COPY_ERROR: {filename} attempt {attempt}/{max_attempts} "
+                        f"elapsed={exif_elapsed:.2f}s returncode={e.returncode} "
+                        f"stderr={stderr!r} stdout={stdout!r}"
+                    )
+                    self.logger.warning(f"Failed to copy deep metadata for {filename}: {e}")
+                    timed_out = False
+                    break
                 except Exception as e:
                     exif_elapsed = time.monotonic() - exif_start
                     self.logger.warning(
@@ -972,10 +987,24 @@ class Orchestrator:
                 )
         else:
             try:
-                subprocess.run(exiftool_cmd, capture_output=True, check=True, timeout=timeout_s)
+                remove_exiftool_tmp_for_target(output_path, self.logger)
+                subprocess.run(
+                    exiftool_cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=timeout_s,
+                )
             except subprocess.TimeoutExpired:
                 self.logger.warning(
                     f"ExifTool metadata copy timed out after {timeout_s}s for {filename}"
+                )
+            except subprocess.CalledProcessError as e:
+                stderr = (e.stderr or "").strip()
+                stdout = (e.stdout or "").strip()
+                self.logger.warning(
+                    f"Failed to copy deep metadata for {filename}: returncode={e.returncode} "
+                    f"stderr={stderr!r} stdout={stdout!r}"
                 )
             except Exception as e:
                 self.logger.warning(f"Failed to copy deep metadata for {filename}: {e}")
@@ -1024,10 +1053,24 @@ class Orchestrator:
                 timeout_s = 30
             else:
                 timeout_s = max(1, (size_bytes + rate_bytes - 1) // rate_bytes)
-            subprocess.run(exiftool_cmd, capture_output=True, check=True, timeout=timeout_s)
+            remove_exiftool_tmp_for_target(output_path, self.logger)
+            subprocess.run(
+                exiftool_cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=timeout_s,
+            )
         except subprocess.TimeoutExpired:
             self.logger.warning(
                 f"ExifTool tag write timed out after {timeout_s}s for {output_path.name}"
+            )
+        except subprocess.CalledProcessError as e:
+            stderr = (e.stderr or "").strip()
+            stdout = (e.stdout or "").strip()
+            self.logger.warning(
+                f"Failed to write VBC tags for {output_path.name}: returncode={e.returncode} "
+                f"stderr={stderr!r} stdout={stdout!r}"
             )
         except Exception as e:
             self.logger.warning(f"Failed to write VBC tags for {output_path.name}: {e}")

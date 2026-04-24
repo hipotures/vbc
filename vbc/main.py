@@ -23,6 +23,7 @@ from vbc.infrastructure.ffmpeg import (
     replace_quality_value,
 )
 from vbc.infrastructure.housekeeping import HousekeepingService
+from vbc.infrastructure.exiftool_tmp import cleanup_exiftool_tmp_files
 from vbc.pipeline.orchestrator import Orchestrator, VerificationAbortError
 from vbc.pipeline.demo_orchestrator import DemoOrchestrator
 from vbc.pipeline.error_file_mover import move_failed_files, collect_error_entries
@@ -385,6 +386,11 @@ def compress(
             )
         else:
             logger.info(f"VBC started: input_folders={len(input_dirs)}, folders={input_dirs}")
+            removed_tmp_files = cleanup_exiftool_tmp_files(output_dir_map.values(), logger=logger)
+            if removed_tmp_files:
+                logger.info(
+                    f"Removed {len(removed_tmp_files)} stale ExifTool temp files before processing."
+                )
         encoder_args = select_encoder_args(config, config.general.gpu)
         if config.general.quality_mode == "rate":
             quality_display = describe_rate_target(config.general.bps)

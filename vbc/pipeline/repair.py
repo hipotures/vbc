@@ -6,6 +6,12 @@ from rich.console import Console
 from vbc.utils.flv_repair import repair_flv_file
 from vbc.utils.reencode_repair import repair_via_reencode
 
+
+def _is_metadata_verification_failure(error_text: str) -> bool:
+    normalized = error_text.lower()
+    return "verification failed: missing vbc tags" in normalized
+
+
 def process_repairs(
     input_dirs: List[Path],
     errors_dir_map: Dict[Path, Path],
@@ -77,6 +83,12 @@ def process_repairs(
                 if err_file.exists():
                     try:
                         err_content = err_file.read_text()
+                        if _is_metadata_verification_failure(err_content):
+                            if logger:
+                                logger.info(
+                                    f"Skipping repair for {candidate.name} - missing VBC tags is metadata-only."
+                                )
+                            continue
                         if "Hardware is lacking required capabilities" in err_content:
                             is_hw_cap = True
                         elif "code 234" in err_content or "Invalid argument" in err_content:

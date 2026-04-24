@@ -82,3 +82,43 @@ def test_repair_outputs_mkv_and_cleans_temp_flv(tmp_path, monkeypatch):
     assert not temp_flv.exists()
     assert not temp_mkv.exists()
     assert candidate.with_suffix(".flv.repaired").exists()
+
+
+def test_repair_skips_metadata_verification_failures(tmp_path, monkeypatch):
+    input_dir = tmp_path / "input"
+    errors_dir = tmp_path / "input_err"
+    input_dir.mkdir()
+    errors_dir.mkdir()
+
+    candidate = errors_dir / "video.mp4"
+    candidate.write_bytes(b"x" * 10)
+    err_file = errors_dir / "video.err"
+    err_file.write_text(
+        "Verification failed: missing VBC tags: "
+        "vbcencoder, vbcfinishedat, vbcoriginalbitrate"
+    )
+
+    calls = {"flv": 0, "reencode": 0}
+
+    def fake_flv(*_args, **_kwargs):
+        calls["flv"] += 1
+        return True
+
+    def fake_reencode(*_args, **_kwargs):
+        calls["reencode"] += 1
+        return True
+
+    monkeypatch.setattr(repair_mod, "repair_flv_file", fake_flv)
+    monkeypatch.setattr(repair_mod, "repair_via_reencode", fake_reencode)
+
+    repaired = repair_mod.process_repairs(
+        input_dirs=[input_dir],
+        errors_dir_map={input_dir: errors_dir},
+        extensions=[".mp4"],
+        logger=None,
+    )
+
+    assert repaired == 0
+    assert calls["flv"] == 0
+    assert calls["reencode"] == 0
+    assert not candidate.with_suffix(".mp4.repaired").exists()
