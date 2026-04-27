@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn, DownloadColumn
 from rich.console import Console
 from vbc.utils.flv_repair import repair_flv_file
 from vbc.utils.reencode_repair import repair_via_reencode
@@ -108,14 +108,18 @@ def process_repairs(
                 
                 dest_path = input_dir / rel_path
                 dest_mkv = dest_path.with_suffix(".mkv")
-                candidates_to_repair.append((candidate, dest_path, dest_mkv, repaired_marker, error_code))
+                try:
+                    candidate_size = max(candidate.stat().st_size, 1)
+                except OSError:
+                    candidate_size = 1
+                candidates_to_repair.append((candidate, dest_path, dest_mkv, repaired_marker, error_code, candidate_size))
     
     # Deduplicate
     seen_candidates = set()
     unique_candidates = []
-    for c, dp, dmkv, rm, ec in candidates_to_repair:
+    for c, dp, dmkv, rm, ec, size in candidates_to_repair:
         if c not in seen_candidates:
-            unique_candidates.append((c, dp, dmkv, rm, ec))
+            unique_candidates.append((c, dp, dmkv, rm, ec, size))
             seen_candidates.add(c)
     candidates_to_repair = unique_candidates
 
@@ -131,18 +135,24 @@ def process_repairs(
         console.print(f"[bold cyan]Found {len(candidates_to_repair)} failed files in error directories.[/bold cyan]")
 
     # 2. Process repairs
+    total_bytes = sum(candidate_size for *_rest, candidate_size in candidates_to_repair)
+    processed_bytes = 0
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
-        TextColumn("{task.completed}/{task.total}"),
+        DownloadColumn(),
         TimeRemainingColumn(),
         console=console
     ) as progress:
-        task = progress.add_task("Repairing corrupted files", total=len(candidates_to_repair))
+        task = progress.add_task("Repairing corrupted files", total=total_bytes)
         
-        for candidate, dest_path, dest_mkv, repaired_marker, error_code in candidates_to_repair:
-            progress.update(task, description=f"Repairing [yellow]{candidate.name}[/yellow]")
+        for index, (candidate, dest_path, dest_mkv, repaired_marker, error_code, candidate_size) in enumerate(candidates_to_repair, start=1):
+            progress.update(
+                task,
+                description=f"Repairing [yellow]{candidate.name}[/yellow] ({index}/{len(candidates_to_repair)})",
+                completed=processed_bytes,
+            )
             
             success = False
             repaired_file_path = None
@@ -153,7 +163,8 @@ def process_repairs(
                     logger.warning(
                         f"Skipping repair for {candidate.name} - MKV already exists in source: {dest_mkv}"
                     )
-                progress.advance(task)
+                processed_bytes += candidate_size
+                progress.update(task, completed=processed_bytes)
                 continue
             
             # STRATEGY 1: FLV Prefix Cut (Fast)
@@ -170,10 +181,14 @@ def process_repairs(
             # STRATEGY 2: Re-encode to MKV (Final output)
             temp_mkv = candidate.with_suffix(".repaired_temp.mkv")
             try:
+                def update_reencode_progress(output_size: int) -> None:
+                    current_file_bytes = min(max(output_size, 0), candidate_size)
+                    progress.update(task, completed=min(total_bytes, processed_bytes + current_file_bytes))
+
                 # Inform user this might take longer
                 if logger:
                     logger.info(f"Attempting re-encode repair for {candidate.name}")
-                if repair_via_reencode(reencode_input, temp_mkv):
+                if repair_via_reencode(reencode_input, temp_mkv, progress_callback=update_reencode_progress):
                     success = True
                     repaired_file_path = temp_mkv
                     dest_path = dest_mkv
@@ -200,7 +215,8 @@ def process_repairs(
                 except Exception:
                     pass
             
-            progress.advance(task)
+            processed_bytes += candidate_size
+            progress.update(task, completed=processed_bytes)
 
     if total_repaired > 0:
         summary_msg = f"Repaired {total_repaired}/{len(candidates_to_repair)} files."

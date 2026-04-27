@@ -1,7 +1,14 @@
 import subprocess
+import time
 from pathlib import Path
+from typing import Callable, Optional
 
-def repair_via_reencode(input_path: Path, output_path: Path) -> bool:
+
+def repair_via_reencode(
+    input_path: Path,
+    output_path: Path,
+    progress_callback: Optional[Callable[[int], None]] = None,
+) -> bool:
     """
     Repairs a corrupted video file by performing a fast re-encode to MKV with fixed framerate.
     Useful for files with broken indices, variable framerate issues, or 'ffmpeg code 234' errors.
@@ -11,6 +18,7 @@ def repair_via_reencode(input_path: Path, output_path: Path) -> bool:
     Args:
         input_path: Path to the corrupted file.
         output_path: Path where the repaired .mkv file should be saved.
+        progress_callback: Optional callback receiving the current output size in bytes.
         
     Returns:
         True if repair was successful and validated, False otherwise.
@@ -34,7 +42,18 @@ def repair_via_reencode(input_path: Path, output_path: Path) -> bool:
     ]
 
     try:
-        subprocess.run(cmd, capture_output=True, check=True)
+        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        while process.poll() is None:
+            if progress_callback is not None and output_path.exists():
+                progress_callback(output_path.stat().st_size)
+            time.sleep(1)
+
+        if progress_callback is not None and output_path.exists():
+            progress_callback(output_path.stat().st_size)
+
+        process.communicate()
+        if process.returncode != 0:
+            raise subprocess.CalledProcessError(process.returncode, cmd)
         
         # Validation
         if not output_path.exists() or output_path.stat().st_size <= 1000:
