@@ -41,6 +41,13 @@ jobs:
       - name: Build docs
         run: uv run mkdocs build
 
+      - name: Configure known hosts
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H "${{ vars.VPS_HOST }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
       - name: Deploy
         run: |
           rsync -az --delete \
