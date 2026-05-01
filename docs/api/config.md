@@ -16,6 +16,42 @@ This page documents the configuration models and loader.
       show_source: true
       heading_level: 3
 
+## CLI Overrides
+
+Helpers that apply CLI option values to loaded YAML configuration.
+
+::: vbc.config.overrides
+    options:
+      show_source: true
+      heading_level: 3
+
+## Rate Control
+
+Validation and normalization helpers for CQ and bitrate-based quality modes.
+
+::: vbc.config.rate_control
+    options:
+      show_source: true
+      heading_level: 3
+
+## Local Registry
+
+Helpers for local configuration discovery and persistence.
+
+::: vbc.config.local_registry
+    options:
+      show_source: true
+      heading_level: 3
+
+## Input Directories
+
+Validation and mapping helpers for multi-input directory configuration.
+
+::: vbc.config.input_dirs
+    options:
+      show_source: true
+      heading_level: 3
+
 ## Usage Example
 
 ```python

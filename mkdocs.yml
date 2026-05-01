@@ -93,6 +93,8 @@ nav:
       - Infrastructure: api/infrastructure.md
       - Pipeline: api/pipeline.md
       - UI: api/ui.md
+      - Utilities: api/utils.md
   - Development:
       - Contributing: development/contributing.md
       - Testing: development/testing.md
+      - Building Docs: BUILDING.md

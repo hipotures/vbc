@@ -31,9 +31,27 @@ Non-blocking keyboard input handler.
 
 ## Dashboard
 
-Rich Live dashboard with 6 panels.
+Rich Live dashboard with status, progress, activity, queue, active job, and overlay surfaces.
 
 ::: vbc.ui.dashboard
+    options:
+      show_source: true
+      heading_level: 3
+
+## Modern Overlays
+
+Tabbed overlay renderers for Settings, Shortcuts, I/O, Dirs, TUI, Reference, and Logs content.
+
+::: vbc.ui.modern_overlays
+    options:
+      show_source: true
+      heading_level: 3
+
+## GPU Sparklines
+
+Sparkline presets, palettes, and rendering helpers for GPU metrics.
+
+::: vbc.ui.gpu_sparkline
     options:
       show_source: true
       heading_level: 3
@@ -163,70 +181,16 @@ keyboard.start()
 keyboard.stop()
 ```
 
-## Dashboard Panels
+## Dashboard Surfaces
 
-### 1. Menu Panel
-```
-┌─ MENU ─────────────────────────────────────────┐
-│ < decrease | > increase | S stop | R refresh  │
-└────────────────────────────────────────────────┘
-```
+The dashboard is rendered as a compact Rich layout rather than a fixed list of legacy panels:
 
-### 2. Status Panel
-```
-┌─ COMPRESSION STATUS ───────────────────────────┐
-│ Files to compress: 12 | Already compressed: 8  │
-│ Ignored: size:5 | err:2 | hw_cap:1 | av1:3    │
-│ Total: 12 files | Threads: 4 | 500MB → 180MB  │
-│ ETA: 00h 15m (based on 8.5MB/s throughput)    │
-└────────────────────────────────────────────────┘
-```
-
-### 3. Progress Panel
-```
-┌────────────────────────────────────────────────┐
-│ Progress: 8/12 (66%) | Active threads: 4      │
-│ Last action: Threads: 4 → 8                   │
-└────────────────────────────────────────────────┘
-```
-
-### 4. Currently Processing Panel
-```
-┌─ CURRENTLY PROCESSING ─────────────────────────┐
-│ ◐ video1.mp4  8M 60fps  120.5MB  00:15        │
-│ ◓ video2.mov  4M 30fps   85.2MB  00:08        │
-│ ◑ video3.avi  2M 24fps   45.8MB  00:05        │
-└────────────────────────────────────────────────┘
-```
-
-Spinner types:
-- `◐◓◑◒` - Rotating spinner (with rotation applied)
-- `●○◉◎` - Simple circles (no rotation)
-
-### 5. Last Completed Panel
-```
-┌─ LAST COMPLETED ───────────────────────────────┐
-│ ✓ video1.mp4  8M 60fps  120MB → 42MB  65.0%  │
-│ ✓ video2.mov  4M 30fps   85MB → 32MB  62.3%  │
-│ ✓ video3.avi  2M 24fps   45MB → 18MB  60.0%  │
-└────────────────────────────────────────────────┘
-```
-
-### 6. Next in Queue Panel
-```
-┌─ NEXT IN QUEUE ────────────────────────────────┐
-│ » video4.mp4  8M 60fps  ILCE-7RM5  95.2MB    │
-│ » video5.mov  4M 30fps  DC-GH7     78.5MB    │
-│ » video6.avi  2M 24fps  Unknown    52.1MB    │
-└────────────────────────────────────────────────┘
-```
-
-### 7. Summary Panel
-```
-┌────────────────────────────────────────────────┐
-│ ✓ 8 success  ✗ 2 errors  ⚠ 1 hw_cap  ⊘ 0 skip│
-└────────────────────────────────────────────────┘
-```
+- Top status/KPI area with runtime counters, hints, and optional GPU sparkline metrics.
+- Size-based progress area with total/session counters and ETA.
+- Active jobs area with per-file progress.
+- Activity and completed-job history.
+- Queue preview for pending files.
+- Tabbed overlay system for Settings, Shortcuts, I/O, Dirs, TUI, Reference, and Logs.
 
 ## Dashboard Rendering
 
@@ -306,9 +270,14 @@ display = sanitize(filename)
 | `C` or `c` | `ToggleOverlayTab(tab="settings")` | UIManager toggles Prefs tab |
 | `F` or `f` | `ToggleOverlayTab(tab="io")` | UIManager toggles I/O tab |
 | `M` or `m` | `ToggleOverlayTab(tab="shortcuts")` | UIManager toggles Keys tab |
+| `D` or `d` | `ToggleOverlayTab(tab="dirs")` | UIManager toggles Dirs tab |
 | `T` or `t` | `ToggleOverlayTab(tab="tui")` | UIManager toggles TUI tab |
 | `E` or `e` | `ToggleOverlayTab(tab="reference")` | UIManager toggles Ref tab |
 | `L` or `l` | `ToggleOverlayTab(tab="logs")` | UIManager toggles Logs tab |
+| `I` or `i` | `CycleOverlayDim(direction=+1)` | UIManager cycles overlay dim level |
+| `G` or `g` | `RotateGpuMetric()` | UIManager rotates the GPU metric shown in the top bar |
+| `W` or `w` | `CycleSparklinePreset(direction=+1)` | UIManager cycles sparkline presets |
+| `P` or `p` | `CycleSparklinePalette(direction=+1)` | UIManager cycles sparkline palettes |
 | `[` / `]` | `CycleLogsPage(direction=-1/+1)` | UIManager pages Logs tab |
 | `Tab` | `CycleOverlayTab(direction=+1)` | UIManager cycles tabs |
 | `Esc` | `CloseOverlay()` | UIManager closes active overlay |

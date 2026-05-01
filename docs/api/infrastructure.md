@@ -56,6 +56,33 @@ Cleanup service for temporary files and error markers.
       show_source: true
       heading_level: 3
 
+## Web Server
+
+Read-only HTMX dashboard server and template rendering helpers.
+
+::: vbc.infrastructure.web_server
+    options:
+      show_source: true
+      heading_level: 3
+
+## GPU Monitor
+
+Background GPU metrics sampler for dashboard sparklines.
+
+::: vbc.infrastructure.gpu_monitor
+    options:
+      show_source: true
+      heading_level: 3
+
+## ExifTool Temp Files
+
+Cleanup helpers for stale ExifTool temporary files.
+
+::: vbc.infrastructure.exiftool_tmp
+    options:
+      show_source: true
+      heading_level: 3
+
 ## Logging
 
 Logging configuration and setup.

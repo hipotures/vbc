@@ -7,6 +7,12 @@
 !CLAUDE.md
 !*.sh
 
+# Allow GitHub Actions workflows
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
+!.github/workflows/*.yaml
+
 # Allow conf directory and config files
 !conf/
 !conf/*.conf

@@ -15,6 +15,42 @@ The Orchestrator is the heart of VBC, coordinating all compression jobs.
         - Orchestrator.__init__
         - Orchestrator.run
 
+## Demo Orchestrator
+
+Simulation-mode pipeline used by `--demo`.
+
+::: vbc.pipeline.demo_orchestrator
+    options:
+      show_source: true
+      heading_level: 3
+
+## Error File Mover
+
+Helpers for moving files that failed verification or compression.
+
+::: vbc.pipeline.error_file_mover
+    options:
+      show_source: true
+      heading_level: 3
+
+## Queue Sorting
+
+Queue ordering strategies used before submit-on-demand scheduling.
+
+::: vbc.pipeline.queue_sorting
+    options:
+      show_source: true
+      heading_level: 3
+
+## Repair
+
+Repair loop helpers for corrupted FLV inputs and failed outputs.
+
+::: vbc.pipeline.repair
+    options:
+      show_source: true
+      heading_level: 3
+
 ## Key Responsibilities
 
 1. **Discovery**: Scan input directory and filter files
@@ -73,6 +109,9 @@ finally:
 ```
 
 ## Processing Pipeline
+
+!!! note "Illustrative snippets"
+    The snippets in this section show the pipeline shape and event flow. They are intentionally simplified and are not a verbatim copy of `vbc.pipeline.orchestrator`.
 
 ### 1. Discovery Phase
 

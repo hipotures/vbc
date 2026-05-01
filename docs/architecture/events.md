@@ -55,11 +55,13 @@ class DiscoveryFinished(Event):
     ignored_small: int = 0
     ignored_err: int = 0
     ignored_av1: int = 0
+    ignored_err_entries: List[DiscoveryErrorEntry] = Field(default_factory=list)
+    source_folders_count: int = 1
 ```
 
 **Publisher:** Orchestrator
 **Subscribers:** UIManager
-**Purpose:** Report discovery results, update UI counters
+**Purpose:** Report discovery results, update UI counters, show ignored `.err` entries, and track multi-source discovery
 
 ### Job Lifecycle Events
 
@@ -199,17 +201,28 @@ class InterruptRequested(Event):
 ### UI Events
 
 !!! warning "Deprecated UI Events"
-    `ToggleConfig` and `HideConfig` are deprecated and replaced by the new tabbed overlay system. They remain in the codebase for backwards compatibility but will be removed in a future version.
+    `ToggleConfig`, `ToggleLegend`, `ToggleMenu`, and `HideConfig` are deprecated and replaced by the new tabbed overlay system. They remain in the codebase for backwards compatibility but will be removed in a future version.
 
 #### ToggleOverlayTab
 ```python
 class ToggleOverlayTab(Event):
-    tab: Optional[str] = None  # "settings" | "io" | "reference" | "shortcuts" | "tui" | "logs" | None
+    tab: Optional[str] = None  # "settings" | "io" | "dirs" | "reference" | "shortcuts" | "tui" | "logs" | None
 ```
 
 **Publisher:** KeyboardListener
 **Subscribers:** UIManager
 **Purpose:** Toggle overlay with optional tab selection
+**Location:** `vbc/ui/keyboard.py`
+
+#### CycleOverlayTab
+```python
+class CycleOverlayTab(Event):
+    direction: int = 1
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** UIManager
+**Purpose:** Cycle through overlay tabs with Tab
 **Location:** `vbc/ui/keyboard.py`
 
 #### CycleLogsPage
@@ -221,6 +234,50 @@ class CycleLogsPage(Event):
 **Publisher:** KeyboardListener
 **Subscribers:** UIManager
 **Purpose:** Navigate paginated entries in Logs tab
+**Location:** `vbc/ui/keyboard.py`
+
+#### CycleOverlayDim
+```python
+class CycleOverlayDim(Event):
+    direction: int = 1
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** UIManager
+**Purpose:** Cycle overlay dim levels from the TUI controls
+**Location:** `vbc/ui/keyboard.py`
+
+#### RotateGpuMetric
+```python
+class RotateGpuMetric(Event):
+    pass
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** UIManager
+**Purpose:** Rotate the GPU metric displayed in the top bar
+**Location:** `vbc/ui/keyboard.py`
+
+#### CycleSparklinePreset
+```python
+class CycleSparklinePreset(Event):
+    direction: int = 1
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** UIManager
+**Purpose:** Cycle GPU sparkline rendering presets
+**Location:** `vbc/ui/keyboard.py`
+
+#### CycleSparklinePalette
+```python
+class CycleSparklinePalette(Event):
+    direction: int = 1
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** UIManager
+**Purpose:** Cycle GPU sparkline color palettes
 **Location:** `vbc/ui/keyboard.py`
 
 #### CloseOverlay
@@ -243,6 +300,28 @@ class ToggleConfig(Event):
 **Publisher:** KeyboardListener
 **Subscribers:** UIManager
 **Purpose:** ~~Show/hide configuration overlay~~ (replaced by `ToggleOverlayTab`)
+**Location:** `vbc/ui/keyboard.py`
+
+#### ToggleLegend (Deprecated)
+```python
+class ToggleLegend(Event):
+    pass
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** UIManager
+**Purpose:** ~~Show/hide legend overlay~~ (replaced by `ToggleOverlayTab(tab="reference")`)
+**Location:** `vbc/ui/keyboard.py`
+
+#### ToggleMenu (Deprecated)
+```python
+class ToggleMenu(Event):
+    pass
+```
+
+**Publisher:** KeyboardListener
+**Subscribers:** UIManager
+**Purpose:** ~~Show/hide menu overlay~~ (replaced by `ToggleOverlayTab(tab="shortcuts")`)
 **Location:** `vbc/ui/keyboard.py`
 
 #### HideConfig (Deprecated)
