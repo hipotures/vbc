@@ -1,0 +1,22 @@
+/* Keep Mermaid diagrams readable in Material's dark color scheme.
+   The diagrams use light node fills, so text should stay dark there. */
+[data-md-color-scheme="slate"] .mermaid text,
+[data-md-color-scheme="slate"] .mermaid tspan {
+  fill: #263238 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .label,
+[data-md-color-scheme="slate"] .mermaid .nodeLabel,
+[data-md-color-scheme="slate"] .mermaid .edgeLabel {
+  color: #263238 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .edgeLabel rect,
+[data-md-color-scheme="slate"] .mermaid .edgeLabel background {
+  fill: rgba(255, 255, 255, 0.84) !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid path,
+[data-md-color-scheme="slate"] .mermaid line {
+  stroke: #5f6b7a !important;
+}

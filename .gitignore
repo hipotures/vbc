@@ -55,6 +55,7 @@ tests/data/
 !docs/
 !docs/**/
 !docs/**/*.md
+!docs/**/*.css
 !mkdocs.yml
 !pyproject.toml
 
