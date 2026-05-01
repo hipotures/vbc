@@ -33,7 +33,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --group docs --group dev
+        run: uv sync --extra docs --extra dev
 
       - name: Test docs sync
         run: uv run pytest tests/test_docs_sync.py -q
