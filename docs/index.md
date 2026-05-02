@@ -85,8 +85,16 @@ While VBC is running, use these keyboard shortcuts:
 | `S` | Graceful shutdown (finish active jobs) |
 | `R` | Refresh file queue (scan for new files) |
 | `C` | Open Prefs tab |
+| `F` | Open I/O tab |
+| `D` | Open Dirs tab |
 | `L` | Open Logs tab (session errors) |
 | `E` | Open Ref tab |
+| `M` | Open Keys tab |
+| `T` | Open TUI tab |
+| `I` | Cycle overlay dim level |
+| `G` | Rotate GPU metric |
+| `W` / `P` | Cycle sparkline preset / palette |
+| `Tab` | Cycle overlay tabs |
 | `[` / `]` | Logs tab page prev/next |
 | `Ctrl+C` | Immediate interrupt (terminate active jobs) |
 

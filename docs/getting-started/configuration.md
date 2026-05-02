@@ -631,6 +631,7 @@ Only a subset of config keys can be overridden via CLI flags:
 - `general.debug` → `--debug`
 - `general.wait_on_finish` → `--wait` / `--no-wait`
 - `general.bell_on_finish` → `--bell` / `--no-bell`
+- `general.repair_corrupted_flv` → config only
 
 Other settings (for example `prefetch_factor`, `dynamic_quality`, encoder arg lists, directory mappings, and `gpu_config`) must be set in YAML.
 
@@ -704,7 +705,7 @@ cpu_encoder:
 
 ## Validation
 
-VBC uses **Pydantic** for config validation. Invalid settings will raise errors on startup:
+VBC uses **Pydantic** for config validation. Invalid model values raise `ValidationError`; CLI startup catches validation and helper `ValueError`s and prints them as Typer error messages:
 
 ```bash
 # Invalid threads (must be > 0)

@@ -12,14 +12,15 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | `R` or `r` | Refresh queue | Re-scan input directory and add new files |
 | `C` or `c` | Overlay: Prefs | Toggle Prefs tab |
 | `F` or `f` | Overlay: I/O | Toggle I/O tab |
+| `D` or `d` | Overlay: Dirs | Toggle Dirs tab |
 | `E` or `e` | Overlay: Ref | Toggle Ref tab |
 | `L` or `l` | Overlay: Logs | Toggle logs tab (session errors) |
 | `M` or `m` | Overlay: Keys | Toggle Keys tab |
 | `T` or `t` | Overlay: TUI | Toggle TUI tab |
-| `Tab` | Cycle overlay tabs | Next tab |
+| `Tab` | Cycle overlay tabs | Next tab: Keys -> Prefs -> I/O -> Dirs -> TUI -> Ref -> Logs |
 | `[` | Logs previous page | Previous page in Logs tab |
 | `]` | Logs next page | Next page in Logs tab |
-| `D` or `d` | Dim overlay | Cycle overlay dim level |
+| `I` or `i` | Dim overlay | Cycle overlay dim level |
 | `G` or `g` | Rotate GPU metric | Cycle GPU sparkline metric |
 | `W` or `w` | Sparkline preset | Cycle preset |
 | `P` or `p` | Sparkline palette | Cycle palette |

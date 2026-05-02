@@ -237,7 +237,7 @@ VBC automatically detects files it has already encoded to prevent accidental re-
 
 ### How It Works
 
-1. **Tag Detection**: Checks for `VBCEncoder` or `VBC Encoder` tags in metadata (via FFprobe or ExifTool).
+1. **Tag Detection**: VBC writes the XMP tag as `VBCEncoder`. Detection also accepts displayed or legacy metadata keys such as `VBC Encoder` (via FFprobe or ExifTool).
 2. **Auto-Move**: If found, the file is moved to the output directory and published as `JobCompleted`.
 3. **Warning**: At the end of processing, a yellow warning is displayed if any files were moved for this reason.
 
@@ -370,7 +370,7 @@ VBC Finished At         : 2025-12-21T15:30:45+01:00
 
 `VBC Quality` stores the configured compression target:
 - `cq` mode: quality parameter label (e.g. `CQ45`)
-- `rate` mode: configured `bps` value (e.g. `20M` or `0.2`)
+- `rate` mode: configured `bps` expression, either an absolute bitrate (e.g. `20M`, `200Mbps`) or a source-bitrate ratio (e.g. `0.2`)
 
 ## Hardware Capability Detection
 
