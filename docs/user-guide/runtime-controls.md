@@ -27,6 +27,20 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | `Esc` | Close overlay | Close active overlay tab |
 | `Ctrl+C` | Immediate interrupt | Terminate active compressions immediately |
 
+## Dirs Tab Controls
+
+When the Dirs tab is active, extra directory-management shortcuts are available:
+
+| Key | Action | Description |
+|-----|--------|-------------|
+| `↑` / `↓` | Move cursor | Select previous or next directory row |
+| `Shift+↑` / `Shift+↓` | Reorder selected row | Swap the selected directory with the previous or next row |
+| `Space` | Toggle selected | Enable or disable the selected directory |
+| `A` or `a` | Add directory | Enter add-directory input mode |
+| `Delete` / `Backspace` | Mark delete | Mark the selected directory for deletion |
+| `S` or `s` | Apply changes | Save pending Dirs changes; shows a message if there are none |
+| `Esc` | Cancel input | Exit add-directory input mode without applying typed text |
+
 ## Thread Adjustment
 
 ### Decrease Threads (`,` or `<`)
