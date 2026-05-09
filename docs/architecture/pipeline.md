@@ -198,7 +198,7 @@ video_file.metadata = _get_metadata(video_file, stream_info)
 # Check if file was already encoded by VBC (to prevent re-encoding)
 if metadata.vbc_encoded:
     # Increment skipped_vbc_count
-    bus.publish(JobFailed(job=..., error_message="File already encoded by VBC", status=SKIPPED))
+    bus.publish(JobFailed(job=job, error_message="File already encoded by VBC"))
     return
 ```
 
@@ -382,39 +382,30 @@ except KeyboardInterrupt:
 
 ## Concurrency Details
 
-### ThreadController
+### Condition-Based Thread Control
 
 ```python
-class ThreadController:
-    def __init__(self, initial_threads):
-        self.condition = threading.Condition()
-        self.max_threads = initial_threads
-        self.active_threads = 0
+# Orchestrator stores the thread controller state directly:
+# self._thread_lock = threading.Condition()
+# self._active_threads = 0
+# self._current_max_threads = config.general.threads
 
-    def acquire(self):
-        with self.condition:
-            while self.active_threads >= self.max_threads:
-                self.condition.wait()
+# Block until a thread slot is available
+with self._thread_lock:
+    while self._active_threads >= self._current_max_threads:
+        self._thread_lock.wait()
 
-            if self.shutdown_requested:
-                return False
+    if self._shutdown_requested:
+        return
 
-            self.active_threads += 1
-            return True
+    self._active_threads += 1
 
-    def release(self):
-        with self.condition:
-            self.active_threads -= 1
-            self.condition.notify()
+# Process job...
 
-    def increase(self):
-        with self.condition:
-            self.max_threads = min(self.max_threads + 1, 8)
-            self.condition.notify()
-
-    def decrease(self):
-        with self.condition:
-            self.max_threads = max(self.max_threads - 1, 1)
+# Release slot
+with self._thread_lock:
+    self._active_threads -= 1
+    self._thread_lock.notify_all()
 ```
 
 ### Dynamic Adjustment
@@ -424,8 +415,8 @@ State: max_threads=4, active_threads=4
 
 User presses '>'
 → max_threads=5
-→ condition.notify() wakes ONE waiting thread
-→ That thread acquires slot (active_threads=5)
+→ condition.notify_all() wakes waiting threads
+→ One waiting worker acquires the new slot (active_threads=5)
 → New job starts immediately
 
 User presses '<'

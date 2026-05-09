@@ -188,12 +188,12 @@ def _process_file(video_file: VideoFile, input_dir: Path):
     else:
         # Write .err file
         err_path.write_text(job.error_message)
-        bus.publish(JobFailed(job=job))
+        bus.publish(JobFailed(job=job, error_message=job.error_message or "Unknown error"))
 ```
 
 ## Concurrency Control
 
-### ThreadController Pattern
+### Condition-Based Thread Control
 
 ```python
 # Block until thread slot available
