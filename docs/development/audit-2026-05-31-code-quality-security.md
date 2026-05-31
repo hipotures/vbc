@@ -6,7 +6,9 @@ Scope: current `/home/xai/DEV/vbc` checkout. This audit covers the local
 single-user desktop/terminal deployment model, plus the optional read-only web
 dashboard that can expose compression progress on a LAN.
 
-This report is intentionally report-only. It does not include code fixes.
+This report started as a report-only audit. The testing, CI, dependency, and
+workflow-hardening notes below have since been updated with follow-up
+remediation status from the same day.
 
 ## Executive Summary
 
@@ -17,17 +19,29 @@ does not support critical remote findings. The meaningful risks are local data
 loss, long-running or resource-heavy media processing, disclosure of local
 filenames/paths, and LAN visibility when the optional web dashboard is enabled.
 
-The most important operational finding is that `uv run pytest` is not a safe
-routine command in this checkout because real video fixtures are present under
-`tests/data` and the slow real-file tests are not excluded by default. Routine
-verification should use explicit safe subsets.
+The prior operational finding that `uv run pytest` could run for an excessive
+amount of time has been corrected for this checkout: the two GH7 real-file
+compression tests now use GPU encoding, and a full local run completed in
+`132.46s`. The suite still executes real compression jobs, so CI or hosts
+without NVENC should continue to use explicit safe subsets or an opt-in
+real-file job.
 
-Validated high-priority remediation themes:
+Follow-up remediation completed on 2026-05-31:
+
+- Added CI coverage for unit tests, docs-sync, docs build, and the safe
+  integration subset.
+- Hardened documentation deploy so secrets are only available in the deploy
+  job, after docs are built and uploaded as an artifact.
+- Fixed the undeclared `jinja2` runtime dependency for `--web`.
+- Made the lockfile workflow consistent with `uv sync --frozen`.
+- Updated test docs to use path-based commands instead of nonexistent unit
+  markers.
+- Renamed private scratch FFmpeg scripts as explicit manual helpers.
+
+Remaining high-priority remediation themes:
 
 - Make web dashboard exposure explicit before binding to all interfaces.
-- Fix the undeclared `jinja2` runtime dependency for `--web`.
-- Add normal CI coverage for unit and safe integration tests.
-- Prevent accidental real-file compression from the default test command.
+- Keep real-file test runtime bounded and document GPU/CI assumptions.
 - Reduce or better defend large orchestration/UI hotspots over time.
 - Clarify docs where current implementation differs from Clean Architecture
   claims and testing reality.
@@ -304,9 +318,10 @@ Recommended remediation:
 
 ## Testing, CI, and Documentation Findings
 
-### TEST-1: Full `uv run pytest` Is Unsafe in This Checkout
+### TEST-1: Full `uv run pytest` Was Previously Too Slow
 
-Severity: High operational risk.
+Status: Remediated locally on 2026-05-31. Residual portability risk remains for
+non-GPU hosts and CI.
 
 Evidence:
 
@@ -318,131 +333,143 @@ Evidence:
 - `tests/integration/test_real_files_compression.py:17` is marked slow and
   integration, then runs the real compression path.
 - This checkout contains `tests/data` at 632M and `tests/data_out` at 60M.
+- `tests/integration/test_real_files_dynamic_quality.py` and
+  `tests/integration/test_real_files_metadata.py` now use `gpu=True`, avoiding
+  the long CPU/SVT-AV1 path for the GH7 real-file tests on this machine.
+- `uv run pytest -q --durations=20` completed successfully with `321 passed in
+  132.46s (0:02:12)`.
 
 Impact:
 
-- A routine full test command can run real video compression for a long time.
-- This already affected the audit attempt and should be treated as a workflow
-  hazard.
+- Before remediation, a routine full test command could run real video
+  compression for a long time.
+- After remediation, the current local checkout completes the full suite in
+  about two minutes on the available GPU-capable machine.
+- The suite still depends on real media fixtures and hardware-dependent encoder
+  behavior, so a non-GPU machine may not see the same runtime.
 
 Recommended remediation:
 
-- Make the default suite exclude `slow`, or require an explicit environment
-  variable/marker for real-file tests.
-- Document safe commands prominently.
-- Consider moving real-file tests behind a separate tox/nox/CI job or script.
+- Completed locally: switch the slow GH7 real-file tests from CPU to GPU.
+- Keep documenting safe commands prominently for CI and machines without NVENC.
+- Consider moving real-file tests behind a separate tox/nox/CI job or script if
+  the project needs predictable cross-machine CI timing.
 
-### TEST-2: CI Only Protects Documentation Sync and Build
+### TEST-2: CI Only Protected Documentation Sync and Build
 
-Severity: High for regression prevention.
+Status: Remediated on 2026-05-31.
 
 Evidence:
 
-- `.github/workflows/deploy.yml:3` only triggers on `push` to `main` and
-  `workflow_dispatch`.
-- `.github/workflows/deploy.yml:35` installs dependencies.
-- `.github/workflows/deploy.yml:48` runs only `tests/test_docs_sync.py`.
-- `.github/workflows/deploy.yml:51` runs `mkdocs build`.
+- Before remediation, `.github/workflows/deploy.yml` only ran
+  `tests/test_docs_sync.py` and `mkdocs build`.
+- `.github/workflows/ci.yml` now runs on pull requests and selected pushes.
+- The CI workflow runs docs sync, unit tests, a safe integration subset, and
+  `mkdocs build`.
+- Both workflow files set `permissions: contents: read`.
+- Documentation deploy is split into a no-secret `build-docs` job and a
+  separate `deploy` job that downloads the built `site/` artifact.
+- Third-party actions are pinned to full commit SHA references.
 
 Impact:
 
-- Runtime, pipeline, UI, config, and safe integration regressions are not
-  protected by GitHub Actions.
+- Runtime, pipeline, UI, config, safe integration, and docs regressions now have
+  basic GitHub Actions coverage.
+- Deployment secrets are no longer present while repository code is checked out,
+  dependencies are installed, or docs are built.
 
 Recommended remediation:
 
-- Add a pull-request CI workflow for:
-  - `uv run pytest tests/unit/ -q`
-  - selected safe integration tests, excluding `test_real_files*`
-  - `uv run pytest tests/test_docs_sync.py -q`
-  - `uv run mkdocs build`
+- Complete.
+- Optional future hardening: require manual approval for the `production`
+  environment in GitHub settings, if this is not already configured.
 
-### TEST-3: `--web` Has an Undeclared Runtime Dependency
+### TEST-3: `--web` Had an Undeclared Runtime Dependency
 
-Severity: Medium.
+Status: Remediated on 2026-05-31.
 
 Evidence:
 
 - `vbc/main.py:105` exposes `--web`.
 - `vbc/main.py:624` imports/starts `VBCWebServer` when enabled.
-- `vbc/infrastructure/web_server.py:6` claims no new dependencies.
 - `vbc/infrastructure/web_server.py:25` imports `jinja2`.
-- `pyproject.toml:11` runtime dependencies do not include `jinja2`.
-- `uv.lock:241` contains `jinja2`, apparently transitively through docs
+- `pyproject.toml` now declares `jinja2` as a runtime dependency.
+- `uv.lock` is updated to reflect the runtime dependency.
+- `vbc/infrastructure/web_server.py` no longer claims the dashboard has no new
   dependencies.
 
 Impact:
 
-- A lean install that only installs runtime dependencies can fail when `--web`
-  is enabled.
+- A lean install that only installs runtime dependencies should now include
+  Jinja2 for `--web`.
 
 Recommended remediation:
 
-- Add `jinja2` to runtime dependencies, or remove the runtime dependency by
-  replacing template rendering with stdlib rendering.
-- Update the web server module docstring.
+- Complete.
 
-### TEST-4: Lockfile and Reproducibility Docs Drift
+### TEST-4: Lockfile and Reproducibility Docs Drifted
 
-Severity: Medium.
+Status: Remediated on 2026-05-31.
 
 Evidence:
 
 - `README.md:320` and `docs/getting-started/installation.md:46` recommend
   `uv sync --frozen`.
-- `uv.lock` exists locally but `git ls-files uv.lock` returned no tracked file.
-- `git check-ignore -v uv.lock` reports `.gitignore:2:*`.
-- `.github/workflows/deploy.yml:10` watches `uv.lock`, but the workflow uses
-  non-frozen `uv sync`.
+- `.gitignore` now explicitly allows `uv.lock`.
+- `uv.lock` is included in the remediation change set.
+- `.github/workflows/deploy.yml` and `.github/workflows/ci.yml` use
+  `uv sync --frozen --extra docs --extra dev`.
 
 Impact:
 
-- Installation docs imply reproducibility that the repository does not provide.
-- CI path filters mention a lockfile that is not currently tracked.
+- Installation docs, lockfile tracking, and workflow install commands now agree
+  on frozen lockfile use.
 
 Recommended remediation:
 
-- Either track `uv.lock` and use frozen sync where appropriate, or remove
-  frozen-lock wording and lockfile path triggers.
+- Complete.
 
-### TEST-5: Test Marker Documentation Does Not Match Current Tests
+### TEST-5: Test Marker Documentation Did Not Match Current Tests
 
-Severity: Medium.
+Status: Remediated on 2026-05-31.
 
 Evidence:
 
-- `docs/development/testing.md:331` documents `@pytest.mark.unit`.
-- `docs/development/testing.md:361` recommends `uv run pytest -m unit`.
-- Actual marker usage is concentrated in slow real-file integration tests; no
-  `@pytest.mark.unit` tests were found.
+- `docs/development/testing.md` now documents path-based unit and safe
+  integration commands.
+- The marker section now reserves markers for cross-cutting properties and
+  explicitly says not to use `uv run pytest -m unit`.
 
 Impact:
 
-- Developers can run a command that selects little or nothing useful.
+- Developers are pointed at commands that select real tests in the current
+  suite layout.
 
 Recommended remediation:
 
-- Either add unit/integration markers consistently, or document path-based
-  commands as the supported workflow.
+- Complete.
 
-### TEST-6: Scratch Scripts Named `test1.sh` / `test2.sh` Are Tracked
+### TEST-6: Scratch Scripts Named `test1.sh` / `test2.sh` Were Tracked
 
-Severity: Medium.
+Status: Remediated on 2026-05-31.
 
 Evidence:
 
-- `scripts/test1.sh:6` and `scripts/test2.sh:6` use hard-coded private
-  `/arch03/V/...mov` inputs.
-- Both call `ffmpeg -y` and write `proxy.mp4` / `proxy-gpu.mp4`.
+- The scripts were renamed to `scripts/manual_proxy_cpu.sh` and
+  `scripts/manual_proxy_gpu.sh`.
+- Both scripts now require an explicit input file argument and no longer embed a
+  private `/arch03/V/...mov` path.
+- `docs/development/testing.md` documents them as manual media experiments, not
+  automated tests.
 
 Impact:
 
-- The names look like normal test scripts but execute real FFmpeg jobs.
+- The scripts are no longer presented as generic tests and cannot silently use a
+  private hard-coded input path.
 
 Recommended remediation:
 
-- Rename as manual experiments and document them, or remove them from tracked
-  repo if they are personal scratch files.
+- Complete.
 
 ## Verified Strengths
 
@@ -471,6 +498,12 @@ uv run pytest tests/test_docs_sync.py -q
 uv run pytest tests/unit/ -q
 uv run pytest tests/integration/test_metadata_copy.py tests/integration/test_skipping.py tests/integration/test_orchestrator.py tests/integration/test_hw_cap.py tests/integration/test_error_markers.py tests/integration/test_concurrency.py tests/integration/test_color_fix.py tests/integration/test_advanced_errors.py -q
 uv run mkdocs build
+uv run pytest tests/integration/test_real_files_dynamic_quality.py::test_real_file_dynamic_quality -q
+uv run pytest tests/integration/test_real_files_metadata.py::test_real_file_metadata_preservation -q
+uv run pytest -q --durations=20
+uv run python -c "import yaml; [yaml.safe_load(open(path, encoding='utf-8')) for path in ('.github/workflows/deploy.yml', '.github/workflows/ci.yml')]; print('workflow yaml ok')"
+git diff --check
+uv sync --frozen --extra docs --extra dev
 ```
 
 Observed results before this report was written:
@@ -479,42 +512,43 @@ Observed results before this report was written:
 - `git ls-files conf/vbc.yaml`: no output.
 - `git check-ignore -v conf/vbc.yaml`: `.gitignore:21:conf/vbc.yaml`.
 - `uv run pytest tests/test_docs_sync.py -q`: `10 passed in 0.02s`.
-- `uv run pytest tests/unit/ -q`: `281 passed in 1.80s`.
-- Safe selected integration subset: `26 passed in 22.71s`.
+- `uv run pytest tests/unit/ -q`: `281 passed in 1.43s` after the
+  remediation updates.
+- Safe selected integration subset: `26 passed in 22.63s` after the remediation
+  updates.
 - `uv run mkdocs build`: completed; it reported existing nav omissions for
   `DOCUMENTATION_CHANGELOG.md` and `development/config_vs_cli_analysis.md`, plus
   mkdocstrings/griffe warnings unrelated to this report.
+- `uv run pytest tests/integration/test_real_files_dynamic_quality.py::test_real_file_dynamic_quality -q`:
+  `1 passed in 33.77s` after switching the test to GPU.
+- `uv run pytest tests/integration/test_real_files_metadata.py::test_real_file_metadata_preservation -q`:
+  `1 passed in 33.60s` after switching the test to GPU.
+- `uv run pytest -q --durations=20`: `321 passed in 132.46s (0:02:12)`;
+  the slowest tests were metadata preservation (`32.77s`), dynamic quality
+  (`31.81s`), Sony compression (`29.58s`), and autorotation (`10.35s`).
+- Workflow YAML parse check: `workflow yaml ok`.
+- `git diff --check`: no output.
+- `uv sync --frozen --extra docs --extra dev`: `Checked 51 packages in 7ms`.
 
 Commands intentionally not run:
 
 ```bash
-uv run pytest
 uv run pytest tests/integration/test_real_files*.py
 uv run pytest --cov=vbc --cov-report=term-missing
 ```
 
-Reason: the current checkout contains 632M of real video fixtures and the
-default full suite can run real compression for a long time.
+Reason: the aggregate `test_real_files*.py` and coverage run still execute real
+compression and were not needed after the full suite timing run above.
 
 ## Prioritized Remediation Backlog
 
-1. Gate real-file compression tests behind explicit opt-in and update the test
-   docs to make safe commands the default.
-2. Add CI for unit tests, docs-sync, docs build, and safe integration tests on
-   pull requests.
-3. Fix the `--web` runtime dependency by declaring `jinja2` or removing the
-   dependency.
-4. Change web dashboard default host to `127.0.0.1`, or add an explicit LAN
+1. Change web dashboard default host to `127.0.0.1`, or add an explicit LAN
    exposure warning and optional token auth.
-5. Decide whether `uv.lock` is meant to be tracked; align `.gitignore`, docs,
-   and CI with that decision.
-6. Add EventBus exception/concurrency tests, then harden `publish()` if the
+2. Add EventBus exception/concurrency tests, then harden `publish()` if the
    current synchronous behavior is not intentional.
-7. Add a HW-cap CPU fallback UI regression test and publish a fallback-start
+3. Add a HW-cap CPU fallback UI regression test and publish a fallback-start
    event or equivalent state update.
-8. Update architecture docs to describe the current pragmatic boundaries and
+4. Update architecture docs to describe the current pragmatic boundaries and
    current file sizes.
-9. Review `scripts/test1.sh` and `scripts/test2.sh`; rename, document, or
-   remove them.
-10. Plan narrow extractions from `Orchestrator` only where tests can pin current
+5. Plan narrow extractions from `Orchestrator` only where tests can pin current
     behavior first.

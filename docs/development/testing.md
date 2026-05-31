@@ -26,6 +26,30 @@ tests/
 uv run pytest
 ```
 
+The full suite includes real-file compression tests. On this checkout those
+tests are expected to use GPU encoding and complete in about two minutes on a
+GPU-capable development machine. Use the path-based commands below for routine
+CI-style checks or hosts without NVENC.
+
+### Unit Tests
+
+```bash
+uv run pytest tests/unit/ -q
+```
+
+### Safe Integration Subset
+
+```bash
+uv run pytest tests/integration/test_metadata_copy.py tests/integration/test_skipping.py tests/integration/test_orchestrator.py tests/integration/test_hw_cap.py tests/integration/test_error_markers.py tests/integration/test_concurrency.py tests/integration/test_color_fix.py tests/integration/test_advanced_errors.py -q
+```
+
+### Documentation Checks
+
+```bash
+uv run pytest tests/test_docs_sync.py -q
+uv run mkdocs build
+```
+
 ### Specific Test File
 
 ```bash
@@ -330,19 +354,15 @@ def test_exiftool_extraction():
 
 ## Test Markers
 
-Use markers to categorize tests:
+Use path-based commands for routine unit and integration selection. Markers are
+reserved for test properties that cut across paths:
 
 ```python
 import pytest
 
-@pytest.mark.unit
-def test_fast_unit():
-    """Fast unit test."""
-    pass
-
 @pytest.mark.integration
 def test_slow_integration():
-    """Slow integration test."""
+    """Integration test."""
     pass
 
 @pytest.mark.slow
@@ -354,11 +374,25 @@ def test_very_slow():
 Run specific markers:
 
 ```bash
-# Only unit tests
-uv run pytest -m unit
+# Unit tests
+uv run pytest tests/unit/
 
 # Skip slow tests
 uv run pytest -m "not slow"
+```
+
+Do not use `uv run pytest -m unit`; the current suite is organized by directory
+for unit tests rather than by `@pytest.mark.unit` decorators.
+
+## Manual Media Experiments
+
+The `scripts/manual_proxy_cpu.sh` and `scripts/manual_proxy_gpu.sh` helpers are
+manual FFmpeg experiments, not automated tests. They require an explicit input
+file and write `proxy.mp4` or `proxy-gpu.mp4` by default:
+
+```bash
+scripts/manual_proxy_cpu.sh /path/to/input.mov
+scripts/manual_proxy_gpu.sh /path/to/input.mov my-proxy
 ```
 
 ## Parametrized Tests

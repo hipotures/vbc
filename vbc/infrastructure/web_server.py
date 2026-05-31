@@ -3,7 +3,6 @@
 Serves a single-page dashboard that auto-refreshes via HTMX polling every 2s.
 Runs as a daemon thread — stops automatically when VBC exits.
 
-No new dependencies: uses stdlib http.server + socketserver only.
 HTMX 2.0.8 and Pico.css 2.1.1 loaded from jsDelivr CDN.
 Static files (style.css, theme-switcher.js) served from vbc/infrastructure/web/.
 HTML fragments rendered via Jinja2 templates in vbc/infrastructure/web/templates/.

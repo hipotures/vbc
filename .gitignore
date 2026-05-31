@@ -58,6 +58,7 @@ tests/data/
 !docs/**/*.css
 !mkdocs.yml
 !pyproject.toml
+!uv.lock
 
 # Allow assets directory and its contents
 !assets/

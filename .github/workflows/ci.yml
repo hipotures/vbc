@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/ci.yml"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "vbc/**"
+      - "tests/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libimage-exiftool-perl
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra docs --extra dev
+
+      - name: Test docs sync
+        run: uv run pytest tests/test_docs_sync.py -q
+
+      - name: Test unit suite
+        run: uv run pytest tests/unit/ -q
+
+      - name: Test safe integration subset
+        run: >
+          uv run pytest
+          tests/integration/test_metadata_copy.py
+          tests/integration/test_skipping.py
+          tests/integration/test_orchestrator.py
+          tests/integration/test_hw_cap.py
+          tests/integration/test_error_markers.py
+          tests/integration/test_concurrency.py
+          tests/integration/test_color_fix.py
+          tests/integration/test_advanced_errors.py
+          -q
+
+      - name: Build docs
+        run: uv run mkdocs build

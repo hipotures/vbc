@@ -9,6 +9,7 @@ description = "VBC - Video Batch Compression with AV1/NVENC support"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "jinja2>=3.1.6",
     "pydantic>=2.12.5",
     "pyexiftool>=0.5.6",
     "pyyaml>=6.0.3",
