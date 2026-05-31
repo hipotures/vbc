@@ -25,7 +25,7 @@ def test_real_file_dynamic_quality(real_test_videos):
     config = AppConfig(
         general=GeneralConfig(
             threads=1,
-            gpu=False,
+            gpu=True,
             copy_metadata=True,
             use_exif=True,
             extensions=[".mp4"],

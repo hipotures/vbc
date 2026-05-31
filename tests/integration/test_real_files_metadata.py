@@ -26,7 +26,7 @@ def test_real_file_metadata_preservation(real_test_videos):
     config = AppConfig(
         general=GeneralConfig(
             threads=1,
-            gpu=False,
+            gpu=True,
             copy_metadata=True,
             use_exif=True,
             extensions=[".mp4"],

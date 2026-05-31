@@ -100,4 +100,5 @@ nav:
   - Development:
       - Contributing: development/contributing.md
       - Testing: development/testing.md
+      - Code/Security Audit 2026-05-31: development/audit-2026-05-31-code-quality-security.md
       - Building Docs: BUILDING.md
