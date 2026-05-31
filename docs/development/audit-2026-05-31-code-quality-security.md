@@ -265,30 +265,36 @@ Recommended remediation:
   move behavior.
 - Do not start with a broad rewrite. Add narrow tests before each extraction.
 
-### ARCH-3: EventBus Is Synchronous and Fragile Under Threaded Publishers
+### ARCH-3: EventBus Was Fragile Under Threaded Publishers
 
-Severity: Medium.
+Status: Remediated on 2026-05-31.
 
 Evidence:
 
-- `vbc/infrastructure/event_bus.py:18` stores subscribers without locking.
-- `vbc/infrastructure/event_bus.py:22` publishes synchronously.
+- `vbc/infrastructure/event_bus.py` now protects subscriber mutation with a
+  lock.
+- `publish()` snapshots matching subscribers before invoking callbacks.
+- `publish()` isolates subscriber exceptions and logs them instead of
+  propagating them into publishers.
 - `vbc/infrastructure/ffmpeg.py:523` publishes progress from processing paths.
-- `tests/unit/test_event_bus.py:8` covers happy-path publishing only.
+- `tests/unit/test_event_bus.py` now covers handler exceptions and subscriber
+  mutation during publish.
 - `docs/architecture/events.md:629` already recommends try/except around
   publish handlers.
 
 Impact:
 
-- A slow UI handler can delay a publisher.
-- A handler exception can propagate into pipeline or subprocess control flow.
-- Subscriber mutation during publish is not defended.
+- The bus remains intentionally synchronous, so a slow handler can still delay
+  its publisher.
+- Handler exceptions no longer interrupt pipeline or subprocess control flow.
+- Subscriber mutation during publish no longer affects the in-flight event
+  dispatch.
 
 Recommended remediation:
 
-- Decide whether synchronous propagation is intentional.
-- If not, snapshot subscribers under a lock and isolate handler exceptions.
-- Add tests for handler exceptions and concurrent subscribe/publish behavior.
+- Complete for the identified fragility.
+- Consider an asynchronous or queued EventBus only if slow handlers become a
+  measured runtime problem.
 
 ### ARCH-4: CPU Fallback Can Drop a Job From Active UI State
 
@@ -495,6 +501,7 @@ git status --short
 git ls-files conf/vbc.yaml
 git check-ignore -v conf/vbc.yaml
 uv run pytest tests/test_docs_sync.py -q
+uv run pytest tests/unit/test_event_bus.py -q
 uv run pytest tests/unit/ -q
 uv run pytest tests/integration/test_metadata_copy.py tests/integration/test_skipping.py tests/integration/test_orchestrator.py tests/integration/test_hw_cap.py tests/integration/test_error_markers.py tests/integration/test_concurrency.py tests/integration/test_color_fix.py tests/integration/test_advanced_errors.py -q
 uv run mkdocs build
@@ -511,10 +518,12 @@ Observed results before this report was written:
 - `git status --short`: clean.
 - `git ls-files conf/vbc.yaml`: no output.
 - `git check-ignore -v conf/vbc.yaml`: `.gitignore:21:conf/vbc.yaml`.
-- `uv run pytest tests/test_docs_sync.py -q`: `10 passed in 0.02s`.
-- `uv run pytest tests/unit/ -q`: `281 passed in 1.43s` after the
-  remediation updates.
-- Safe selected integration subset: `26 passed in 22.63s` after the remediation
+- `uv run pytest tests/test_docs_sync.py -q`: `10 passed in 0.01s`.
+- `uv run pytest tests/unit/test_event_bus.py -q`: `5 passed in 0.01s` after
+  the EventBus hardening.
+- `uv run pytest tests/unit/ -q`: `283 passed in 1.43s` after the remediation
+  updates.
+- Safe selected integration subset: `26 passed in 22.62s` after the remediation
   updates.
 - `uv run mkdocs build`: completed; it reported existing nav omissions for
   `DOCUMENTATION_CHANGELOG.md` and `development/config_vs_cli_analysis.md`, plus
@@ -544,11 +553,9 @@ compression and were not needed after the full suite timing run above.
 
 1. Change web dashboard default host to `127.0.0.1`, or add an explicit LAN
    exposure warning and optional token auth.
-2. Add EventBus exception/concurrency tests, then harden `publish()` if the
-   current synchronous behavior is not intentional.
-3. Add a HW-cap CPU fallback UI regression test and publish a fallback-start
+2. Add a HW-cap CPU fallback UI regression test and publish a fallback-start
    event or equivalent state update.
-4. Update architecture docs to describe the current pragmatic boundaries and
+3. Update architecture docs to describe the current pragmatic boundaries and
    current file sizes.
-5. Plan narrow extractions from `Orchestrator` only where tests can pin current
+4. Plan narrow extractions from `Orchestrator` only where tests can pin current
     behavior first.
