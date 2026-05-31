@@ -1618,6 +1618,7 @@ class Orchestrator:
                 job.error_message = None
                 job.quality_value = quality_value
                 job.quality_display = quality_display
+                self.event_bus.publish(JobStarted(job=job))
                 self.ffmpeg_adapter.compress(
                     job,
                     job_config,

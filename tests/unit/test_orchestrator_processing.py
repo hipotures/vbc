@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from vbc.config.models import AppConfig, GeneralConfig, AutoRotateConfig
-from vbc.domain.events import ActionMessage, JobCompleted, JobFailed, ProcessingFinished
+from vbc.domain.events import ActionMessage, JobCompleted, JobFailed, JobStarted, ProcessingFinished
 from vbc.domain.models import JobStatus, VideoFile, VideoMetadata
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
@@ -222,6 +222,8 @@ def test_process_file_cpu_fallback_on_hw_cap(tmp_path):
     )
     bus = EventBus()
     events = []
+    started_events = []
+    bus.subscribe(JobStarted, lambda e: started_events.append(e))
     bus.subscribe(JobCompleted, lambda e: events.append(e))
 
     ffprobe = MagicMock()
@@ -260,6 +262,8 @@ def test_process_file_cpu_fallback_on_hw_cap(tmp_path):
     orchestrator._process_file(video_file, input_dir)
 
     assert ffmpeg.calls == [True, False]
+    assert len(started_events) == 2
+    assert started_events[0].job is started_events[1].job
     assert events
     assert events[0].job.status == JobStatus.COMPLETED
     assert not (input_dir.with_name(f"{input_dir.name}_out") / "video.err").exists()

@@ -296,9 +296,9 @@ Recommended remediation:
 - Consider an asynchronous or queued EventBus only if slow handlers become a
   measured runtime problem.
 
-### ARCH-4: CPU Fallback Can Drop a Job From Active UI State
+### ARCH-4: CPU Fallback Could Drop a Job From Active UI State
 
-Severity: Medium.
+Status: Remediated on 2026-05-31.
 
 Evidence:
 
@@ -306,21 +306,20 @@ Evidence:
   `HardwareCapabilityExceeded`.
 - `vbc/ui/manager.py:285` removes that job from active jobs.
 - `vbc/pipeline/orchestrator.py:1571` enters CPU fallback retry.
-- `vbc/pipeline/orchestrator.py:1583` retries without publishing a fresh
-  `JobStarted`.
+- `vbc/pipeline/orchestrator.py` now publishes a fresh `JobStarted` before the
+  CPU retry.
+- `tests/unit/test_orchestrator_processing.py` verifies that a hardware-cap
+  fallback emits two `JobStarted` events for the same job and then completes.
 
 Impact:
 
-- When GPU fallback happens, the CPU retry may disappear from active UI state
-  even though processing continues.
-- This is not data corruption, but it weakens runtime observability during an
-  important recovery path.
+- When GPU fallback happens, the UI gets a new active-job start signal before
+  the CPU retry begins.
+- This preserves runtime observability during the recovery path.
 
 Recommended remediation:
 
-- Publish a new `JobStarted` or dedicated fallback event before CPU retry.
-- Add a focused test that simulates HW-cap failure and verifies UI active job
-  state during fallback.
+- Complete.
 
 ## Testing, CI, and Documentation Findings
 
@@ -502,6 +501,7 @@ git ls-files conf/vbc.yaml
 git check-ignore -v conf/vbc.yaml
 uv run pytest tests/test_docs_sync.py -q
 uv run pytest tests/unit/test_event_bus.py -q
+uv run pytest tests/unit/test_orchestrator_processing.py::test_process_file_cpu_fallback_on_hw_cap -q
 uv run pytest tests/unit/ -q
 uv run pytest tests/integration/test_metadata_copy.py tests/integration/test_skipping.py tests/integration/test_orchestrator.py tests/integration/test_hw_cap.py tests/integration/test_error_markers.py tests/integration/test_concurrency.py tests/integration/test_color_fix.py tests/integration/test_advanced_errors.py -q
 uv run mkdocs build
@@ -521,6 +521,8 @@ Observed results before this report was written:
 - `uv run pytest tests/test_docs_sync.py -q`: `10 passed in 0.01s`.
 - `uv run pytest tests/unit/test_event_bus.py -q`: `5 passed in 0.01s` after
   the EventBus hardening.
+- `uv run pytest tests/unit/test_orchestrator_processing.py::test_process_file_cpu_fallback_on_hw_cap -q`:
+  `1 passed in 0.03s` after the CPU fallback active-job remediation.
 - `uv run pytest tests/unit/ -q`: `283 passed in 1.43s` after the remediation
   updates.
 - Safe selected integration subset: `26 passed in 22.62s` after the remediation
@@ -553,9 +555,7 @@ compression and were not needed after the full suite timing run above.
 
 1. Change web dashboard default host to `127.0.0.1`, or add an explicit LAN
    exposure warning and optional token auth.
-2. Add a HW-cap CPU fallback UI regression test and publish a fallback-start
-   event or equivalent state update.
-3. Update architecture docs to describe the current pragmatic boundaries and
+2. Update architecture docs to describe the current pragmatic boundaries and
    current file sizes.
-4. Plan narrow extractions from `Orchestrator` only where tests can pin current
+3. Plan narrow extractions from `Orchestrator` only where tests can pin current
     behavior first.
