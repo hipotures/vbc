@@ -576,11 +576,11 @@ Dashboard display settings.
 - **Type**: Boolean
 - **Default**: false
 - **CLI**: `--bell` / `--no-bell`
-- **Description**: Play a terminal bell (BEL character) as a completion notification
+- **Description**: Play a terminal bell (BEL character) once the full cycle finishes (compression → automatic repair → compression of repaired files)
 - **Triggers**:
   - When entering wait state (if `wait_on_finish=true`)
   - Just before exit (if `wait_on_finish=false`)
-  - After repair completes with at least one repaired file
+- The automatic repair pass itself does not emit a bell, because repaired files are queued and compressed immediately afterwards
 
 ### UI/Display
 

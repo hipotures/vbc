@@ -334,9 +334,10 @@ uv run vbc /videos --bell --wait
 
 Bell triggers:
 
-- When entering wait state (`--wait` mode)
+- When entering wait state (`--wait` mode), after the full cycle (compression → automatic repair → compression of repaired files)
 - Just before exit (without `--wait`)
-- After repair completes with repaired files
+
+The automatic repair pass itself does not emit a bell, because repaired files are queued and compressed immediately afterwards.
 
 #### `--log-path PATH`
 

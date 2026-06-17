@@ -160,7 +160,16 @@ general:
   # If compression < 10%, keep original file instead of compressed version.
   min_compression_ratio: 0.1
 
-  # Attempt to repair corrupted FLV/MP4 files (text prefix error).
+  # Automatically attempt one repair pass for files that failed during the
+  # current session. Runs in the TUI after the queue empties and before
+  # WAITING/exit. Repaired files are restored to source folders (as .mkv)
+  # and queued for compression immediately, even when .mkv is not in
+  # general.extensions. After graceful shutdown (S), the repair pass still
+  # runs once but VBC exits without compressing repaired files.
+  auto_repair_errors: true
+
+  # Legacy/special repair setting for corrupted FLV/MP4 stream dumps.
+  # Automatic current-session repair is controlled by auto_repair_errors.
   repair_corrupted_flv: false
 
   # Enable verbose debug logging.
@@ -171,8 +180,10 @@ general:
   # CLI: --wait / --no-wait
   wait_on_finish: false
 
-  # Play a terminal bell (BEL char) when processing finishes (while waiting)
-  # or just before exit (if wait_on_finish=false), and after FLV repair.
+  # Play a terminal bell (BEL char) once the whole cycle finishes
+  # (compression -> automatic repair -> compression of repaired files):
+  # when entering WAITING (if wait_on_finish=true) or just before exit
+  # (if wait_on_finish=false). The repair pass itself does not emit a bell.
   # CLI: --bell / --no-bell
   bell_on_finish: false
 

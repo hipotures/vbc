@@ -103,7 +103,7 @@ def compress(
     web: bool = typer.Option(False, "--web", help="Enable read-only HTMX web dashboard (overrides config)"),
     web_port: Optional[int] = typer.Option(None, "--web-port", help="Web dashboard port (overrides config)"),
     wait_on_finish: bool = typer.Option(False, "--wait/--no-wait", help="Wait for R (restart) or S (exit) instead of auto-exiting after all tasks finish"),
-    bell_on_finish: bool = typer.Option(False, "--bell/--no-bell", help="Play terminal bell when processing finishes or repair completes"),
+    bell_on_finish: bool = typer.Option(False, "--bell/--no-bell", help="Play terminal bell when processing finishes (after the full compression + repair cycle)"),
 ):
     """Batch compress videos in a directory with full feature parity."""
     cli_input_dirs = parse_cli_input_dirs(input_dirs_arg)
