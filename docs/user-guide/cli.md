@@ -336,7 +336,7 @@ Bell triggers:
 
 - When entering wait state (`--wait` mode)
 - Just before exit (without `--wait`)
-- After FLV repair completes with repaired files
+- After repair completes with repaired files
 
 #### `--log-path PATH`
 

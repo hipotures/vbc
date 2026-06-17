@@ -185,11 +185,12 @@ Result: "Refreshed: +3 new files"
 
 ## Wait Mode
 
-When `wait_on_finish: true` (or `--wait` CLI flag) is set, VBC does not exit automatically after all tasks complete. Instead, it shows **WAITING** status in the top bar and waits for user input.
+When `wait_on_finish: true` (or `--wait` CLI flag) is set, VBC does not exit automatically after all tasks complete. If current-session failures are repairable and `auto_repair_errors: true`, VBC first shows **REPAIR** status, attempts one repair pass, and compresses repaired files. It then shows **WAITING** status in the top bar and waits for user input.
 
 **Behavior:**
 
 - After all files are processed, the status bar changes to **WAITING** with the hint line `R = restart scan  │  S / Ctrl+C = exit`
+- If failed files from the current session exist, status changes to **REPAIR** before **WAITING**
 - Press **R** to restart the scan (full re-discovery and processing of any new files)
 - Press **S** or **Ctrl+C** to exit VBC
 

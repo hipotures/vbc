@@ -4,7 +4,7 @@ from pathlib import Path
 from vbc.utils.flv_repair_core import copy_from_offset, find_flv_header_offset
 
 
-def repair_flv_file(input_path: Path, output_path: Path, keep_intermediate=False) -> bool:
+def repair_flv_file(input_path: Path, output_path: Path, keep_intermediate: bool = False) -> bool:
     """
     Repairs a FLV/MP4 file by removing the text error prefix and saving as a clean .flv.
     

@@ -83,6 +83,9 @@ class UIState:
         self.error_paused = False
         self.error_status_text: Optional[str] = None
         self.error_message: Optional[str] = None
+        self.repair_active = False
+        self.repair_candidate_count = 0
+        self.repair_repaired_count = 0
         self.finished = False
         self.waiting_for_input = False
         self.strip_unicode_display = True

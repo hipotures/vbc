@@ -67,7 +67,9 @@ from vbc.domain.events import (
     ThreadControlEvent,
     InterruptRequested,
 )
+from vbc.pipeline.error_file_mover import collect_error_entries, move_failed_files
 from vbc.pipeline.queue_sorting import sort_files
+from vbc.pipeline.repair import process_repairs
 
 _REQUIRED_VBC_VERIFY_TAGS = {
     "vbcoriginalname",
@@ -135,6 +137,7 @@ class Orchestrator:
         ffprobe_adapter: FFprobeAdapter,
         ffmpeg_adapter: FFmpegAdapter,
         output_dir_map: Optional[Dict[Path, Path]] = None,
+        errors_dir_map: Optional[Dict[Path, Path]] = None,
         local_config_registry: Optional["LocalConfigRegistry"] = None,
         cli_overrides: Optional["CliConfigOverrides"] = None,
     ):
@@ -181,6 +184,10 @@ class Orchestrator:
         self._folder_mapping: Dict[Path, Path] = {}
         self._output_dir_map_override: Dict[Path, Path] = output_dir_map or {}
         self._use_output_dir_map_override = output_dir_map is not None
+        self._errors_dir_map: Dict[Path, Path] = errors_dir_map or {}
+        self._session_error_sources: Dict[Path, Path] = {}
+        self._auto_repair_attempted_sources: set[Path] = set()
+        self._repair_lock = threading.Lock()
 
         # Dynamic input dirs (updated via InputDirsChanged event)
         self._pending_input_dirs: Optional[List[Path]] = None
@@ -405,11 +412,117 @@ class Orchestrator:
         output_path = output_dir / rel_path.with_suffix(output_suffix)
         err_path = output_path.with_suffix(".err")
         try:
-            err_path.parent.mkdir(parents=True, exist_ok=True)
-            err_path.write_text(err_msg)
+            self._write_job_error_marker(video_file, err_path, err_msg)
         except Exception:
             return None
         return output_path
+
+    def _write_job_error_marker(self, video_file: VideoFile, err_path: Path, err_msg: str) -> None:
+        err_path.parent.mkdir(parents=True, exist_ok=True)
+        err_path.write_text(err_msg)
+        self._record_session_error_marker(video_file.path, err_path)
+
+    def _record_session_error_marker(self, source_path: Path, err_path: Path) -> None:
+        with self._repair_lock:
+            self._session_error_sources[err_path] = source_path
+
+    def _get_errors_dir(self, input_dir: Path) -> Optional[Path]:
+        mapped = self._errors_dir_map.get(input_dir)
+        if mapped is not None:
+            return mapped
+        if self.config.errors_dirs:
+            return None
+        suffix = self.config.suffix_errors_dirs
+        if not suffix:
+            return None
+        mapped = input_dir.with_name(f"{input_dir.name}{suffix}")
+        self._errors_dir_map[input_dir] = mapped
+        return mapped
+
+    def _collect_session_repair_entries(self, input_dirs: List[Path]) -> List[Tuple[Path, Path, Path, Path]]:
+        output_dir_map = {
+            input_dir: self._get_output_dir(input_dir)
+            for input_dir in input_dirs
+        }
+        errors_dir_map = {
+            input_dir: errors_dir
+            for input_dir in input_dirs
+            if (errors_dir := self._get_errors_dir(input_dir)) is not None
+        }
+        if not errors_dir_map:
+            return []
+
+        all_entries = collect_error_entries(input_dirs, output_dir_map, errors_dir_map)
+        with self._repair_lock:
+            session_error_sources = dict(self._session_error_sources)
+            attempted_sources = set(self._auto_repair_attempted_sources)
+
+        repair_entries: List[Tuple[Path, Path, Path, Path]] = []
+        for entry in all_entries:
+            err_file = entry[3]
+            source_path = session_error_sources.get(err_file)
+            if source_path is None:
+                continue
+            if source_path in attempted_sources:
+                continue
+            repair_entries.append(entry)
+        return repair_entries
+
+    @staticmethod
+    def _video_file_from_path(path: Path) -> Optional[VideoFile]:
+        try:
+            stat = path.stat()
+        except OSError:
+            return None
+        return VideoFile(path=path, size_bytes=stat.st_size)
+
+    def _run_auto_repair(self, input_dirs: List[Path]) -> List[Path]:
+        if not self.config.general.auto_repair_errors:
+            return []
+
+        repair_entries = self._collect_session_repair_entries(input_dirs)
+        if not repair_entries:
+            return []
+
+        from vbc.domain.events import ActionMessage, RepairFinished, RepairStarted
+
+        self.event_bus.publish(RepairStarted(candidate_count=len(repair_entries)))
+        self.event_bus.publish(ActionMessage(message=f"REPAIR started: {len(repair_entries)} files"))
+
+        moved_files = move_failed_files(
+            input_dirs,
+            {input_dir: self._get_output_dir(input_dir) for input_dir in input_dirs},
+            self._errors_dir_map,
+            self.config.general.extensions,
+            logger=self.logger,
+            error_entries=repair_entries,
+        )
+
+        with self._repair_lock:
+            for entry in repair_entries:
+                source_path = self._session_error_sources.get(entry[3])
+                if source_path is not None:
+                    self._auto_repair_attempted_sources.add(source_path)
+
+        repaired_count = 0
+        repaired_paths: List[Path] = []
+        if moved_files:
+            repaired_count, repaired_paths = process_repairs(
+                input_dirs,
+                self._errors_dir_map,
+                self.config.general.extensions,
+                logger=self.logger,
+                target_files=moved_files,
+                return_repaired_files=True,
+            )
+
+        with self._repair_lock:
+            for repaired_path in repaired_paths:
+                self._auto_repair_attempted_sources.add(repaired_path)
+
+        self.event_bus.publish(RepairFinished(attempted=len(repair_entries), repaired=repaired_count))
+        self.event_bus.publish(ActionMessage(message=f"REPAIR finished: {repaired_count}/{len(repair_entries)} repaired"))
+        return repaired_paths
 
     def _prune_failed_pending(self, pending) -> int:
         if not self._metadata_failed_paths:
@@ -980,6 +1093,7 @@ class Orchestrator:
                     err_path.write_text(
                         f"ExifTool metadata copy timed out after {timeout_s}s (2 attempts)."
                     )
+                    self._record_session_error_marker(source_path, err_path)
                 except Exception:
                     pass
                 self.logger.error(
@@ -1437,7 +1551,7 @@ class Orchestrator:
             except Exception as e:
                 err_msg = "File is corrupted (ffprobe failed to read). Skipped."
                 try:
-                    err_path.write_text(err_msg)
+                    self._write_job_error_marker(video_file, err_path, err_msg)
                 except Exception:
                     pass
                 self.logger.error(f"Corrupted file detected (ffprobe failed): {filename} - {e}")
@@ -1458,7 +1572,7 @@ class Orchestrator:
                     f"width={src_width}, height={src_height}. Skipped."
                 )
                 try:
-                    err_path.write_text(err_msg)
+                    self._write_job_error_marker(video_file, err_path, err_msg)
                 except Exception:
                     pass
                 self.logger.error(f"Corrupted file detected (invalid dimensions): {filename} - {err_msg}")
@@ -1553,8 +1667,7 @@ class Orchestrator:
                     error_message=err_msg,
                     config_source=config_source,
                 )
-                with open(err_path, "w") as f:
-                    f.write(err_msg)
+                self._write_job_error_marker(video_file, err_path, err_msg)
                 self.event_bus.publish(JobFailed(job=failed_job, error_message=err_msg))
                 return
 
@@ -1715,7 +1828,7 @@ class Orchestrator:
                         job.error_message = f"Verification failed: {details}"
                         self.logger.error(f"VERIFY_FAIL: {filename} ({details})")
                         try:
-                            err_path.write_text(job.error_message)
+                            self._write_job_error_marker(video_file, err_path, job.error_message)
                         except Exception:
                             pass
                         self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
@@ -1742,8 +1855,7 @@ class Orchestrator:
                     self.logger.info(f"PROCESS_END: {filename} status=interrupted elapsed={elapsed:.2f}s")
             elif job.status in (JobStatus.HW_CAP_LIMIT, JobStatus.FAILED):
                 # Event already published by FFmpeg adapter, just write error marker
-                with open(err_path, "w") as f:
-                    f.write(job.error_message or "Unknown error")
+                self._write_job_error_marker(video_file, err_path, job.error_message or "Unknown error")
                 if self.config.general.debug and start_time:
                     elapsed = time.monotonic() - start_time
                     self.logger.info(f"PROCESS_END: {filename} status={job.status.value} elapsed={elapsed:.2f}s")
@@ -1751,8 +1863,7 @@ class Orchestrator:
                 # Status not updated - treat as unknown error
                 job.status = JobStatus.FAILED
                 job.error_message = "Compression finished but status not updated"
-                with open(err_path, "w") as f:
-                    f.write(job.error_message)
+                self._write_job_error_marker(video_file, err_path, job.error_message)
                 self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
                 if self.config.general.debug and start_time:
                     elapsed = time.monotonic() - start_time
@@ -1778,8 +1889,7 @@ class Orchestrator:
                 job.status = JobStatus.FAILED
                 job.error_message = f"Exception: {str(e)}"
                 if err_path:
-                    with open(err_path, "w") as f:
-                        f.write(job.error_message)
+                    self._write_job_error_marker(video_file, err_path, job.error_message)
                 self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
             if self.config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
@@ -1796,12 +1906,14 @@ class Orchestrator:
 
     def run(self, input_dirs: Union[Path, List[Path]]):
         input_dirs = self._normalize_input_dirs(input_dirs)
+        forced_files: List[Path] = []
         while True:
             # Use updated dirs if changed via Dirs tab
             if self._pending_input_dirs is not None:
                 input_dirs = self._pending_input_dirs
                 self._pending_input_dirs = None
-            self._run_once(input_dirs)
+            self._run_once(input_dirs, forced_files=forced_files)
+            forced_files = []
 
             if self._verification_abort_message:
                 raise VerificationAbortError(self._verification_abort_message)
@@ -1822,6 +1934,16 @@ class Orchestrator:
                 self._pause_requested = False
                 self._pause_message = None
                 self._restart_after_wait = False
+                with self._refresh_lock:
+                    self._refresh_requested = False
+                self._wait_event.clear()
+                continue
+
+            repaired_paths = self._run_auto_repair(input_dirs)
+            if self._shutdown_requested or self._shutdown_event.is_set():
+                break
+            if repaired_paths:
+                forced_files = repaired_paths
                 with self._refresh_lock:
                     self._refresh_requested = False
                 self._wait_event.clear()
@@ -1855,11 +1977,32 @@ class Orchestrator:
                 self._refresh_requested = False
             self._wait_event.clear()
 
-    def _run_once(self, input_dirs: List[Path]):
+    def _run_once(self, input_dirs: List[Path], forced_files: Optional[List[Path]] = None):
         self.logger.info(f"Discovery started: {len(input_dirs)} folders")
         for input_dir in input_dirs:
             self.event_bus.publish(DiscoveryStarted(directory=input_dir))
         files_to_process, discovery_stats = self._perform_discovery(input_dirs)
+
+        forced_video_files: List[VideoFile] = []
+        if forced_files:
+            existing_paths = {vf.path for vf in files_to_process}
+            for forced_path in forced_files:
+                if forced_path in existing_paths:
+                    continue
+                forced_video_file = self._video_file_from_path(forced_path)
+                if forced_video_file is None:
+                    continue
+                forced_video_files.append(forced_video_file)
+                existing_paths.add(forced_path)
+            if forced_video_files:
+                files_to_process = sort_files(
+                    files_to_process + forced_video_files,
+                    input_dirs,
+                    self.config.general,
+                    self.file_scanner.extensions,
+                )
+                discovery_stats["files_found"] += len(forced_video_files)
+                discovery_stats["files_to_process"] = len(files_to_process)
 
         self.logger.info(
             f"Discovery finished: found={discovery_stats['files_found']}, "

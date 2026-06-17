@@ -368,6 +368,27 @@ class ProcessingPausedOnError(Event):
 **Subscribers:** UIManager
 **Purpose:** Pause processing after a verification failure and show ERROR state
 
+#### RepairStarted
+```python
+class RepairStarted(Event):
+    candidate_count: int = 0
+```
+
+**Publisher:** Orchestrator
+**Subscribers:** UIManager
+**Purpose:** Enter REPAIR state before repairing current-session failures
+
+#### RepairFinished
+```python
+class RepairFinished(Event):
+    attempted: int = 0
+    repaired: int = 0
+```
+
+**Publisher:** Orchestrator
+**Subscribers:** UIManager
+**Purpose:** Leave REPAIR state and record repair summary
+
 #### WaitingForInput
 ```python
 class WaitingForInput(Event):

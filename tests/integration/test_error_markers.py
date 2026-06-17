@@ -1,10 +1,7 @@
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from vbc.pipeline.orchestrator import Orchestrator
 from vbc.config.models import AppConfig, GeneralConfig
-from vbc.domain.models import VideoFile, CompressionJob, JobStatus, VideoMetadata
-from vbc.domain.events import JobFailed
+from vbc.domain.models import VideoFile, JobStatus
 
 def test_orchestrator_creates_err_file_on_failure(tmp_path):
     input_dir = tmp_path / "in"
@@ -14,7 +11,9 @@ def test_orchestrator_creates_err_file_on_failure(tmp_path):
 
     vf = VideoFile(path=video_file_path, size_bytes=video_file_path.stat().st_size)
 
-    config = AppConfig(general=GeneralConfig(threads=1, debug=False, min_size_bytes=0))
+    config = AppConfig(
+        general=GeneralConfig(threads=1, debug=False, min_size_bytes=0, auto_repair_errors=False)
+    )
 
     mock_bus = MagicMock()
     mock_scanner = MagicMock()

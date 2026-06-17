@@ -49,6 +49,13 @@ def test_main_rejects_invalid_verify_fail_action(monkeypatch):
     assert "--verify-fail-action must be one of: false, log, pause, exit" in result.output
 
 
+def test_general_config_auto_repair_errors_defaults_true():
+    config = AppConfig(general=GeneralConfig())
+
+    assert config.general.auto_repair_errors is True
+    assert config.general.repair_corrupted_flv is False
+
+
 def test_main_compress_applies_overrides(tmp_path, monkeypatch):
     runner = CliRunner()
     input_dir = tmp_path / "input"

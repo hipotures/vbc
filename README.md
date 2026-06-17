@@ -505,7 +505,10 @@ general:
   min_compression_ratio: 0.1
 
   # Attempt repair pass for failed files moved to errors directories.
-  # Runs after processing; useful for corrupted FLV/MP4 stream dumps.
+  # Runs in the TUI after processing and before WAITING/exit.
+  auto_repair_errors: true
+
+  # Legacy/special repair setting for corrupted FLV/MP4 stream dumps.
   repair_corrupted_flv: false
 
   # Enable verbose debug logging.
@@ -1043,25 +1046,23 @@ uv run vbc /videos --debug
 # Look for: "FFMPEG_COLORFIX" or "Successfully fixed color space"
 ```
 
-#### Repairing Failed FLV/MP4 Files
+#### Automatic Repair of Failed Files
 
 **Symptom**: Failed files are moved to `*_err` and remain unreadable
 
-**Solution**: Enable repair pass in YAML (config-only, no dedicated CLI flag):
+**Solution**: VBC runs one automatic repair pass by default after the queue becomes empty:
 ```yaml
 general:
-  repair_corrupted_flv: true
+  auto_repair_errors: true
 ```
 
 **Behavior**:
-1. After normal processing, VBC moves failed files to error directories.
-2. If `repair_corrupted_flv=true`, VBC runs `process_repairs` on moved files.
-3. Successfully repaired files are restored to source folders (as `.mkv` when re-encoded).
-
-Then rerun VBC to process restored files:
-```bash
-uv run vbc /videos
-```
+1. After normal processing, VBC shows **REPAIR** in the TUI.
+2. VBC moves `.err` files created in the current session and their source files to error directories.
+3. VBC attempts repair once per source file for the current session.
+4. Successfully repaired files are restored to source folders, usually as `.mkv`.
+5. On normal completion, restored files are queued and compressed immediately, even if `.mkv` is not in `general.extensions`.
+6. If repair was reached after graceful shutdown (`S`), VBC repairs once and then exits without compressing restored files.
 
 #### Files Not Being Processed
 

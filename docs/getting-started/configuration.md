@@ -96,6 +96,7 @@ general:
   # === Error Handling ===
   clean_errors: false           # Remove .err markers on startup
   verify_fail_action: false     # false | log | pause | exit
+  auto_repair_errors: true      # Repair current-session failures before WAITING/exit
 
   # === UI/Display ===
   strip_unicode_display: true   # Replace emoji/unicode with '?' in UI
@@ -547,13 +548,20 @@ Dashboard display settings.
   - VBC tags exist: `VBCOriginalName`, `VBCOriginalSize`, `VBCQuality`,
     `VBCOriginalBitrate`, `VBCEncoder`, `VBCFinishedAt`
 
+#### `auto_repair_errors`
+- **Type**: Boolean
+- **Default**: true
+- **Description**: Automatically attempt one in-TUI repair pass for files that failed during the current session
+- **Behavior**:
+  - `true`: After the queue is empty, VBC enters **REPAIR**, moves current-session failures to the errors folder, repairs them once, then queues repaired files for compression
+  - `false`: VBC skips the automatic repair pass
+  - Repaired `.mkv` files are processed directly after repair even when `.mkv` is not listed in `general.extensions`
+  - After graceful shutdown (`S`), VBC performs the repair pass and exits without compressing repaired files
+
 #### `repair_corrupted_flv`
 - **Type**: Boolean
 - **Default**: false
-- **Description**: Attempt to repair corrupted FLV files using FFmpeg
-- **Behavior**:
-  - `true`: When a file fails processing and is moved to errors folder, attempts to repair it
-  - `false`: No repair attempt
+- **Description**: Legacy/special FLV repair setting. Automatic current-session repair is controlled by `auto_repair_errors`.
 
 #### `wait_on_finish`
 - **Type**: Boolean
@@ -572,7 +580,7 @@ Dashboard display settings.
 - **Triggers**:
   - When entering wait state (if `wait_on_finish=true`)
   - Just before exit (if `wait_on_finish=false`)
-  - After FLV repair completes with at least one repaired file
+  - After repair completes with at least one repaired file
 
 ### UI/Display
 
@@ -631,6 +639,7 @@ Only a subset of config keys can be overridden via CLI flags:
 - `general.debug` → `--debug`
 - `general.wait_on_finish` → `--wait` / `--no-wait`
 - `general.bell_on_finish` → `--bell` / `--no-bell`
+- `general.auto_repair_errors` → config only
 - `general.repair_corrupted_flv` → config only
 
 Other settings (for example `prefetch_factor`, `dynamic_quality`, encoder arg lists, directory mappings, and `gpu_config`) must be set in YAML.

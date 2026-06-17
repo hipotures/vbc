@@ -7,7 +7,6 @@ Tests various error scenarios including:
 - Color space fixes
 - Timeout handling
 """
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from vbc.pipeline.orchestrator import Orchestrator
@@ -25,7 +24,9 @@ def test_corrupted_file_creates_err_marker(tmp_path):
 
     vf = VideoFile(path=corrupt_file, size_bytes=corrupt_file.stat().st_size)
 
-    config = AppConfig(general=GeneralConfig(threads=1, debug=False, min_size_bytes=0))
+    config = AppConfig(
+        general=GeneralConfig(threads=1, debug=False, min_size_bytes=0, auto_repair_errors=False)
+    )
 
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
@@ -64,7 +65,9 @@ def test_hardware_error_creates_hw_cap_marker(tmp_path):
 
     vf = VideoFile(path=video_file, size_bytes=video_file.stat().st_size)
 
-    config = AppConfig(general=GeneralConfig(threads=1, debug=False, min_size_bytes=0))
+    config = AppConfig(
+        general=GeneralConfig(threads=1, debug=False, min_size_bytes=0, auto_repair_errors=False)
+    )
 
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
@@ -174,7 +177,9 @@ def test_missing_file_during_processing(tmp_path):
 
     vf = VideoFile(path=disappearing_file, size_bytes=disappearing_file.stat().st_size)
 
-    config = AppConfig(general=GeneralConfig(threads=1, debug=False, min_size_bytes=0))
+    config = AppConfig(
+        general=GeneralConfig(threads=1, debug=False, min_size_bytes=0, auto_repair_errors=False)
+    )
 
     mock_scanner = MagicMock()
     mock_scanner.scan.return_value = [vf]
@@ -266,9 +271,6 @@ def test_exiftool_timeout_handling(tmp_path):
 
         # Should not crash despite timeout
         orchestrator.run(input_dir)
-
-        output_dir = tmp_path / "in_out"
-        output_file = output_dir / "slow_metadata.mp4"
 
         # File should still exist (compression succeeded)
         # But .err might exist if timeout caused failure

@@ -353,9 +353,9 @@ class FFmpegAdapter:
         quality: Optional[int] = None,
         rate_control: Optional[ResolvedRateControl] = None,
         rotate: Optional[int] = None,
-        shutdown_event=None,
+        shutdown_event: Optional[threading.Event] = None,
         input_path: Optional[Path] = None,
-    ):
+    ) -> None:
         """Execute AV1 compression via FFmpeg subprocess.
 
         Spawns FFmpeg, monitors stdout for progress updates, detects errors including:

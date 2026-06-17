@@ -259,6 +259,7 @@ class GeneralConfig(BaseModel):
     strip_unicode_display: bool = True
     manual_rotation: Optional[int] = Field(default=None)
     min_compression_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+    auto_repair_errors: bool = True
     repair_corrupted_flv: bool = False
     debug: bool = False
     wait_on_finish: bool = False

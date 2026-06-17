@@ -23,7 +23,6 @@ from rich.table import Table
 from rich.text import Text
 from rich.rule import Rule
 from rich.box import ROUNDED
-from vbc.config.input_dirs import render_status_icon
 from vbc.ui.gpu_sparkline import (
     DEFAULT_GPU_SPARKLINE_PALETTE,
     DEFAULT_GPU_SPARKLINE_PRESET,
@@ -278,6 +277,7 @@ class SettingsOverlay:
         analysis = "True" if "(Analysis: True)" in metadata else "False"
         metadata_method = metadata.split(" (")[0] if " (" in metadata else metadata
         autorotate = self._get("autorotate", "0 rules")
+        auto_repair = self._get("auto_repair_errors", "True")
         clean_errors = self._get("clean_errors", "").split(" | ")[0] if "clean_errors" in self._parsed else "False"
         strip_unicode = self._get("clean_errors", "").split("Strip Unicode: ")[-1] if "Strip Unicode:" in self._get("clean_errors", "") else "True"
         
@@ -296,8 +296,8 @@ class SettingsOverlay:
         )
         meta_table.add_row(
             "Clean Errors", f"[{COLORS['dim'] if clean_errors == 'False' else 'white'}]{clean_errors}[/]",
-            "Strip Unicode", f"[white]{strip_unicode}[/]",
-            "", ""
+            "Auto Repair", f"[{COLORS['dim'] if auto_repair == 'False' else 'white'}]{auto_repair}[/]",
+            "Strip Unicode", f"[white]{strip_unicode}[/]"
         )
         
         metadata_card = make_card(
@@ -1093,7 +1093,7 @@ class DirsOverlay:
             path, status, file_count, size_bytes = entry_tuple[:4]
             fs_status = entry_tuple[4] if len(entry_tuple) > 4 else None
             is_cursor = idx == self.cursor
-            arrow = f"[bold yellow]►[/]" if is_cursor else " "
+            arrow = "[bold yellow]►[/]" if is_cursor else " "
             badge = self._status_badge(status, fs_status)
             cursor_badge = f"{arrow}{badge}"
             note = self._status_note(status)

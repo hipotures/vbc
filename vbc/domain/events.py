@@ -140,6 +140,19 @@ class ProcessingFinished(Event):
     pass
 
 
+class RepairStarted(Event):
+    """Emitted when the orchestrator starts an automatic repair pass."""
+
+    candidate_count: int = 0
+
+
+class RepairFinished(Event):
+    """Emitted when an automatic repair pass finishes."""
+
+    attempted: int = 0
+    repaired: int = 0
+
+
 class ProcessingPausedOnError(Event):
     """Emitted when processing is paused due to a runtime verification failure."""
 

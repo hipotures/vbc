@@ -26,8 +26,6 @@ from vbc.infrastructure.housekeeping import HousekeepingService
 from vbc.infrastructure.exiftool_tmp import cleanup_exiftool_tmp_files
 from vbc.pipeline.orchestrator import Orchestrator, VerificationAbortError
 from vbc.pipeline.demo_orchestrator import DemoOrchestrator
-from vbc.pipeline.error_file_mover import move_failed_files, collect_error_entries
-from vbc.pipeline.repair import process_repairs
 from vbc.ui.state import UIState
 from vbc.ui.manager import UIManager
 from vbc.ui.dashboard import Dashboard
@@ -576,6 +574,7 @@ def compress(
                 f"Demo files: {demo_config.files.count} | Errors: {demo_config.errors.total} | Kept original: {demo_config.kept_original.count}",
                 f"Demo sizes: {demo_config.sizes.min_mb:.0f}-{demo_config.sizes.max_mb:.0f} MB ({demo_config.sizes.distribution})",
                 f"Demo speed: {demo_config.processing.throughput_mb_s:.1f} MB/s (±{int(demo_config.processing.jitter_pct * 100)}%)",
+                f"Auto repair errors: {config.general.auto_repair_errors}",
                 f"Clean errors: {config.general.clean_errors} | Strip Unicode: {config.general.strip_unicode_display}",
                 f"Debug logging: {config.general.debug}",
             ]
@@ -599,6 +598,7 @@ def compress(
                 f"CPU fallback: {config.general.cpu_fallback} | CPU threads per worker: {config.general.ffmpeg_cpu_threads or 'auto'}",
                 f"Min size: {format_size(config.general.min_size_bytes)} | Skip AV1: {config.general.skip_av1}",
                 f"Verification mode: {config.general.verify_fail_action}",
+                f"Auto repair errors: {config.general.auto_repair_errors}",
                 f"Clean errors: {config.general.clean_errors} | Strip Unicode: {config.general.strip_unicode_display}",
                 f"Debug logging: {config.general.debug}",
             ]
@@ -678,6 +678,7 @@ def compress(
                 ffprobe_adapter=ffprobe,
                 ffmpeg_adapter=ffmpeg,
                 output_dir_map=output_dir_map,
+                errors_dir_map=errors_dir_map,
                 local_config_registry=local_registry,
                 cli_overrides=cli_overrides,
             )
@@ -728,7 +729,6 @@ def compress(
         max_active = config.ui.active_jobs_max_display if hasattr(config, 'ui') else 8
         dashboard = Dashboard(ui_state, panel_height_scale=panel_scale, max_active_jobs=max_active)
 
-        processing_finished = False
         keyboard.start()
         try:
             with dashboard:
@@ -744,7 +744,6 @@ def compress(
                         )
                         ui_state.show_info = True
                     threading.Event().wait(2.0)
-                processing_finished = True
         finally:
             keyboard.stop()
             if web_server:
@@ -755,44 +754,6 @@ def compress(
             if exif and exif.et.running:
                 exif.et.terminate()
                 logger.info("ExifTool terminated")
-            if processing_finished and not demo and errors_dir_map:
-                error_entries = collect_error_entries(
-                    input_dirs,
-                    output_dir_map,
-                    errors_dir_map,
-                )
-                moved_files = []
-                if error_entries:
-                    if len(error_entries) > 100:
-                        confirm = typer.confirm(
-                            f"Found {len(error_entries)} .err files. Move failed files to errors dirs?",
-                            default=False,
-                        )
-                        if not confirm:
-                            logger.info("Skipping failed file relocation (user declined).")
-                            error_entries = []
-                    if error_entries:
-                        moved_files = move_failed_files(
-                            input_dirs,
-                            output_dir_map,
-                            errors_dir_map,
-                            config.general.extensions,
-                            logger=logger,
-                            error_entries=error_entries,
-                        )
-
-                if config.general.repair_corrupted_flv and moved_files:
-                    n_repaired = process_repairs(
-                        input_dirs,
-                        errors_dir_map,
-                        config.general.extensions,
-                        logger=logger,
-                        target_files=moved_files,
-                    )
-                    if config.general.bell_on_finish and n_repaired > 0:
-                        from vbc.pipeline.orchestrator import _emit_bell
-                        _emit_bell()
-
             # Warning for files skipped because they were already encoded by VBC
             if not demo and orchestrator and getattr(orchestrator, "skipped_vbc_count", 0) > 0:
                 from rich.console import Console

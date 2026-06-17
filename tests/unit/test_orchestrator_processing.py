@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from vbc.config.models import AppConfig, GeneralConfig, AutoRotateConfig
-from vbc.domain.events import ActionMessage, JobCompleted, JobFailed, JobStarted, ProcessingFinished
+from vbc.domain.events import ActionMessage, JobCompleted, JobFailed, JobStarted, ProcessingFinished, RepairFinished, RepairStarted
 from vbc.domain.models import JobStatus, VideoFile, VideoMetadata
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
@@ -794,6 +794,155 @@ def test_run_refresh_adds_new_files(monkeypatch, tmp_path):
     assert "Refreshed: +1 new files" in messages
     assert "finished" in messages
     assert orchestrator._process_file.call_count == 2
+
+
+def test_run_auto_repair_requeues_restored_mkv(monkeypatch, tmp_path):
+    input_dir = tmp_path / "input"
+    output_dir = tmp_path / "input_out"
+    errors_dir = tmp_path / "input_err"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    errors_dir.mkdir()
+    source = input_dir / "bad.mp4"
+    source.write_bytes(b"x" * 100)
+    err_path = output_dir / "bad.err"
+    err_path.write_text("ffprobe failed")
+    restored = input_dir / "bad.mkv"
+
+    config = _make_config(
+        use_exif=False,
+        copy_metadata=False,
+        extensions=[".mp4"],
+        wait_on_finish=True,
+    )
+    bus = EventBus()
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+        output_dir_map={input_dir: output_dir},
+        errors_dir_map={input_dir: errors_dir},
+    )
+    orchestrator._session_error_sources[err_path] = source
+
+    calls = []
+
+    def fake_run_once(run_input_dirs, forced_files=None):
+        calls.append(list(forced_files or []))
+        if forced_files:
+            orchestrator._shutdown_requested = True
+
+    def fake_move_failed_files(*_args, **_kwargs):
+        source.rename(errors_dir / "bad.mp4")
+        err_path.rename(errors_dir / "bad.err")
+        return [errors_dir / "bad.mp4"]
+
+    def fake_process_repairs(*_args, **kwargs):
+        restored.write_bytes(b"m" * 100)
+        if kwargs.get("return_repaired_files"):
+            return 1, [restored]
+        return 1
+
+    repair_events = []
+    bus.subscribe(RepairStarted, lambda event: repair_events.append(("start", event.candidate_count)))
+    bus.subscribe(RepairFinished, lambda event: repair_events.append(("finish", event.attempted, event.repaired)))
+
+    monkeypatch.setattr(orchestrator, "_run_once", fake_run_once)
+    monkeypatch.setattr("vbc.pipeline.orchestrator.move_failed_files", fake_move_failed_files)
+    monkeypatch.setattr("vbc.pipeline.orchestrator.process_repairs", fake_process_repairs)
+
+    orchestrator.run([input_dir])
+
+    assert calls == [[], [restored]]
+    assert restored in orchestrator._auto_repair_attempted_sources
+    assert repair_events == [("start", 1), ("finish", 1, 1)]
+
+
+def test_run_auto_repair_on_shutdown_exits_without_requeue(monkeypatch, tmp_path):
+    input_dir = tmp_path / "input"
+    output_dir = tmp_path / "input_out"
+    errors_dir = tmp_path / "input_err"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    errors_dir.mkdir()
+    source = input_dir / "bad.mp4"
+    source.write_bytes(b"x" * 100)
+    err_path = output_dir / "bad.err"
+    err_path.write_text("ffprobe failed")
+    restored = input_dir / "bad.mkv"
+
+    config = _make_config(use_exif=False, copy_metadata=False, extensions=[".mp4"])
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+        output_dir_map={input_dir: output_dir},
+        errors_dir_map={input_dir: errors_dir},
+    )
+    orchestrator._session_error_sources[err_path] = source
+
+    calls = []
+
+    def fake_run_once(run_input_dirs, forced_files=None):
+        calls.append(list(forced_files or []))
+        orchestrator._shutdown_requested = True
+
+    def fake_move_failed_files(*_args, **_kwargs):
+        source.rename(errors_dir / "bad.mp4")
+        err_path.rename(errors_dir / "bad.err")
+        return [errors_dir / "bad.mp4"]
+
+    def fake_process_repairs(*_args, **kwargs):
+        restored.write_bytes(b"m" * 100)
+        if kwargs.get("return_repaired_files"):
+            return 1, [restored]
+        return 1
+
+    monkeypatch.setattr(orchestrator, "_run_once", fake_run_once)
+    monkeypatch.setattr("vbc.pipeline.orchestrator.move_failed_files", fake_move_failed_files)
+    monkeypatch.setattr("vbc.pipeline.orchestrator.process_repairs", fake_process_repairs)
+
+    orchestrator.run([input_dir])
+
+    assert calls == [[]]
+    assert restored.exists()
+
+
+def test_auto_repair_skips_already_attempted_sources(tmp_path):
+    input_dir = tmp_path / "input"
+    output_dir = tmp_path / "input_out"
+    errors_dir = tmp_path / "input_err"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    errors_dir.mkdir()
+    source = input_dir / "bad.mkv"
+    source.write_bytes(b"x" * 100)
+    err_path = output_dir / "bad.err"
+    err_path.write_text("still broken")
+
+    config = _make_config(use_exif=False, copy_metadata=False, extensions=[".mp4"])
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+        output_dir_map={input_dir: output_dir},
+        errors_dir_map={input_dir: errors_dir},
+    )
+    orchestrator._session_error_sources[err_path] = source
+    orchestrator._auto_repair_attempted_sources.add(source)
+
+    entries = orchestrator._collect_session_repair_entries([input_dir])
+
+    assert entries == []
 
 
 def test_copy_deep_metadata_timeout_writes_err(tmp_path):

@@ -20,6 +20,8 @@ from vbc.domain.events import (
     ProcessingPausedOnError,
     ProcessingFinished,
     QueueUpdated,
+    RepairFinished,
+    RepairStarted,
     RefreshRequested,
     RequestShutdown,
     ThreadControlEvent,
@@ -34,7 +36,7 @@ from vbc.ui.keyboard import (
 def test_ui_manager_updates_state_on_event(tmp_path):
     bus = EventBus()
     state = UIState()
-    manager = UIManager(bus, state)
+    UIManager(bus, state)
     
     vf = VideoFile(path=Path("test.mp4"), size_bytes=1000)
     job = CompressionJob(source_file=vf, status=JobStatus.PROCESSING)
@@ -356,6 +358,25 @@ def test_ui_manager_paused_on_error_sets_error_wait_state():
     assert state.error_paused is True
     assert state.error_status_text == "ERROR"
     assert state.error_message == "Verification failed"
+
+
+def test_ui_manager_sets_repair_state():
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+
+    bus.publish(RepairStarted(candidate_count=2))
+
+    assert state.repair_active is True
+    assert state.repair_candidate_count == 2
+    assert state.finished is False
+    assert state.waiting_for_input is False
+
+    bus.publish(RepairFinished(attempted=2, repaired=1))
+
+    assert state.repair_active is False
+    assert state.repair_candidate_count == 2
+    assert state.repair_repaired_count == 1
 
 
 def test_ui_manager_cycle_logs_page_only_when_logs_tab_active(tmp_path):

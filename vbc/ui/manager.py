@@ -8,7 +8,7 @@ from vbc.domain.events import (
     JobStarted, JobCompleted, JobFailed,
     JobProgressUpdated, HardwareCapabilityExceeded, QueueUpdated,
     ActionMessage, ProcessingFinished, RefreshFinished,
-    ProcessingPausedOnError,
+    ProcessingPausedOnError, RepairFinished, RepairStarted,
     ThreadControlEvent, RequestShutdown, InterruptRequested,
     WaitingForInput, RefreshRequested, InputDirsChanged,
     DirsCursorMove, DirsSwapSelected, DirsToggleSelected, DirsEnterAddMode, DirsMarkDelete,
@@ -62,6 +62,8 @@ class UIManager:
         self.bus.subscribe(RefreshFinished, self.on_refresh_finished)
         self.bus.subscribe(ProcessingFinished, self.on_processing_finished)
         self.bus.subscribe(ProcessingPausedOnError, self.on_processing_paused_on_error)
+        self.bus.subscribe(RepairStarted, self.on_repair_started)
+        self.bus.subscribe(RepairFinished, self.on_repair_finished)
         self.bus.subscribe(WaitingForInput, self.on_waiting_for_input)
         # Dirs tab events
         self.bus.subscribe(DirsCursorMove, self.on_dirs_cursor_move)
@@ -349,6 +351,7 @@ class UIManager:
             self.state.error_paused = False
             self.state.error_status_text = None
             self.state.error_message = None
+            self.state.repair_active = False
 
     def on_processing_paused_on_error(self, event: ProcessingPausedOnError):
         with self.state._lock:
@@ -357,11 +360,29 @@ class UIManager:
             self.state.error_paused = True
             self.state.error_status_text = "ERROR"
             self.state.error_message = event.message
+            self.state.repair_active = False
+
+    def on_repair_started(self, event: RepairStarted):
+        with self.state._lock:
+            self.state.finished = False
+            self.state.waiting_for_input = False
+            self.state.error_paused = False
+            self.state.error_status_text = None
+            self.state.error_message = None
+            self.state.repair_active = True
+            self.state.repair_candidate_count = event.candidate_count
+
+    def on_repair_finished(self, event: RepairFinished):
+        with self.state._lock:
+            self.state.repair_active = False
+            self.state.repair_candidate_count = event.attempted
+            self.state.repair_repaired_count = event.repaired
 
     def on_waiting_for_input(self, event: WaitingForInput):
         with self.state._lock:
             self.state.finished = False
             self.state.waiting_for_input = True
+            self.state.repair_active = False
 
     # ── Dirs tab event handlers ────────────────────────────────────────────────
 
@@ -386,7 +407,6 @@ class UIManager:
                 return
             entry = entries[self.state.dirs_cursor]
             path, status = entry[0], entry[1]
-            fs_status = entry[4] if len(entry) > 4 else None
 
             # Cannot toggle pending_add or pending_remove entries
             if status in ("pending_add", "pending_remove"):

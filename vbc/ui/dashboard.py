@@ -670,6 +670,9 @@ class Dashboard:
             if self.state.error_paused:
                 status = "[bright_red]ERROR[/]"
                 indicator = "[red]●[/]"
+            elif self.state.repair_active:
+                status = "[magenta]REPAIR[/]"
+                indicator = "[magenta]◐[/]"
             elif self.state.waiting_for_input:
                 status = "[yellow]WAITING[/]"
                 indicator = "[yellow]⏸[/]"
@@ -741,7 +744,12 @@ class Dashboard:
 
             # Thread display: show single number or transition
             # During shutdown or waiting, target is 0; otherwise use configured threads
-            target_threads = 0 if (self.state.shutdown_requested or self.state.waiting_for_input or self.state.error_paused) else self.state.current_threads
+            target_threads = 0 if (
+                self.state.shutdown_requested
+                or self.state.waiting_for_input
+                or self.state.error_paused
+                or self.state.repair_active
+            ) else self.state.current_threads
 
             if active_threads == target_threads:
                 threads_display = str(active_threads)
@@ -751,7 +759,9 @@ class Dashboard:
             # 2. Build Left Content (Fixed 3 lines)
             l1 = f"{indicator} {status} • Threads: {threads_display}{paused}"
             l2 = f"ETA: {eta_str} • {throughput_str} • {saved} saved ({(1-ratio)*100:.1f}%)"
-            if self.state.waiting_for_input or self.state.error_paused:
+            if self.state.repair_active:
+                l3 = "[dim]Repairing failed files from this session[/]"
+            elif self.state.waiting_for_input or self.state.error_paused:
                 l3 = "[dim]R = restart scan  │  S / Ctrl+C = exit[/]"
             else:
                 l3 = "[dim]Press M for menu[/]"

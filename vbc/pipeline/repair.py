@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn, DownloadColumn
 from rich.console import Console
 from vbc.utils.flv_repair import repair_flv_file
@@ -18,7 +18,8 @@ def process_repairs(
     extensions: List[str],
     logger: Optional[logging.Logger] = None,
     target_files: Optional[List[Path]] = None,
-) -> int:
+    return_repaired_files: bool = False,
+) -> Union[int, tuple[int, List[Path]]]:
     """
     Scans error directories for corrupted files and attempts to repair them.
     Strategy 1: Text prefix removal (for FLV/MP4 stream dumps) as a pre-clean step.
@@ -32,10 +33,12 @@ def process_repairs(
         target_files: Optional list of specific files to repair.
         
     Returns:
-        Number of successfully repaired files.
+        Number of successfully repaired files. When return_repaired_files=True,
+        returns (count, repaired_file_paths).
     """
     console = Console()
     total_repaired = 0
+    repaired_paths: List[Path] = []
     candidates_to_repair = []
 
     # 1. Scan for candidates first
@@ -124,6 +127,8 @@ def process_repairs(
     candidates_to_repair = unique_candidates
 
     if not candidates_to_repair:
+        if return_repaired_files:
+            return 0, []
         return 0
 
     if logger:
@@ -204,6 +209,7 @@ def process_repairs(
                     if logger:
                         logger.info(f"Repaired and restored: {candidate.name} -> {dest_path}")
                     total_repaired += 1
+                    repaired_paths.append(dest_path)
                 except Exception as e:
                     if logger:
                         logger.error(f"Failed to move repaired file: {e}")
@@ -231,4 +237,6 @@ def process_repairs(
         if logger:
             logger.info(summary_msg)
 
+    if return_repaired_files:
+        return total_repaired, repaired_paths
     return total_repaired
