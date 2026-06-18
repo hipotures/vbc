@@ -19,19 +19,23 @@ def process_repairs(
     logger: Optional[logging.Logger] = None,
     target_files: Optional[List[Path]] = None,
     return_repaired_files: bool = False,
+    auto_repair: bool = False,
 ) -> Union[int, tuple[int, List[Path]]]:
     """
     Scans error directories for corrupted files and attempts to repair them.
     Strategy 1: Text prefix removal (for FLV/MP4 stream dumps) as a pre-clean step.
     Strategy 2: Fast re-encode to MKV (final output for all repairs).
-    
+
     Args:
         input_dirs: List of source input directories.
         errors_dir_map: Mapping from input_dir to errors_dir.
         extensions: List of video extensions to scan for.
         logger: Logger instance.
         target_files: Optional list of specific files to repair.
-        
+        auto_repair: When True, this pass is part of the automatic in-session
+            repair flow — repaired files are queued for compression in the
+            same run, so the "re-run VBC" notice is suppressed.
+
     Returns:
         Number of successfully repaired files. When return_repaired_files=True,
         returns (count, repaired_file_paths).
@@ -227,7 +231,10 @@ def process_repairs(
     if total_repaired > 0:
         summary_msg = f"Repaired {total_repaired}/{len(candidates_to_repair)} files."
         console.print(f"[bold green]✔ {summary_msg}[/bold green]")
-        console.print("\n[bold white]Please re-run VBC to compress the repaired files restored to source folders.[/bold white]")
+        # Only tell the user to re-run VBC when repaired files won't be
+        # compressed in the current session (auto_repair queues them itself).
+        if not auto_repair:
+            console.print("\n[bold white]Please re-run VBC to compress the repaired files restored to source folders.[/bold white]")
         if logger:
             logger.info(summary_msg)
     elif target_files is not None:

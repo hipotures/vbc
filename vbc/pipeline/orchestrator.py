@@ -486,6 +486,9 @@ class Orchestrator:
 
         from vbc.domain.events import ActionMessage, RepairFinished, RepairStarted
 
+        self.logger.info(
+            f"Auto-repair pass: {len(repair_entries)} candidate(s) from current session"
+        )
         self.event_bus.publish(RepairStarted(candidate_count=len(repair_entries)))
         self.event_bus.publish(ActionMessage(message=f"REPAIR started: {len(repair_entries)} files"))
 
@@ -514,6 +517,7 @@ class Orchestrator:
                 logger=self.logger,
                 target_files=moved_files,
                 return_repaired_files=True,
+                auto_repair=True,
             )
 
         with self._repair_lock:
@@ -522,6 +526,10 @@ class Orchestrator:
 
         self.event_bus.publish(RepairFinished(attempted=len(repair_entries), repaired=repaired_count))
         self.event_bus.publish(ActionMessage(message=f"REPAIR finished: {repaired_count}/{len(repair_entries)} repaired"))
+        self.logger.info(
+            f"Auto-repair pass complete: {repaired_count}/{len(repair_entries)} repaired, "
+            f"{len(repaired_paths)} file(s) queued for compression"
+        )
         return repaired_paths
 
     def _prune_failed_pending(self, pending) -> int:
