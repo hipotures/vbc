@@ -2,6 +2,7 @@
 import pytest
 import logging
 from pathlib import Path
+from vbc.infrastructure import logging as logging_module
 from vbc.infrastructure.logging import setup_logging
 
 
@@ -179,3 +180,55 @@ def test_setup_logging_multiple_calls_same_dir(tmp_path):
 
     assert "Message from logger1" in content
     assert "Message from logger2" in content
+
+
+def test_setup_logging_rotates_existing_log(tmp_path, monkeypatch):
+    """Test that a previous session is archived with a readable timestamp."""
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    log_file = output_dir / "compression.log"
+    log_file.write_text("previous session\n")
+    monkeypatch.setattr(
+        logging_module,
+        "_rotation_timestamp",
+        lambda: "2026-07-18_00-22-15",
+    )
+
+    setup_logging(output_dir, debug=False)
+
+    archive = output_dir / "compression_2026-07-18_00-22-15.log"
+    assert archive.read_text() == "previous session\n"
+    assert "previous session" not in log_file.read_text()
+    assert "Logging initialized" in log_file.read_text()
+
+
+def test_setup_logging_avoids_archive_name_collision(tmp_path, monkeypatch):
+    """Test that two rotations in one second do not overwrite an archive."""
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    log_file = output_dir / "compression.log"
+    existing_archive = output_dir / "compression_2026-07-18_00-22-15.log"
+    log_file.write_text("new previous session\n")
+    existing_archive.write_text("older session\n")
+    monkeypatch.setattr(
+        logging_module,
+        "_rotation_timestamp",
+        lambda: "2026-07-18_00-22-15",
+    )
+
+    setup_logging(output_dir, debug=False)
+
+    collision_archive = output_dir / "compression_2026-07-18_00-22-15_1.log"
+    assert existing_archive.read_text() == "older session\n"
+    assert collision_archive.read_text() == "new previous session\n"
+
+
+def test_setup_logging_does_not_archive_empty_log(tmp_path):
+    """Test that an empty placeholder does not create a useless archive."""
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    (output_dir / "compression.log").touch()
+
+    setup_logging(output_dir, debug=False)
+
+    assert list(output_dir.glob("compression_*.log")) == []

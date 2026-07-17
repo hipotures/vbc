@@ -214,6 +214,7 @@ autorotate:
 - **Default**: `/tmp/vbc/compression.log`
 - **Description**: Path to log file (overrides the output directory default)
 - **Note**: If set to `null`, logs are written to `<output_dir>/compression.log`.
+- **Rotation**: At startup, a non-empty existing log is archived with a local timestamp, for example `compression_2026-07-18_00-22-15.log`. The new session keeps using `compression.log`.
 
 #### `cpu_fallback`
 - **Type**: Boolean
