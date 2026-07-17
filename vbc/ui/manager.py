@@ -14,7 +14,7 @@ from vbc.domain.events import (
     DirsCursorMove, DirsSwapSelected, DirsToggleSelected, DirsEnterAddMode, DirsMarkDelete,
     DirsInputChar, DirsConfirmAdd, DirsCancelInput, DirsApplyChanges,
 )
-from vbc.config.input_dirs import STATUS_OK
+from vbc.config.input_dirs import MAX_INPUT_DIR_LEN, STATUS_OK
 from vbc.ui.gpu_sparkline import (
     format_preset_label,
     get_gpu_sparkline_config,
@@ -394,6 +394,7 @@ class UIManager:
             entries = self.state.dirs_get_all_entries()
             if not entries:
                 return
+            self.state.dirs_error_msg = ""
             new_pos = self.state.dirs_cursor + event.direction
             self.state.dirs_cursor = max(0, min(new_pos, len(entries) - 1))
 
@@ -407,6 +408,7 @@ class UIManager:
                 return
             entry = entries[self.state.dirs_cursor]
             path, status = entry[0], entry[1]
+            self.state.dirs_error_msg = ""
 
             # Cannot toggle pending_add or pending_remove entries
             if status in ("pending_add", "pending_remove"):
@@ -465,6 +467,7 @@ class UIManager:
                 return
             self.state.dirs_input_mode = True
             self.state.dirs_input_buffer = ""
+            self.state.dirs_error_msg = ""
 
     def on_dirs_mark_delete(self, event: DirsMarkDelete):
         """Mark the dir under cursor for deletion (or unmark if already marked)."""
@@ -475,6 +478,7 @@ class UIManager:
             if not entries or self.state.dirs_cursor >= len(entries):
                 return
             path, status = entries[self.state.dirs_cursor][:2]
+            self.state.dirs_error_msg = ""
 
             if status == "pending_remove":
                 # Unmark
@@ -496,8 +500,12 @@ class UIManager:
                 return
             if event.char == '\x7f':
                 self.state.dirs_input_buffer = self.state.dirs_input_buffer[:-1]
-            else:
+            elif len(self.state.dirs_input_buffer) < MAX_INPUT_DIR_LEN:
                 self.state.dirs_input_buffer += event.char
+            else:
+                self.state.dirs_error_msg = f"Path is limited to {MAX_INPUT_DIR_LEN} characters"
+                return
+            self.state.dirs_error_msg = ""
 
     def on_dirs_confirm_add(self, event: DirsConfirmAdd):
         """Validate and stage the input buffer as a pending add."""
@@ -505,33 +513,52 @@ class UIManager:
             if not self.state.dirs_input_mode:
                 return
             path = self.state.dirs_input_buffer.strip()
-            self.state.dirs_input_mode = False
-            self.state.dirs_input_buffer = ""
 
             if not path:
+                self.state.dirs_error_msg = "Enter a directory path"
+                return
+
+            if len(path) > MAX_INPUT_DIR_LEN:
+                self.state.dirs_error_msg = f"Path is too long ({MAX_INPUT_DIR_LEN} characters max)"
                 return
 
             # Check total directory limit
             total = len(self.state.dirs_config_entries) + len(self.state.dirs_pending_add)
             if total >= DirsOverlay.MAX_DIRS:
-                self.state.set_last_action(
-                    f"Dirs limit reached ({DirsOverlay.MAX_DIRS} max). Remove a directory first."
+                self.state.dirs_error_msg = (
+                    f"Directory limit reached ({DirsOverlay.MAX_DIRS} max); remove one first"
                 )
                 return
 
             # Skip duplicates
             existing = {entry for entry, _ in self.state.dirs_config_entries} | set(self.state.dirs_pending_add)
             if path in existing:
-                self.state.set_last_action(f"Directory already in list: {path}")
+                self.state.dirs_error_msg = "Directory is already in the list"
+                return
+
+            import os as _os
+            candidate = Path(path)
+            if not candidate.exists():
+                self.state.dirs_error_msg = "Directory does not exist"
+                return
+            if not candidate.is_dir():
+                self.state.dirs_error_msg = "Path is not a directory"
+                return
+            if not _os.access(candidate, _os.R_OK | _os.X_OK):
+                self.state.dirs_error_msg = "Directory is not readable"
                 return
 
             self.state.dirs_pending_add.append(path)
+            self.state.dirs_input_mode = False
+            self.state.dirs_input_buffer = ""
+            self.state.dirs_error_msg = ""
 
     def on_dirs_cancel_input(self, event: DirsCancelInput):
         """Cancel add-path input mode."""
         with self.state._lock:
             self.state.dirs_input_mode = False
             self.state.dirs_input_buffer = ""
+            self.state.dirs_error_msg = ""
 
     def on_dirs_apply_changes(self, event: DirsApplyChanges):
         """Apply all pending Dirs changes, persist to YAML, and trigger re-scan."""
@@ -585,6 +612,8 @@ class UIManager:
                 ]
                 save_dirs_config(self.config_path, serialized_entries)
             except Exception as exc:
+                with self.state._lock:
+                    self.state.dirs_error_msg = f"Could not save directories: {exc}"
                 self.state.set_last_action(f"ERROR saving config: {exc}")
                 return
 
@@ -609,6 +638,7 @@ class UIManager:
             self.state.dirs_pending_order.clear()
             self.state.dirs_input_mode = False
             self.state.dirs_input_buffer = ""
+            self.state.dirs_error_msg = ""
 
         n_active = len(new_active)
         n_disabled = len(new_entries) - n_active

@@ -29,6 +29,7 @@ from vbc.pipeline.demo_orchestrator import DemoOrchestrator
 from vbc.ui.state import UIState
 from vbc.ui.manager import UIManager
 from vbc.ui.dashboard import Dashboard
+from vbc.ui.display_text import safe_markup
 from vbc.ui.keyboard import KeyboardListener
 from vbc.config.input_dirs import (
     parse_cli_input_dirs,
@@ -520,7 +521,7 @@ def compress(
                 # Build display line with status icon
                 from vbc.config.input_dirs import render_status_icon
                 icon = render_status_icon(status)
-                lines.append(f"  {icon}{idx + 1}. {folder_name}")
+                lines.append(f"  {icon}{idx + 1}. {safe_markup(folder_name)}")
 
             return stats, lines
 

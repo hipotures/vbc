@@ -6,11 +6,14 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
 from rich.console import Console
+from rich.cells import cell_len
 
+from vbc.config.input_dirs import STATUS_OK, build_input_dir_lines
 from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
 from vbc.ui.state import UIState
 from vbc.ui import dashboard as dashboard_module
 from vbc.ui.dashboard import Dashboard
+from vbc.ui.modern_overlays import render_dirs_content
 
 def test_dashboard_initialization():
     """Test that Dashboard can be initialized with UIState."""
@@ -36,6 +39,9 @@ def test_dashboard_format_helpers():
     assert dashboard.format_time(59) == "59s"
     assert dashboard.format_time(61) == "01m 01s"
     assert dashboard.format_time(3661) == "1h 01m"
+    assert dashboard.format_time(float("nan")) == "--:--"
+    assert dashboard.format_time(-1) == "--:--"
+    assert dashboard.format_size(-1) == "—"
 
     metadata = VideoMetadata(width=1920, height=1080, codec="h264", fps=29.97)
     assert dashboard.format_resolution(metadata) == "2M"
@@ -340,3 +346,98 @@ def test_dashboard_start_stop(monkeypatch):
     assert dashboard._live.started
     dashboard.stop()
     assert dashboard._live.stopped
+
+
+def test_dashboard_filename_truncation_uses_terminal_cells_and_single_line():
+    state = UIState()
+    state.strip_unicode_display = False
+    dashboard = Dashboard(state)
+
+    rendered = dashboard._sanitize_filename("\n" + ("界" * 30) + ".mp4", max_len=30)
+
+    assert "\n" not in rendered
+    assert cell_len(rendered) <= 30
+    assert "…" in rendered
+    assert rendered.endswith(".mp4")
+
+
+def test_dashboard_logs_render_markup_like_text_literally(tmp_path):
+    state = UIState()
+    state.strip_unicode_display = False
+    dashboard = Dashboard(state)
+    source = tmp_path / "clip[red]owned.mp4"
+    job = CompressionJob(
+        source_file=VideoFile(path=source, size_bytes=10),
+        status=JobStatus.FAILED,
+    )
+    state.add_session_error(job, "failure [bold]styled[/] detail\nnext")
+
+    console = Console(width=120, record=True)
+    console.print(dashboard._render_logs_content())
+    rendered = console.export_text()
+
+    assert "clip[red]owned.mp4" in rendered
+    assert "failure [bold]styled[/] detail next" in rendered
+
+
+def test_dashboard_active_job_clamps_non_finite_progress(tmp_path):
+    state = UIState()
+    dashboard = Dashboard(state)
+    dashboard.console = Console(width=100, record=True)
+    job = CompressionJob(
+        source_file=VideoFile(path=tmp_path / "video.mp4", size_bytes=10),
+        status=JobStatus.PROCESSING,
+        progress_percent=float("nan"),
+    )
+
+    dashboard.console.print(dashboard._render_active_job(job, "dynamic"))
+
+    assert "0.0%" in dashboard.console.export_text()
+
+
+def test_dashboard_overlays_fit_narrow_terminal():
+    state = UIState()
+    state.show_overlay = True
+    state.active_tab = "logs"
+    dashboard = Dashboard(state)
+    dashboard.console = Console(width=40, height=20, record=True)
+
+    display = dashboard.create_display()
+
+    assert isinstance(display, dashboard_module._Overlay)
+    assert display.overlay_width == 40
+    assert display.overlay.width == 40
+
+    state.show_overlay = False
+    state.show_info = True
+    state.info_message = "A narrow notice"
+    info_display = dashboard.create_display()
+    assert isinstance(info_display, dashboard_module._Overlay)
+    assert info_display.overlay_width == 40
+    assert info_display.overlay.width == 40
+
+
+def test_dirs_content_preserves_paths_and_shows_inline_error():
+    output_lines = build_input_dir_lines([(STATUS_OK, "/out/[raw]")])
+    content = render_dirs_content(
+        entries=[("/videos/[camera]", "active", 2, 1024, "ok")],
+        cursor=0,
+        input_mode=True,
+        input_buffer="/new/[input]",
+        has_pending_changes=False,
+        suffix_output_dirs=None,
+        suffix_errors_dirs="[errors]",
+        output_dir_lines=output_lines,
+        errors_dir_lines=[],
+        error_msg="Directory does not exist",
+    )
+    console = Console(width=120, record=True)
+
+    console.print(content)
+    rendered = console.export_text()
+
+    assert "/videos/[camera]" in rendered
+    assert "/out/[raw]" in rendered
+    assert "Suffix: [errors]" in rendered
+    assert "/new/[input]" in rendered
+    assert "Directory does not exist" in rendered

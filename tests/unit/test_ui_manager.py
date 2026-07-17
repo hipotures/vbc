@@ -9,6 +9,8 @@ from vbc.domain.events import (
     DiscoveryFinished,
     DiscoveryStarted,
     DirsApplyChanges,
+    DirsConfirmAdd,
+    DirsInputChar,
     DirsSwapSelected,
     HardwareCapabilityExceeded,
     InputDirsChanged,
@@ -485,3 +487,42 @@ def test_ui_manager_dirs_apply_changes_respects_staged_order_and_clears_pending(
     assert state.dirs_has_pending_changes() is False
     assert any(isinstance(event, InputDirsChanged) and event.active_dirs == ["/b", "/a", "/d"] for event in published)
     assert any(isinstance(event, RefreshRequested) for event in published)
+
+
+def test_ui_manager_dirs_add_validation_preserves_input(tmp_path):
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+    missing = tmp_path / "missing"
+    state.show_overlay = True
+    state.active_tab = "dirs"
+    state.dirs_input_mode = True
+    state.dirs_input_buffer = str(missing)
+
+    bus.publish(DirsConfirmAdd())
+
+    assert state.dirs_input_mode is True
+    assert state.dirs_input_buffer == str(missing)
+    assert state.dirs_pending_add == []
+    assert state.dirs_error_msg == "Directory does not exist"
+
+    state.dirs_input_buffer = str(tmp_path)
+    bus.publish(DirsConfirmAdd())
+
+    assert state.dirs_input_mode is False
+    assert state.dirs_input_buffer == ""
+    assert state.dirs_pending_add == [str(tmp_path)]
+    assert state.dirs_error_msg == ""
+
+
+def test_ui_manager_dirs_input_enforces_config_path_limit():
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+    state.dirs_input_mode = True
+    state.dirs_input_buffer = "x" * 150
+
+    bus.publish(DirsInputChar(char="y"))
+
+    assert state.dirs_input_buffer == "x" * 150
+    assert state.dirs_error_msg == "Path is limited to 150 characters"

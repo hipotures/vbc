@@ -1,6 +1,9 @@
 import os
+import unicodedata
 from pathlib import Path
 from typing import List, Tuple, Optional
+
+from rich.markup import escape
 
 MAX_INPUT_DIRS = 50
 MAX_INPUT_DIR_LEN = 150
@@ -170,5 +173,9 @@ def render_status_icon(status: str) -> str:
 def build_input_dir_lines(status_entries: List[Tuple[str, str]]) -> List[str]:
     lines: List[str] = []
     for idx, (status, entry) in enumerate(status_entries):
-        lines.append(f"  {render_status_icon(status)}{idx + 1}. {entry}")
+        display_entry = "".join(
+            " " if unicodedata.category(char) == "Cc" else char
+            for char in entry
+        )
+        lines.append(f"  {render_status_icon(status)}{idx + 1}. {escape(display_entry)}")
     return lines

@@ -15,6 +15,7 @@ Wszystkie panele zachowują 100% obecnej funkcjonalności, ale prezentują
 ją w bardziej przejrzysty i nowoczesny sposób.
 """
 
+import math
 import time
 from typing import List, Optional, Tuple
 from rich.console import Console, Group, RenderableType
@@ -23,6 +24,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.rule import Rule
 from rich.box import ROUNDED
+from vbc.ui.display_text import safe_markup, single_line
 from vbc.ui.gpu_sparkline import (
     DEFAULT_GPU_SPARKLINE_PALETTE,
     DEFAULT_GPU_SPARKLINE_PRESET,
@@ -114,7 +116,7 @@ def make_kv_table(rows: List[tuple], highlight_keys: set = None) -> Table:
             value_style = COLORS['dim']
         else:
             value_style = "white"
-        table.add_row(key, f"[{value_style}]{value}[/]")
+        table.add_row(safe_markup(key), f"[{value_style}]{safe_markup(value)}[/]")
     
     return table
 
@@ -156,9 +158,14 @@ def format_size(size_bytes: Optional[int]) -> str:
     """Format size: 123B, 1.2KB, 45.1MB, 3.2GB."""
     if size_bytes is None:
         return "—"
-    if size_bytes == 0:
+    try:
+        size = float(size_bytes)
+    except (TypeError, ValueError, OverflowError):
+        return "—"
+    if not math.isfinite(size) or size < 0:
+        return "—"
+    if size == 0:
         return "0B"
-    size = float(size_bytes)
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if size < 1024.0:
             return f"{size:.1f}{unit}"
@@ -290,14 +297,14 @@ class SettingsOverlay:
         meta_table.add_column(justify="right", ratio=1)
         
         meta_table.add_row(
-            "Metadata", f"[white]{metadata_method}[/]",
+            "Metadata", f"[white]{safe_markup(metadata_method)}[/]",
             "Analysis", f"[bold {COLORS['accent_green']}]{analysis}[/]" if analysis == "True" else f"[{COLORS['dim']}]{analysis}[/]",
-            "Autorotate", f"[white]{autorotate}[/]"
+            "Autorotate", f"[white]{safe_markup(autorotate)}[/]"
         )
         meta_table.add_row(
-            "Clean Errors", f"[{COLORS['dim'] if clean_errors == 'False' else 'white'}]{clean_errors}[/]",
-            "Auto Repair", f"[{COLORS['dim'] if auto_repair == 'False' else 'white'}]{auto_repair}[/]",
-            "Strip Unicode", f"[white]{strip_unicode}[/]"
+            "Clean Errors", f"[{COLORS['dim'] if clean_errors == 'False' else 'white'}]{safe_markup(clean_errors)}[/]",
+            "Auto Repair", f"[{COLORS['dim'] if auto_repair == 'False' else 'white'}]{safe_markup(auto_repair)}[/]",
+            "Strip Unicode", f"[white]{safe_markup(strip_unicode)}[/]"
         )
         
         metadata_card = make_card(
@@ -385,7 +392,7 @@ class IoOverlay:
     def _render_dir_card(self, title: str, lines: List[str], suffix: Optional[str]) -> Panel:
         content_lines: List[str] = []
         if suffix:
-            content_lines.append(f"[{COLORS['muted']}]Suffix[/]: [white]{suffix}[/]")
+            content_lines.append(f"[{COLORS['muted']}]Suffix[/]: [white]{safe_markup(suffix)}[/]")
             if lines:
                 content_lines.append("")
         if lines:
@@ -1098,7 +1105,7 @@ class DirsOverlay:
             cursor_badge = f"{arrow}{badge}"
             note = self._status_note(status)
 
-            display_path = path
+            display_path = safe_markup(path)
 
             # Row styling
             if is_cursor and status == "pending_remove":
@@ -1140,7 +1147,7 @@ class DirsOverlay:
         # === OUTPUT + ERRORS summary (read-only) ===
         def _suffix_line(label: str, suffix: Optional[str], lines: List[str]) -> str:
             if suffix:
-                return f"[{COLORS['muted']}]{label}:[/] [white]Suffix: {suffix}[/]"
+                return f"[{COLORS['muted']}]{label}:[/] [white]Suffix: {safe_markup(suffix)}[/]"
             if lines:
                 return f"[{COLORS['muted']}]{label}:[/] [white]{lines[0]}[/]"
             return f"[{COLORS['muted']}]{label}:[/] [{COLORS['dim']}]—[/]"
@@ -1163,10 +1170,15 @@ class DirsOverlay:
         # === ADD PATH INPUT (visible only in add mode) ===
         content_items: List[RenderableType] = [input_card, out_err_card]
 
+        if self.error_msg:
+            content_items.append(
+                Text(single_line(self.error_msg), style=f"bold {COLORS['error_red']}")
+            )
+
         if self.input_mode:
             cursor_visible = int(time.monotonic() * 2) % 2 == 0
             cursor_block = f"[bold {COLORS['accent_green']}]█[/]" if cursor_visible else " "
-            buffer_display = self.input_buffer + cursor_block
+            buffer_display = safe_markup(self.input_buffer) + cursor_block
             input_line = Text.from_markup(
                 f"  [{COLORS['muted']}]Add path:[/] [white]{buffer_display}[/]"
             )

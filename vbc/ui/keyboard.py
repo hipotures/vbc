@@ -1,3 +1,4 @@
+import codecs
 import os
 import sys
 import threading
@@ -211,9 +212,13 @@ class KeyboardListener:
             return
 
         fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(sys.stdin)
+        try:
+            old_settings = termios.tcgetattr(sys.stdin)
+        except (OSError, termios.error):
+            return
         try:
             tty.setcbreak(fd)
+            decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
 
             while not self._stop_event.is_set():
                 if fd in select.select([fd], [], [], 0.1)[0]:
@@ -223,7 +228,9 @@ class KeyboardListener:
                         continue
                     if not raw:
                         continue
-                    key = raw.decode('utf-8', errors='replace')
+                    key = decoder.decode(raw)
+                    if not key:
+                        continue
 
                     # ── Escape / CSI sequences ─────────────────────────────
                     if key == '\x1b':
@@ -233,7 +240,6 @@ class KeyboardListener:
                     # ── Ctrl+C (interrupt) ─────────────────────────────────
                     if key == '\x03':
                         self.event_bus.publish(InterruptRequested())
-                        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
                         break
 
                     # ── Dirs add-path input mode ───────────────────────────
@@ -307,11 +313,19 @@ class KeyboardListener:
                         self.event_bus.publish(CycleSparklinePalette(direction=1))
                     elif key in ('G', 'g'):
                         self.event_bus.publish(RotateGpuMetric())
+        except (OSError, termios.error):
+            return
         finally:
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+            try:
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+            except (OSError, termios.error):
+                pass
 
     def start(self):
         """Starts the listener thread."""
+        if self._thread is not None and getattr(self._thread, "is_alive", lambda: False)():
+            return
+        self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 

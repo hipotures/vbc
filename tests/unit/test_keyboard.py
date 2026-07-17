@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from vbc.domain.events import (
     ActionMessage,
     DirsEnterAddMode,
+    DirsInputChar,
     DirsSwapSelected,
     InterruptRequested,
     RefreshRequested,
@@ -282,3 +283,41 @@ def test_shift_arrow_in_dirs_input_mode_is_ignored(monkeypatch):
     published = [call.args[0] for call in bus.publish.call_args_list]
     assert not any(isinstance(e, DirsSwapSelected) for e in published)
     assert any(isinstance(e, InterruptRequested) for e in published)
+
+
+def test_keyboard_listener_decodes_multibyte_input_as_unicode(monkeypatch):
+    """A UTF-8 path should emit characters, not one replacement per byte."""
+    raw_keys = list("資料".encode("utf-8")) + [ord("\r"), 3]
+    fake_fd = 42
+
+    class FakeStdin:
+        def isatty(self):
+            return True
+
+        def fileno(self):
+            return fake_fd
+
+    monkeypatch.setattr("vbc.ui.keyboard.sys.stdin", FakeStdin())
+    monkeypatch.setattr(
+        "vbc.ui.keyboard.os.read",
+        lambda _fd, _n: bytes([raw_keys.pop(0)]),
+    )
+    monkeypatch.setattr(
+        "vbc.ui.keyboard.select.select",
+        lambda _read, _write, _err, _timeout: ([fake_fd], [], []) if raw_keys else ([], [], []),
+    )
+    monkeypatch.setattr("vbc.ui.keyboard.termios.tcgetattr", MagicMock(return_value="old"))
+    monkeypatch.setattr("vbc.ui.keyboard.termios.tcsetattr", MagicMock())
+    monkeypatch.setattr("vbc.ui.keyboard.tty.setcbreak", MagicMock())
+
+    bus = MagicMock()
+    state = SimpleNamespace(show_overlay=True, active_tab="dirs", dirs_input_mode=True)
+    KeyboardListener(bus, state=state)._run()
+
+    input_chars = [
+        call.args[0].char
+        for call in bus.publish.call_args_list
+        if isinstance(call.args[0], DirsInputChar)
+    ]
+    assert input_chars == ["資", "料"]
+    assert "�" not in input_chars

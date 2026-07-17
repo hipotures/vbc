@@ -1,3 +1,5 @@
+import logging
+import math
 import re
 import threading
 import time
@@ -5,6 +7,7 @@ import unicodedata
 from datetime import datetime
 from typing import Optional, List, Tuple, Any
 from rich.live import Live
+from rich.cells import cell_len
 from rich.console import Console, Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -25,6 +28,7 @@ from vbc.ui.gpu_sparkline import (
     get_gpu_sparkline_palette,
     render_sparkline,
 )
+from vbc.ui.display_text import safe_markup, single_line, truncate_cells
 from vbc.ui.modern_overlays import (
     render_settings_content,
     render_reference_content,
@@ -33,6 +37,8 @@ from vbc.ui.modern_overlays import (
     render_tui_content,
     render_dirs_content,
 )
+
+logger = logging.getLogger(__name__)
 
 # Layout Constants
 TOP_BAR_LINES = 3  # Status, Gap, KPI
@@ -100,6 +106,7 @@ class _Overlay:
 
     def __rich_console__(self, console, options):
         width, height = options.size
+        overlay_width = min(max(self.overlay_width, 1), max(width, 1))
         bg_lines = console.render_lines(self.background, options, pad=True)
         bg_lines = Segment.set_shape(bg_lines, width, height)
         if self.dim_level:
@@ -117,14 +124,14 @@ class _Overlay:
         
         overlay_lines = console.render_lines(
             self.overlay,
-            options.update(width=self.overlay_width),
+            options.update(width=overlay_width),
             pad=True
         )
         overlay_lines = [
-            Segment.adjust_line_length(line, self.overlay_width) for line in overlay_lines
+            Segment.adjust_line_length(line, overlay_width) for line in overlay_lines
         ]
 
-        left = max((width - self.overlay_width) // 2, 0)
+        left = max((width - overlay_width) // 2, 0)
         # Align to top instead of center to prevent overflow on small terminals
         top = 1  # Small margin from top
 
@@ -134,7 +141,7 @@ class _Overlay:
                 continue
             bg_line = bg_lines[target_row]
             left_seg = self._slice_line(bg_line, 0, left)
-            right_seg = self._slice_line(bg_line, left + self.overlay_width, width)
+            right_seg = self._slice_line(bg_line, left + overlay_width, width)
             bg_lines[target_row] = left_seg + overlay_line + right_seg
 
         for last, line in loop_last(bg_lines):
@@ -156,16 +163,23 @@ class Dashboard:
         self._stop_refresh = threading.Event()
         self._ui_lock = threading.Lock()
         self._spinner_frame = 0
+        self._last_refresh_error: Optional[str] = None
 
     # --- Formatters ---
 
     def format_size(self, size: int) -> str:
         """Format size: 123B, 1.2KB, 45.1MB, 3.2GB."""
-        if size == 0:
+        try:
+            numeric_size = float(size)
+        except (TypeError, ValueError, OverflowError):
+            return "—"
+        if not math.isfinite(numeric_size) or numeric_size < 0:
+            return "—"
+        if numeric_size == 0:
             return "0B"
         units = ['B', 'KB', 'MB', 'GB', 'TB']
         idx = 0
-        val = float(size)
+        val = numeric_size
         while val >= 1024.0 and idx < len(units) - 1:
             val /= 1024.0
             idx += 1
@@ -180,6 +194,12 @@ class Dashboard:
         """Format time: 59s, 01m 01s, 1h 01m."""
         if seconds is None:
             return "--:--"
+        try:
+            seconds = float(seconds)
+        except (TypeError, ValueError, OverflowError):
+            return "--:--"
+        if not math.isfinite(seconds) or seconds < 0:
+            return "--:--"
         if seconds < 60:
             return f"{int(seconds)}s"
         if seconds < 3600:
@@ -190,6 +210,12 @@ class Dashboard:
         """Format global ETA: hh:mm or mm:ss."""
         if seconds is None:
             return "--:--"
+        try:
+            seconds = float(seconds)
+        except (TypeError, ValueError, OverflowError):
+            return "--:--"
+        if not math.isfinite(seconds) or seconds < 0:
+            return "--:--"
         if seconds < 60:
             return f"{int(seconds):02d}s"
         elif seconds < 3600:
@@ -198,14 +224,19 @@ class Dashboard:
             return f"{int(seconds // 3600):02d}h {int((seconds % 3600) // 60):02d}m"
 
     def format_resolution(self, metadata) -> str:
-        if metadata and metadata.width and metadata.height:
+        if metadata and metadata.width > 0 and metadata.height > 0:
             megapixels = round((metadata.width * metadata.height) / 1_000_000)
             return f"{megapixels}M"
         return ""
 
     def format_fps(self, metadata) -> str:
         if metadata and metadata.fps:
-            return f"{int(metadata.fps)}fps"
+            try:
+                fps = float(metadata.fps)
+            except (TypeError, ValueError, OverflowError):
+                return ""
+            if math.isfinite(fps) and fps > 0:
+                return f"{int(fps)}fps"
         return ""
 
     def _format_quality_display_for_ui(self, quality_display: str) -> str:
@@ -238,20 +269,16 @@ class Dashboard:
         
     def _sanitize_filename(self, filename: str, max_len: int = 30) -> str:
         """Sanitize and truncate filename: prefix...suffix."""
+        filename = single_line(filename)
         if self.state.strip_unicode_display:
             filename = "".join(c for c in filename if ord(c) < 128)
         filename = filename.lstrip()
-        
-        if len(filename) <= max_len:
-            return filename
-            
-        part_len = (max_len - 1) // 2
-        return f"{filename[:part_len]}…{filename[-part_len:]}"
+        return truncate_cells(filename, max_len, preserve_end=True)
 
     @staticmethod
     def _compact_activity_error(error_message: str) -> str:
         """Shorten verbose verification errors for Activity Feed readability."""
-        text = (error_message or "error").replace("\n", " ").strip()
+        text = single_line(error_message or "error").strip()
         marker = "No video stream found in "
         if "Verification failed:" in text and marker in text:
             return f"{text.split(marker, 1)[0]}No video stream found"
@@ -273,8 +300,13 @@ class Dashboard:
         if entry.width and entry.height:
             meta_parts.append(f"{entry.width}x{entry.height}")
         if entry.fps:
-            fps_val = int(entry.fps) if float(entry.fps).is_integer() else round(float(entry.fps), 2)
-            meta_parts.append(f"{fps_val}fps")
+            try:
+                fps_value = float(entry.fps)
+            except (TypeError, ValueError, OverflowError):
+                fps_value = 0.0
+            if math.isfinite(fps_value) and fps_value > 0:
+                fps_val = int(fps_value) if fps_value.is_integer() else round(fps_value, 2)
+                meta_parts.append(f"{fps_val}fps")
         if entry.codec:
             meta_parts.append(entry.codec)
         if entry.duration_seconds:
@@ -286,7 +318,7 @@ class Dashboard:
         entries, page_index, total_pages, total_entries = self.state.get_logs_page()
 
         table = Table(show_header=False, box=None, padding=(0, 0), expand=True)
-        table.add_column(ratio=1, no_wrap=True, overflow="crop")
+        table.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
 
         if not entries:
             table.add_row("[dim]No errors in current session.[/]")
@@ -294,9 +326,9 @@ class Dashboard:
 
         for entry in entries:
             file_line = self._format_logs_file_line(entry)
-            err_line = (entry.error_message or "Unknown error").replace("\n", " ").strip()
-            table.add_row(f"[white]{file_line}[/]")
-            table.add_row(f"[#f85149]{err_line}[/]")
+            err_line = single_line(entry.error_message or "Unknown error").strip()
+            table.add_row(f"[white]{safe_markup(file_line)}[/]")
+            table.add_row(f"[#f85149]{safe_markup(err_line)}[/]")
 
         if total_pages <= 1:
             return table
@@ -386,9 +418,9 @@ class Dashboard:
         # Calculate panel width based on layout mode
         term_w = self.console.size.width
         if term_w >= MIN_2COL_W:
-            panel_w = max(40, (term_w // 2) - 4)  # 2-column mode: half width
+            panel_w = max(1, (term_w // 2) - 4)  # 2-column mode: half width
         else:
-            panel_w = max(40, term_w - 4)  # 1-column mode: full width
+            panel_w = max(1, term_w - 4)  # 1-column mode: full width
 
         spinner_frames = "●○◉◎"
         spinner_rotating = "◐◓◑◒"
@@ -414,7 +446,13 @@ class Dashboard:
         size = self.format_size(job.source_file.size_bytes)
 
         # Progress
-        pct = job.progress_percent or 0.0
+        try:
+            pct = float(job.progress_percent or 0.0)
+        except (TypeError, ValueError, OverflowError):
+            pct = 0.0
+        if not math.isfinite(pct):
+            pct = 0.0
+        pct = min(100.0, max(0.0, pct))
 
         # ETA calculation
         eta_str = "--:--"
@@ -428,20 +466,22 @@ class Dashboard:
         eta_text = eta_str
 
         # Build 3 elements: name, metadata, progress bar
-        filename_max = max(30, panel_w - 3)  # Uniform truncation for both modes
+        filename_max = max(1, panel_w - 3)  # Uniform truncation for both modes
         filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
         spinner = use_spinner[(self._spinner_frame + hash(filename)) % len(use_spinner)]
 
-        name_line = f"[green]{spinner}[/] {filename}"
+        safe_filename = safe_markup(filename)
+        name_line = f"[green]{spinner}[/] {safe_filename}"
         meta_text = f"dur {dur} • {fps} • in {size}{self._active_quality_meta_suffix(job)}"
+        safe_meta_text = safe_markup(meta_text)
 
         # Calculate widths for layout decision
         # panel_w already accounts for borders/spacing, use directly
         usable_width = panel_w
 
         # Calculate actual widths (visible characters, not markup)
-        name_width = len(filename) + 3  # spinner + space
-        meta_width = len(meta_text)  # actual metadata text length
+        name_width = cell_len(filename) + 3  # spinner + space
+        meta_width = cell_len(meta_text)
 
         # Progress components: bar + percent + bullet + eta
         pct_width = len(pct_text)
@@ -468,8 +508,8 @@ class Dashboard:
             bar = ProgressBar(total=100, completed=int(pct), width=bar_available)
             l1_grid = Table.grid(padding=(0, 1))
             l1_grid.add_row(
-                f"[green]{spinner}[/] {filename}",
-                f"[dim]{meta_text}[/]",
+                f"[green]{spinner}[/] {safe_filename}",
+                f"[dim]{safe_meta_text}[/]",
                 bar,
                 pct_text,
                 "•",
@@ -483,15 +523,15 @@ class Dashboard:
                 # 2 lines: name + meta (right-aligned) | progress bar
                 # Recalculate filename to fit with metadata
                 available_for_name = usable_width - meta_width - 5  # -5 for spinner + spacing + separator
-                filename_2line = self._sanitize_filename(job.source_file.path.name, max_len=max(20, available_for_name))
+                filename_2line = self._sanitize_filename(job.source_file.path.name, max_len=max(1, available_for_name))
 
                 # L1: use grid with name on left, meta on right
                 l1_grid = Table.grid(padding=(0, 1), expand=True)
                 l1_grid.add_column(ratio=1)  # Name (flex)
                 l1_grid.add_column(justify="right")  # Meta (right-aligned)
                 l1_grid.add_row(
-                    f"[green]{spinner}[/] {filename_2line}",
-                    f"[dim]{meta_text}[/]"
+                    f"[green]{spinner}[/] {safe_markup(filename_2line)}",
+                    f"[dim]{safe_meta_text}[/]"
                 )
 
                 # L2: full-width progress bar
@@ -500,7 +540,7 @@ class Dashboard:
                 fixed_l2 = indent_width_l2 + pct_width + bullet_width + eta_width
                 column_spacing_l2 = 4  # 5 columns = 4 spaces
                 bar_available_l2 = usable_width - fixed_l2 - column_spacing_l2
-                bar = ProgressBar(total=100, completed=int(pct), width=bar_available_l2)
+                bar = ProgressBar(total=100, completed=int(pct), width=max(1, bar_available_l2))
                 l2_grid = Table.grid(padding=(0, 1))
                 l2_grid.add_row(" ", bar, pct_text, "•", eta_text)
                 return Group(l1_grid, l2_grid)
@@ -511,9 +551,9 @@ class Dashboard:
                 fixed_l3 = indent_width_l3 + pct_width + bullet_width + eta_width
                 column_spacing_l3 = 3  # 4 columns = 3 spaces
                 bar_available_l3 = usable_width - fixed_l3 - column_spacing_l3
-                bar = ProgressBar(total=100, completed=int(pct), width=max(bar_min_width, bar_available_l3))
+                bar = ProgressBar(total=100, completed=int(pct), width=max(1, bar_available_l3))
 
-                l2 = f"  [dim]{meta_text}[/]"
+                l2 = f"  [dim]{safe_meta_text}[/]"
                 l3_grid = Table.grid(padding=(0, 1))
                 l3_grid.add_row(" ", bar, pct_text, "•", eta_text)
                 return Group(name_line, l2, l3_grid)
@@ -523,15 +563,15 @@ class Dashboard:
         # Calculate panel width based on layout mode
         term_w = self.console.size.width
         if term_w >= MIN_2COL_W:
-            panel_w = max(40, (term_w // 2) - 4)  # 2-column mode: half width
+            panel_w = max(1, (term_w // 2) - 4)  # 2-column mode: half width
         else:
-            panel_w = max(40, term_w - 4)  # 1-column mode: full width
+            panel_w = max(1, term_w - 4)  # 1-column mode: full width
 
         if job.status == JobStatus.COMPLETED:
             verified = bool(getattr(job, "verification_passed", False))
             icon = "[green]✔[/]" if verified else "[green]✓[/]"
-            in_s = job.source_file.size_bytes
-            out_s = job.output_size_bytes
+            in_s = max(0, job.source_file.size_bytes or 0)
+            out_s = max(0, job.output_size_bytes or 0)
             diff = in_s - out_s
             ratio = (diff / in_s) * 100 if in_s > 0 else 0
             dur = self.format_time(job.duration_seconds)
@@ -553,21 +593,21 @@ class Dashboard:
             if level == "A": # 2 lines
                 # L1: ✓ filename (only icon + space needed, ~3 chars)
                 # L2: size → size (ratio%) • duration
-                filename_max = max(25, panel_w - 3)  # Reserve only for icon + space
+                filename_max = max(1, panel_w - 3)  # Reserve only for icon + space
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
-                l1 = f"{icon} {filename}"
-                l2 = f"  [green]{q_val}{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
+                l1 = f"{icon} {safe_markup(filename)}"
+                l2 = f"  [green]{safe_markup(q_val)}{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
                 return Group(l1, l2)
             else: # B: 1 line
                 # ✓ filename  |  size → size (ratio%) • duration (left-aligned)
-                filename_max = max(20, panel_w - 42)  # Reserve for icon + stats
+                filename_max = max(1, panel_w - 42)  # Reserve for icon + stats
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
                 grid = Table.grid(padding=(0, 1), expand=False)
                 grid.add_column()
                 grid.add_column(justify="left")
                 grid.add_row(
-                    f"{icon} {filename}",
-                    f"[green]{q_val}{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
+                    f"{icon} {safe_markup(filename)}",
+                    f"[green]{safe_markup(q_val)}{s_in} → {s_out} ({ratio:.1f}%) • {dur}[/]"
                 )
                 return grid
 
@@ -587,49 +627,54 @@ class Dashboard:
                     reason = "skip"
             
             if level == "A":
-                filename_max = max(25, panel_w - 3)
+                filename_max = max(1, panel_w - 3)
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
-                detail = f"  [dim]{reason} ({job.error_message})[/]" if job.error_message else f"  [dim]{reason}[/]"
-                return Group(f"{icon} {filename}", detail)
+                detail_text = f"{reason} ({single_line(job.error_message)})" if job.error_message else reason
+                detail_text = truncate_cells(detail_text, max(1, panel_w - 2))
+                detail = f"  [dim]{safe_markup(detail_text)}[/]"
+                return Group(f"{icon} {safe_markup(filename)}", detail)
             else:
-                filename_max = max(20, panel_w - 15)
+                filename_max = max(1, panel_w - 15)
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
                 grid = Table.grid(padding=(0, 1), expand=False)
                 grid.add_column()
                 grid.add_column(justify="left")
-                grid.add_row(f"{icon} {filename}", f"[dim]{reason}[/]")
+                grid.add_row(f"{icon} {safe_markup(filename)}", f"[dim]{reason}[/]")
                 return grid
 
         elif job.status == JobStatus.FAILED:
             icon = "[red]✗[/]"
-            err = self._compact_activity_error(job.error_message or "error")
+            err = truncate_cells(
+                self._compact_activity_error(job.error_message or "error"),
+                max(1, panel_w - 2),
+            )
             if level == "A":
-                filename_max = max(25, panel_w - 3)
+                filename_max = max(1, panel_w - 3)
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
-                return Group(f"{icon} {filename}", f"  [red]{err}[/]")
+                return Group(f"{icon} {safe_markup(filename)}", f"  [red]{safe_markup(err)}[/]")
             else:
-                filename_max = max(20, panel_w - 15)
+                filename_max = max(1, panel_w - 15)
                 filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
                 grid = Table.grid(padding=(0, 1), expand=False)
                 grid.add_column()
                 grid.add_column(justify="left")
-                grid.add_row(f"{icon} {filename}", "[red]err[/]")
+                grid.add_row(f"{icon} {safe_markup(filename)}", "[red]err[/]")
                 return grid
 
         elif job.status == JobStatus.INTERRUPTED:
              # ⚡ is 2-column wide, no space needed
              icon = "[red]⚡[/]"
-             filename_max = max(25, panel_w - 15)
+             filename_max = max(1, panel_w - 15)
              filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
              grid = Table.grid(padding=(0, 1), expand=False)
              grid.add_column()
              grid.add_column(justify="left")
-             grid.add_row(f"{icon}{filename}", "[red]INTERRUPTED[/]")
+             grid.add_row(f"{icon}{safe_markup(filename)}", "[red]INTERRUPTED[/]")
              return grid
 
-        filename_max = max(25, panel_w - 3)
+        filename_max = max(1, panel_w - 3)
         filename = self._sanitize_filename(job.source_file.path.name, max_len=filename_max)
-        return f"? {filename}"
+        return f"? {safe_markup(filename)}"
 
     def _render_queue_item(self, file, level: str) -> RenderableType:
         """Render queue item (always 1 line) with dynamic filename width."""
@@ -639,14 +684,17 @@ class Dashboard:
         # Calculate available width for filename based on layout mode
         term_w = self.console.size.width
         if term_w >= MIN_2COL_W:
-            panel_w = max(40, (term_w // 2) - 4)  # 2-column mode: half width
+            panel_w = max(1, (term_w // 2) - 4)  # 2-column mode: half width
         else:
-            panel_w = max(40, term_w - 4)  # 1-column mode: full width
+            panel_w = max(1, term_w - 4)  # 1-column mode: full width
 
         # Reserve space for: "» " (2) + size (9) + " " (1) + fps (6) + spacing (2) = ~20
         reserved = 20
-        filename_max = max(20, panel_w - reserved)
+        filename_max = max(1, panel_w - reserved)
         filename = self._sanitize_filename(file.path.name, max_len=filename_max)
+
+        if panel_w < 24:
+            return f"[dim]»[/] {safe_markup(filename)}"
 
         # Use grid with padding between columns
         grid = Table.grid(padding=(0, 1), expand=True)  # 1 space padding between columns
@@ -654,7 +702,7 @@ class Dashboard:
         grid.add_column(justify="right", width=9)  # Size (fixed 9 chars)
         grid.add_column(justify="right", width=6)  # FPS (fixed 6 chars)
         grid.add_row(
-            f"[dim]»[/] {filename}",
+            f"[dim]»[/] {safe_markup(filename)}",
             f"[dim]{size}[/]",
             f"[dim]{fps}[/]" if fps else ""
         )
@@ -669,6 +717,9 @@ class Dashboard:
             indicator = "[green]●[/]"
             if self.state.error_paused:
                 status = "[bright_red]ERROR[/]"
+                if self.state.error_message:
+                    error_summary = truncate_cells(self.state.error_message, 40)
+                    status += f": [red]{safe_markup(error_summary)}[/]"
                 indicator = "[red]●[/]"
             elif self.state.repair_active:
                 status = "[magenta]REPAIR[/]"
@@ -801,7 +852,7 @@ class Dashboard:
                 mu_col = _c(mu_val, 30, 60)
 
                 # Format GPU lines
-                gl1 = f"[dim]{g.get('device_name', 'GPU')}[/]"
+                gl1 = f"[dim]{safe_markup(g.get('device_name', 'GPU'))}[/]"
 
                 # GL2: Current metrics with reverse highlighting for selected metric
                 with self.state._lock:
@@ -812,14 +863,14 @@ class Dashboard:
 
                 # Build GL2 with conditional reverse for active metric
                 # metric_idx follows the GPU sparkline metric order
-                temp_str = f"[{t_col}]{g.get('temp', '??')}[/]"
+                temp_str = f"[{t_col}]{safe_markup(g.get('temp', '??'))}[/]"
                 # Fan speed: show "-" if value doesn't contain a number (e.g., "CPU Fan")
                 fan_raw = g.get('fan_speed', '??')
                 fan_display = fan_raw if re.search(r'\d', str(fan_raw)) else '-'
-                fan_str = f"[{f_col}]fan {fan_display}[/]"
-                pwr_str = f"[{p_col}]pwr {g.get('power_draw', '??')}[/]"
-                gpu_str = f"[{gu_col}]gpu {g.get('gpu_util', '??')}[/]"
-                mem_str = f"[{mu_col}]mem {g.get('mem_util', '??')}[/]"
+                fan_str = f"[{f_col}]fan {safe_markup(fan_display)}[/]"
+                pwr_str = f"[{p_col}]pwr {safe_markup(g.get('power_draw', '??'))}[/]"
+                gpu_str = f"[{gu_col}]gpu {safe_markup(g.get('gpu_util', '??'))}[/]"
+                mem_str = f"[{mu_col}]mem {safe_markup(g.get('mem_util', '??'))}[/]"
 
                 # Apply reverse to selected metric (order: temp → fan → pwr → gpu → mem)
                 if metric_idx == 0:
@@ -892,7 +943,7 @@ class Dashboard:
             else:
                 content = left_content
             
-        return Panel(content, border_style="cyan", title=self.state.ui_title)
+        return Panel(content, border_style="cyan", title=Text(single_line(self.state.ui_title)))
 
     def _generate_progress(self, h_lines: int) -> Panel:
         """Progress bar + counters (size-based progress)."""
@@ -1055,7 +1106,7 @@ class Dashboard:
                     else:
                         style = "grey30"       # Stage 3: Fading out
                     
-                    action_text = f"[{style}]{self.state.last_action}[/]"
+                    action_text = f"[{style}]{safe_markup(self.state.last_action)}[/]"
 
             grid = Table.grid(expand=True)
             grid.add_column(width=1) # Left padding
@@ -1095,7 +1146,7 @@ class Dashboard:
 
         # Get console dimensions for responsive sizing
         w = self.console.size.width
-        pw = max(95, w - 10)  # Use full width minus small margins
+        pw = min(max(w, 1), max(95, w - 10))
 
         # === TAB HEADER ===
         tabs_table = Table(show_header=False, box=None, expand=True, padding=0)
@@ -1166,6 +1217,27 @@ class Dashboard:
                 padding=(0, 0),
             ),
         )
+
+        if pw < 95:
+            compact_tabs = {
+                "shortcuts": ("⌨ Keys", "M"),
+                "settings": ("⚙ Prefs", "C"),
+                "io": ("📁 Files", "F"),
+                "dirs": ("📁 Dirs", "D"),
+                "tui": ("◈ TUI", "T"),
+                "reference": ("📖 Ref", "E"),
+                "logs": ("📝 Logs", "L"),
+            }
+            compact_label, compact_key = compact_tabs.get(active_tab, compact_tabs["reference"])
+            tabs_table = Table.grid(expand=True)
+            tabs_table.add_row(
+                Panel(
+                    f"[bold white]{compact_label}[/] [bold white][{compact_key}][/]",
+                    border_style="green",
+                    box=ROUNDED,
+                    padding=(0, 0),
+                )
+            )
 
         # === ACTIVE TAB CONTENT ===
         if active_tab == "shortcuts":
@@ -1386,7 +1458,7 @@ class Dashboard:
         # Overlay
         if self.state.show_overlay:
             w = self.console.size.width
-            overlay_w = max(95, w - 10)  # Dynamic width, full console minus margins
+            overlay_w = min(max(w, 1), max(95, w - 10))
             return _Overlay(
                 layout,
                 self._generate_tabbed_overlay(),
@@ -1394,8 +1466,14 @@ class Dashboard:
                 dim_level=self.state.overlay_dim_level,
             )
         elif self.state.show_info:
-             info = Panel(Align.center(self.state.info_message), title="NOTICE", border_style="yellow", width=60)
-             return _Overlay(layout, info, overlay_width=60)
+             info_w = min(max(self.console.size.width, 1), 60)
+             info = Panel(
+                 Align.center(Text(single_line(self.state.info_message))),
+                 title="NOTICE",
+                 border_style="yellow",
+                 width=info_w,
+             )
+             return _Overlay(layout, info, overlay_width=info_w)
 
         return layout
 
@@ -1407,8 +1485,14 @@ class Dashboard:
                     display = self.create_display()
                     with self._ui_lock:
                         self._live.update(display)
-                except Exception:
-                    pass # Resilience
+                except Exception as exc:
+                    fingerprint = f"{type(exc).__name__}: {exc}"
+                    if fingerprint != self._last_refresh_error:
+                        logger.exception("Dashboard refresh failed; processing continues")
+                        self.state.set_last_action("UI refresh failed; processing continues (see log)")
+                    self._last_refresh_error = fingerprint
+                else:
+                    self._last_refresh_error = None
             time.sleep(0.5)
 
     def start(self):
@@ -1428,7 +1512,7 @@ class Dashboard:
             try:
                 self._live.update(self.create_display())
             except Exception:
-                pass
+                logger.exception("Dashboard final refresh failed")
             self._live.stop()
 
     def __enter__(self):
