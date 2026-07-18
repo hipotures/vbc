@@ -367,7 +367,7 @@ class FFmpegAdapter:
         if request is None:
             raise ValueError("Multipart command requires metadata request context")
 
-        cmd = ["ffmpeg", "-y"]
+        cmd = ["ffmpeg", "-y", "-reinit_filter", "0"]
         cmd.extend(["-fflags", "+genpts+igndts", "-avoid_negative_ts", "make_zero"])
         for part in request.parts:
             cmd.extend(["-i", str(part.path)])

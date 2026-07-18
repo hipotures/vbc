@@ -1230,7 +1230,11 @@ class Orchestrator:
         tail = str(tag_key).split(":")[-1]
         return re.sub(r"[^a-z0-9]", "", tail.lower())
 
-    def _verify_output_file(self, output_path: Path) -> Tuple[bool, Optional[str]]:
+    def _verify_output_file(
+        self,
+        output_path: Path,
+        expected_video_packets: Optional[int] = None,
+    ) -> Tuple[bool, Optional[str]]:
         """Verify output by probing readability and checking required VBC EXIF tags."""
         if not output_path.exists():
             return False, "output file missing"
@@ -1239,6 +1243,18 @@ class Orchestrator:
             self.ffprobe_adapter.get_stream_info(output_path)
         except Exception as exc:
             return False, f"ffprobe check failed: {exc}"
+
+        if expected_video_packets is not None:
+            try:
+                output_info = self.ffprobe_adapter.get_part_info(output_path)
+                actual_video_packets = int(output_info.get("video_packets") or 0)
+            except Exception as exc:
+                return False, f"ffprobe frame-count check failed: {exc}"
+            if actual_video_packets != expected_video_packets:
+                return False, (
+                    "video frame count mismatch: "
+                    f"expected {expected_video_packets}, got {actual_video_packets}"
+                )
 
         try:
             tags = self.exif_adapter.extract_tags(output_path)
@@ -2077,7 +2093,11 @@ class Orchestrator:
                     vbc_json_notes=vbc_json_notes,
                 )
 
-            verify_ok, verify_error = self._verify_output_file(job.output_path)
+            expected_video_packets = sum(part.video_packets for part in request.parts)
+            verify_ok, verify_error = self._verify_output_file(
+                job.output_path,
+                expected_video_packets=expected_video_packets,
+            )
             if not verify_ok:
                 message = f"Verification failed: {verify_error or 'unknown verification error'}"
                 self._fail_metadata_request(video_file, message, job=job)

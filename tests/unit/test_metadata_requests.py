@@ -331,12 +331,38 @@ def test_multipart_ffmpeg_command_normalizes_video_and_synthesizes_silence(tmp_p
     filter_graph = command[command.index("-filter_complex") + 1]
 
     assert command.count("-i") == 2
+    assert command[2:4] == ["-reinit_filter", "0"]
     assert "scale=640:1280:force_original_aspect_ratio=decrease" in filter_graph
     assert "pad=640:1280" in filter_graph
     assert "apad,atrim=duration=10.000000" in filter_graph
     assert "anullsrc=r=48000:cl=stereo" in filter_graph
     assert "concat=n=2:v=1:a=1" in filter_graph
     assert command[-1].endswith("recording.tmp")
+
+
+def test_metadata_verification_rejects_dropped_video_frames(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, _, _, _ = _orchestrator(tmp_path, ffprobe)
+    output = tmp_path / "recording.mp4"
+    output.write_bytes(b"encoded")
+    ffprobe.get_stream_info.return_value = {}
+    ffprobe.get_part_info.return_value = {"video_packets": 5}
+    orchestrator.exif_adapter.extract_tags.return_value = {
+        "XMP:VBCOriginalName": "part001.mp4",
+        "XMP:VBCOriginalSize": "100",
+        "XMP:VBCQuality": "CQ45",
+        "XMP:VBCOriginalBitrate": "1 Mbps",
+        "XMP:VBCEncoder": "NVENC AV1 (GPU)",
+        "XMP:VBCFinishedAt": "2026-07-18T22:00:00+02:00",
+    }
+
+    verified, error = orchestrator._verify_output_file(
+        output,
+        expected_video_packets=10,
+    )
+
+    assert not verified
+    assert error == "video frame count mismatch: expected 10, got 5"
 
 
 def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_path):
@@ -405,6 +431,10 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
 
     orchestrator._process_metadata_request(video)
 
+    orchestrator._verify_output_file.assert_called_once_with(
+        output,
+        expected_video_packets=25,
+    )
     assert output.exists()
     assert not part.exists()
     assert not ignored.exists()
