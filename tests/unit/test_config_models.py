@@ -1,7 +1,7 @@
 import pytest
 import yaml
 from pydantic import ValidationError
-from vbc.config.models import AppConfig, GeneralConfig, AutoRotateConfig
+from vbc.config.models import AppConfig, GeneralConfig
 
 def test_valid_config():
     data = {
@@ -48,13 +48,46 @@ def test_input_dirs_accepts_object_format():
     config = AppConfig(
         general=GeneralConfig(threads=1, extensions=[".mp4"]),
         input_dirs=[
-            {"path": "/tmp/in_a", "enabled": True},
+            {"path": "/tmp/in_a", "enabled": True, "metadata": True, "idle_interval": 60},
             {"path": "/tmp/in_b", "enabled": False},
         ],
     )
     assert config.input_dirs[0].path == "/tmp/in_a"
     assert config.input_dirs[0].enabled is True
+    assert config.input_dirs[0].metadata is True
+    assert config.input_dirs[0].idle_interval == 60
     assert config.input_dirs[1].enabled is False
+    assert config.input_dirs[1].metadata is False
+    assert config.input_dirs[1].idle_interval is None
+
+
+def test_input_dirs_rejects_non_positive_idle_interval():
+    with pytest.raises(ValidationError):
+        AppConfig(
+            general=GeneralConfig(threads=1, extensions=[".mp4"]),
+            input_dirs=[{"path": "/tmp/in_a", "idle_interval": 0}],
+        )
+
+
+def test_metadata_policy_defaults_and_overrides():
+    config = AppConfig(
+        general=GeneralConfig(threads=1, extensions=[".mp4"]),
+        metadata={
+            "audio_only": "ignore",
+            "source_policy": "delete_after_success",
+            "compression_profile": "tiktok",
+            "error_policy": {"missing_input": "fail"},
+        },
+    )
+    assert config.metadata.audio_only == "ignore"
+    assert config.metadata.source_policy == "delete_after_success"
+    assert config.metadata.compression_profile == "tiktok"
+    assert config.metadata.error_policy.missing_input == "fail"
+
+
+def test_metadata_audio_only_defaults_to_fail():
+    config = AppConfig(general=GeneralConfig(threads=1, extensions=[".mp4"]))
+    assert config.metadata.audio_only == "fail"
 
 
 def test_input_dirs_rejects_duplicates():
@@ -300,3 +333,30 @@ disabled_input_dirs:
         {"path": "/tmp/b", "enabled": False},
     ]
     assert "disabled_input_dirs" not in data
+
+
+def test_save_dirs_config_preserves_metadata_fields(tmp_path):
+    f = tmp_path / "vbc.yaml"
+    f.write_text(
+        """
+general: {}
+input_dirs:
+  - path: /tmp/a
+    enabled: true
+    metadata: true
+    idle_interval: 60
+"""
+    )
+    from vbc.config.loader import save_dirs_config
+
+    save_dirs_config(f, [{"path": "/tmp/a", "enabled": False}])
+
+    data = yaml.safe_load(f.read_text())
+    assert data["input_dirs"] == [
+        {
+            "path": "/tmp/a",
+            "enabled": False,
+            "metadata": True,
+            "idle_interval": 60,
+        }
+    ]

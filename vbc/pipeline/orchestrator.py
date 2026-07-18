@@ -26,7 +26,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union, TYPE_CHECKING, Tuple
-from vbc.config.models import AppConfig
+from vbc.config.models import AppConfig, InputDirEntry, MetadataConfig
 from vbc.config.rate_control import (
     ResolvedRateControl,
     resolve_rate_control_values,
@@ -52,7 +52,15 @@ from vbc.infrastructure.ffmpeg import (
     infer_encoder_label,
 )
 from vbc.infrastructure.exiftool_tmp import remove_exiftool_tmp_for_target
-from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
+from vbc.domain.models import (
+    CompressionJob,
+    CompressionManifest,
+    JobStatus,
+    MetadataRequest,
+    MultipartPart,
+    VideoFile,
+    VideoMetadata,
+)
 from vbc.domain.events import (
     DiscoveryErrorEntry,
     DiscoveryStarted,
@@ -140,6 +148,8 @@ class Orchestrator:
         errors_dir_map: Optional[Dict[Path, Path]] = None,
         local_config_registry: Optional["LocalConfigRegistry"] = None,
         cli_overrides: Optional["CliConfigOverrides"] = None,
+        config_path: Optional[Path] = None,
+        input_dir_entries: Optional[Dict[Path, InputDirEntry]] = None,
     ):
         self.config = config
         self.event_bus = event_bus
@@ -152,6 +162,21 @@ class Orchestrator:
         # Local config registry and CLI overrides for per-job config resolution
         self.local_registry = local_config_registry
         self.cli_overrides = cli_overrides
+        self.config_path = config_path
+        self._metadata_config = config.metadata.model_copy(deep=True)
+        self._metadata_config_lock = threading.Lock()
+        self._manifest_inflight: set[Path] = set()
+        self._manifest_inflight_lock = threading.Lock()
+        self._input_dir_entries = input_dir_entries
+        if self._input_dir_entries is None:
+            self._input_dir_entries = {
+                Path(entry.path): entry for entry in config.input_dirs if entry.enabled
+            }
+        self._metadata_input_entries = {
+            path: entry
+            for path, entry in self._input_dir_entries.items()
+            if entry.metadata
+        }
 
         # Metadata cache (thread-safe)
         self._metadata_cache = {}  # Path -> VideoMetadata
@@ -972,6 +997,7 @@ class Orchestrator:
         original_size: int,
         finished_at: str,
         vbc_json_notes: Optional[str] = None,
+        record_error_marker: bool = True,
     ) -> None:
         """Copy full metadata from source to output using ExifTool (legacy behavior)."""
         config_path = Path(__file__).resolve().parents[2] / "conf" / "exiftool.conf"
@@ -1097,13 +1123,14 @@ class Orchestrator:
                     timed_out = False
                     break
             if timed_out:
-                try:
-                    err_path.write_text(
-                        f"ExifTool metadata copy timed out after {timeout_s}s (2 attempts)."
-                    )
-                    self._record_session_error_marker(source_path, err_path)
-                except Exception:
-                    pass
+                if record_error_marker:
+                    try:
+                        err_path.write_text(
+                            f"ExifTool metadata copy timed out after {timeout_s}s (2 attempts)."
+                        )
+                        self._record_session_error_marker(source_path, err_path)
+                    except Exception:
+                        pass
                 self.logger.error(
                     f"ExifTool metadata copy timed out after {timeout_s}s (2 attempts) for {filename}"
                 )
@@ -1253,6 +1280,289 @@ class Orchestrator:
         # Default: log and continue
         self.event_bus.publish(ActionMessage(message=f"Verification failed, continuing ({message})"))
 
+    def _is_metadata_input_dir(self, input_dir: Path) -> bool:
+        return input_dir in self._metadata_input_entries
+
+    def _load_current_metadata_config(self) -> MetadataConfig:
+        """Reload hot metadata overrides, retaining the last valid snapshot."""
+        if self.config_path is None:
+            return self._metadata_config.model_copy(deep=True)
+        from vbc.config.loader import load_metadata_config
+
+        with self._metadata_config_lock:
+            try:
+                self._metadata_config = load_metadata_config(self.config_path)
+            except Exception as exc:
+                self.logger.warning(
+                    "Could not reload metadata config; using last valid values: %s",
+                    exc,
+                )
+            return self._metadata_config.model_copy(deep=True)
+
+    @staticmethod
+    def _resolve_manifest_policies(
+        manifest: CompressionManifest,
+        metadata_config: MetadataConfig,
+    ) -> tuple[str, str, str]:
+        source_policy = metadata_config.source_policy or manifest.source_policy
+        compression_profile = metadata_config.compression_profile or manifest.compression_profile
+        return source_policy, compression_profile, metadata_config.audio_only
+
+    @staticmethod
+    def _next_backup_path(output_path: Path) -> Path:
+        index = 1
+        while True:
+            candidate = output_path.with_name(f"{output_path.stem}_{index}{output_path.suffix}")
+            if not candidate.exists():
+                return candidate
+            index += 1
+
+    def _route_manifest_success(self, request: MetadataRequest) -> Path:
+        request.success_dir.mkdir(parents=True, exist_ok=True)
+        destination = request.success_dir / request.manifest_path.name
+        request.manifest_path.replace(destination)
+        self.logger.info("MANIFEST_DONE: %s -> %s", request.manifest_path, destination)
+        return destination
+
+    def _route_manifest_error(
+        self,
+        manifest_path: Path,
+        error_dir: Path,
+        message: str,
+    ) -> Path:
+        error_dir.mkdir(parents=True, exist_ok=True)
+        destination = error_dir / manifest_path.name
+        if manifest_path.exists():
+            manifest_path.replace(destination)
+        err_path = destination.with_suffix(".err")
+        err_path.write_text(message)
+        self.logger.error("MANIFEST_ERROR: %s (%s)", destination, message)
+        return destination
+
+    def _delete_manifest_sources(self, request: MetadataRequest) -> None:
+        if request.source_policy != "delete_after_success":
+            return
+        for source_path in request.all_input_paths:
+            if source_path.exists():
+                source_path.unlink()
+                self.logger.info("MANIFEST_SOURCE_DELETED: %s", source_path)
+
+    def _discover_metadata_dir(
+        self,
+        input_dir: Path,
+        success_dir: Path,
+        error_dir: Path,
+    ) -> tuple[List[VideoFile], Dict[str, Any]]:
+        stats: Dict[str, Any] = {
+            "files_found": 0,
+            "files_to_process": 0,
+            "already_compressed": 0,
+            "ignored_small": 0,
+            "ignored_err": 0,
+            "ignored_err_entries": [],
+        }
+        candidates: List[VideoFile] = []
+        metadata_config = self._load_current_metadata_config()
+
+        for manifest_path in sorted(input_dir.rglob("*.json")):
+            with self._manifest_inflight_lock:
+                if manifest_path in self._manifest_inflight:
+                    if self.config.general.debug:
+                        self.logger.debug(
+                            "MANIFEST_REFRESH_SKIP_INFLIGHT: %s",
+                            manifest_path,
+                        )
+                    continue
+            stats["files_found"] += 1
+            try:
+                manifest = CompressionManifest.model_validate_json(manifest_path.read_text())
+                self.logger.info(
+                    "MANIFEST_LOADED: json=%s request_id=%s producer=%s username=%s "
+                    "recording_id=%s declared_size_bytes=%s declared_latest_mtime_ns=%s",
+                    manifest_path,
+                    manifest.request_id,
+                    manifest.producer.app,
+                    manifest.producer.username,
+                    manifest.producer.recording_id,
+                    manifest.producer.source_size_bytes,
+                    manifest.producer.source_latest_mtime_ns,
+                )
+                source_policy, compression_profile, audio_only = self._resolve_manifest_policies(
+                    manifest,
+                    metadata_config,
+                )
+                output_path = Path(manifest.output_path)
+                tmp_path = output_path.with_suffix(".tmp")
+                if tmp_path.exists():
+                    tmp_path.unlink()
+                    self.logger.info("MANIFEST_STALE_TMP_REMOVED: %s", tmp_path)
+
+                if output_path.exists():
+                    output_ok, _ = self._verify_output_file(output_path)
+                    if output_ok:
+                        completed_request = MetadataRequest(
+                            manifest_path=manifest_path,
+                            metadata_dir=input_dir,
+                            success_dir=success_dir,
+                            error_dir=error_dir,
+                            manifest=manifest,
+                            parts=[],
+                            source_policy=source_policy,
+                            compression_profile=compression_profile,
+                            audio_only=audio_only,
+                            target_width=1,
+                            target_height=1,
+                        )
+                        self._delete_manifest_sources(completed_request)
+                        self._route_manifest_success(completed_request)
+                        stats["already_compressed"] += 1
+                        continue
+
+                parts: List[MultipartPart] = []
+                ignored_inputs: List[Path] = []
+                for source_value in manifest.inputs:
+                    source_path = Path(source_value)
+                    if not source_path.is_file():
+                        raise FileNotFoundError(f"Missing manifest input: {source_path}")
+                    part_info = self.ffprobe_adapter.get_part_info(source_path)
+                    video_packets = int(part_info.get("video_packets") or 0)
+                    audio_packets = int(part_info.get("audio_packets") or 0)
+                    has_usable_video = bool(part_info.get("has_video_stream")) and video_packets > 0
+                    if not has_usable_video:
+                        is_audio_only = bool(part_info.get("has_audio_stream")) and audio_packets > 0
+                        if is_audio_only and audio_only == "ignore":
+                            ignored_inputs.append(source_path)
+                            self.logger.info(
+                                "MANIFEST_AUDIO_ONLY_IGNORED: json=%s input=%s",
+                                manifest_path,
+                                source_path,
+                            )
+                            continue
+                        reason = "audio-only input" if is_audio_only else "input has no video packets"
+                        raise ValueError(f"Invalid manifest input ({reason}): {source_path}")
+
+                    width = int(part_info.get("width") or 0)
+                    height = int(part_info.get("height") or 0)
+                    if width <= 0 or height <= 0:
+                        raise ValueError(
+                            f"Invalid video dimensions for {source_path}: {width}x{height}"
+                        )
+                    duration = float(part_info.get("duration") or 0.0)
+                    if audio_packets == 0:
+                        packet_duration = self.ffprobe_adapter.get_video_packet_duration(source_path)
+                        duration = packet_duration or duration
+                        if duration <= 0:
+                            fps = float(part_info.get("fps") or 0.0)
+                            duration = (1.0 / fps) if fps > 0 else 0.04
+                    parts.append(
+                        MultipartPart(
+                            path=source_path,
+                            width=width,
+                            height=height,
+                            codec=str(part_info.get("codec") or "unknown"),
+                            audio_codec=part_info.get("audio_codec"),
+                            fps=float(part_info.get("fps") or 0.0),
+                            duration=max(0.0, duration),
+                            bitrate_kbps=part_info.get("bitrate_kbps"),
+                            color_space=part_info.get("color_space"),
+                            pix_fmt=part_info.get("pix_fmt"),
+                            video_packets=video_packets,
+                            audio_packets=audio_packets,
+                        )
+                    )
+
+                if not parts:
+                    raise ValueError("Manifest has no usable video parts")
+                orientations = {part.orientation for part in parts}
+                if len(orientations) != 1:
+                    raise ValueError(
+                        "Manifest mixes incompatible video orientations: "
+                        + ", ".join(sorted(orientations))
+                    )
+
+                target_part = max(parts, key=lambda part: part.width * part.height)
+                target_width = target_part.width + (target_part.width % 2)
+                target_height = target_part.height + (target_part.height % 2)
+                total_size = sum(part.path.stat().st_size for part in parts)
+                if total_size < self.file_scanner.min_size_bytes:
+                    stats["ignored_small"] += 1
+                    stats["files_found"] -= 1
+                    continue
+
+                first_part = parts[0]
+                duration = sum(part.duration for part in parts)
+                video_metadata = VideoMetadata(
+                    width=target_width,
+                    height=target_height,
+                    codec=first_part.codec,
+                    audio_codec=first_part.audio_codec or "no-audio",
+                    fps=first_part.fps,
+                    bitrate_kbps=first_part.bitrate_kbps,
+                    megapixels=round(target_width * target_height / 1_000_000),
+                    color_space=first_part.color_space,
+                    pix_fmt=first_part.pix_fmt,
+                    duration=duration,
+                )
+                request = MetadataRequest(
+                    manifest_path=manifest_path,
+                    metadata_dir=input_dir,
+                    success_dir=success_dir,
+                    error_dir=error_dir,
+                    manifest=manifest,
+                    parts=parts,
+                    ignored_inputs=ignored_inputs,
+                    source_policy=source_policy,
+                    compression_profile=compression_profile,
+                    audio_only=audio_only,
+                    target_width=target_width,
+                    target_height=target_height,
+                )
+                self.logger.info(
+                    "MANIFEST_READY: json=%s output=%s parts=%s/%s size_bytes=%s "
+                    "target=%sx%s source_policy=%s compression_profile=%s",
+                    manifest_path,
+                    output_path,
+                    len(parts),
+                    len(manifest.inputs),
+                    total_size,
+                    target_width,
+                    target_height,
+                    source_policy,
+                    compression_profile,
+                )
+                candidates.append(
+                    VideoFile(
+                        path=output_path,
+                        size_bytes=total_size,
+                        metadata=video_metadata,
+                        metadata_request=request,
+                    )
+                )
+            except Exception as exc:
+                message = str(exc) or exc.__class__.__name__
+                try:
+                    destination = self._route_manifest_error(manifest_path, error_dir, message)
+                except Exception as move_exc:
+                    self.logger.exception("Failed to route manifest error for %s", manifest_path)
+                    destination = manifest_path
+                    message = f"{message}; failed to route manifest: {move_exc}"
+                try:
+                    size_bytes = destination.stat().st_size
+                except OSError:
+                    size_bytes = None
+                stats["ignored_err"] += 1
+                stats["files_found"] -= 1
+                stats["ignored_err_entries"].append(
+                    DiscoveryErrorEntry(
+                        path=destination,
+                        size_bytes=size_bytes,
+                        error_message=message,
+                    )
+                )
+
+        stats["files_to_process"] = len(candidates)
+        return candidates, stats
+
     def _perform_discovery(self, input_dirs: Union[Path, List[Path]]) -> tuple:
         """Performs file discovery across multiple directories and returns (files_to_process, discovery_stats)."""
         import os
@@ -1282,6 +1592,28 @@ class Orchestrator:
                 else:
                     output_dir = self._resolve_output_dir(input_dir, idx)
                 self._folder_mapping[input_dir] = output_dir
+
+            if self._is_metadata_input_dir(input_dir):
+                errors_dir = self._get_errors_dir(input_dir)
+                if errors_dir is None:
+                    raise ValueError(f"Errors directory mapping missing for {input_dir}")
+                metadata_files, metadata_stats = self._discover_metadata_dir(
+                    input_dir,
+                    output_dir,
+                    errors_dir,
+                )
+                all_files.extend(metadata_files)
+                for key in (
+                    "files_found",
+                    "already_compressed",
+                    "ignored_small",
+                    "ignored_err",
+                ):
+                    total_stats[key] += metadata_stats[key]
+                total_stats["ignored_err_entries"].extend(
+                    metadata_stats["ignored_err_entries"]
+                )
+                continue
 
             if self.config.general.debug:
                 self.logger.info(f"DISCOVERY_START: scanning {input_dir}")
@@ -1497,6 +1829,279 @@ class Orchestrator:
             self._trigger_critical_shutdown(msg)
             raise RuntimeError(msg)
 
+    def _fail_metadata_request(
+        self,
+        video_file: VideoFile,
+        message: str,
+        job: Optional[CompressionJob] = None,
+        publish: bool = True,
+    ) -> None:
+        request = video_file.metadata_request
+        if request is None:
+            return
+        failed_job = job or CompressionJob(
+            source_file=video_file,
+            status=JobStatus.FAILED,
+            output_path=video_file.path,
+        )
+        failed_job.status = JobStatus.FAILED
+        failed_job.error_message = message
+        try:
+            self._route_manifest_error(request.manifest_path, request.error_dir, message)
+        except Exception as exc:
+            self.logger.exception("Failed to route manifest after job error: %s", exc)
+        if publish:
+            self.event_bus.publish(JobFailed(job=failed_job, error_message=message))
+
+    def _process_metadata_request(self, video_file: VideoFile) -> None:
+        request = video_file.metadata_request
+        if request is None:
+            return
+        filename = video_file.path.name
+        job: Optional[CompressionJob] = None
+
+        try:
+            metadata_config = self._load_current_metadata_config()
+            source_policy, compression_profile, audio_only = self._resolve_manifest_policies(
+                request.manifest,
+                metadata_config,
+            )
+            request.source_policy = source_policy
+            request.compression_profile = compression_profile
+            request.audio_only = audio_only
+
+            if request.ignored_inputs and audio_only == "fail":
+                ignored = ", ".join(str(path) for path in request.ignored_inputs)
+                self._fail_metadata_request(
+                    video_file,
+                    f"Manifest contains audio-only input(s): {ignored}",
+                )
+                return
+
+            output_path = Path(request.manifest.output_path)
+            tmp_path = output_path.with_suffix(".tmp")
+            if tmp_path.exists():
+                tmp_path.unlink()
+                self.logger.info("MANIFEST_STALE_TMP_REMOVED: %s", tmp_path)
+
+            if output_path.exists():
+                output_ok, _ = self._verify_output_file(output_path)
+                if output_ok:
+                    self._delete_manifest_sources(request)
+                    self._route_manifest_success(request)
+                    job = CompressionJob(
+                        source_file=video_file,
+                        status=JobStatus.COMPLETED,
+                        output_path=output_path,
+                        output_size_bytes=output_path.stat().st_size,
+                        duration_seconds=0.0,
+                        verification_passed=True,
+                    )
+                    self.event_bus.publish(JobCompleted(job=job))
+                    return
+
+            for source_path in request.all_input_paths:
+                if not source_path.is_file():
+                    self._fail_metadata_request(
+                        video_file,
+                        f"Missing manifest input: {source_path}",
+                    )
+                    return
+
+            if output_path.exists():
+                backup_path = self._next_backup_path(output_path)
+                output_path.rename(backup_path)
+                self.logger.warning(
+                    "MANIFEST_OUTPUT_BACKUP: untagged output %s -> %s",
+                    output_path,
+                    backup_path,
+                )
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            job_config = self.config.model_copy(deep=True)
+            profile_rule = job_config.general.dynamic_quality.get(compression_profile)
+            if profile_rule is None:
+                job_config.general.dynamic_quality = {}
+                if video_file.metadata:
+                    video_file.metadata.custom_cq = None
+                    video_file.metadata.camera_model = None
+                self.logger.info(
+                    "MANIFEST_PROFILE_DEFAULT: json=%s profile=%s",
+                    request.manifest_path,
+                    compression_profile,
+                )
+            else:
+                job_config.general.dynamic_quality = {compression_profile: profile_rule}
+                if video_file.metadata:
+                    video_file.metadata.custom_cq = profile_rule.cq
+                    video_file.metadata.camera_model = compression_profile
+
+            use_gpu = job_config.general.gpu
+            rotation = self._determine_rotation(video_file, config=job_config)
+            quality_value: Optional[int] = None
+            rate_control: Optional[ResolvedRateControl] = None
+            vbc_json_notes: Optional[str] = None
+            if job_config.general.quality_mode == "rate":
+                rate_control = self._determine_rate_control(
+                    video_file,
+                    config=job_config,
+                    use_gpu=use_gpu,
+                )
+                quality_display = format_bps_human(rate_control.target_bps)
+                quality_tag_label = self._quality_label_for_rate_tags(
+                    video_file,
+                    config=job_config,
+                )
+                vbc_json_notes = self._rate_json_notes_for_tags(rate_control)
+            else:
+                quality_value = self._determine_cq(
+                    video_file,
+                    use_gpu=use_gpu,
+                    config=job_config,
+                )
+                quality_display = self._quality_display_for_cq(
+                    quality_value,
+                    use_gpu=use_gpu,
+                    config=job_config,
+                )
+                quality_tag_label = quality_display
+
+            job = CompressionJob(
+                source_file=video_file,
+                output_path=output_path,
+                rotation_angle=rotation or 0,
+                quality_value=quality_value,
+                quality_display=quality_display,
+            )
+            self.event_bus.publish(JobStarted(job=job))
+            job.status = JobStatus.PROCESSING
+            self.ffmpeg_adapter.compress(
+                job,
+                job_config,
+                use_gpu,
+                quality=quality_value,
+                rate_control=rate_control,
+                rotate=rotation,
+                shutdown_event=self._shutdown_event,
+            )
+
+            if (
+                job.status == JobStatus.HW_CAP_LIMIT
+                and job_config.general.cpu_fallback
+                and use_gpu
+            ):
+                self.logger.info("FFMPEG_FALLBACK: %s (manifest hw_cap -> CPU)", filename)
+                use_gpu = False
+                if job_config.general.quality_mode == "rate":
+                    rate_control = self._determine_rate_control(
+                        video_file,
+                        config=job_config,
+                        use_gpu=False,
+                    )
+                    quality_value = None
+                    quality_display = format_bps_human(rate_control.target_bps)
+                    quality_tag_label = self._quality_label_for_rate_tags(
+                        video_file,
+                        config=job_config,
+                    )
+                    vbc_json_notes = self._rate_json_notes_for_tags(rate_control)
+                else:
+                    quality_value = self._determine_cq(
+                        video_file,
+                        use_gpu=False,
+                        config=job_config,
+                    )
+                    quality_display = self._quality_display_for_cq(
+                        quality_value,
+                        use_gpu=False,
+                        config=job_config,
+                    )
+                    quality_tag_label = quality_display
+                job.status = JobStatus.PROCESSING
+                job.error_message = None
+                job.quality_value = quality_value
+                job.quality_display = quality_display
+                self.event_bus.publish(JobStarted(job=job))
+                self.ffmpeg_adapter.compress(
+                    job,
+                    job_config,
+                    False,
+                    quality=quality_value,
+                    rate_control=rate_control,
+                    rotate=rotation,
+                    shutdown_event=self._shutdown_event,
+                )
+
+            if job.status == JobStatus.INTERRUPTED:
+                self.event_bus.publish(
+                    JobFailed(job=job, error_message=job.error_message or "Interrupted")
+                )
+                return
+            if job.status != JobStatus.COMPLETED or job.output_path is None:
+                self._fail_metadata_request(
+                    video_file,
+                    job.error_message or "Compression failed",
+                    job=job,
+                    publish=False,
+                )
+                return
+
+            source_path = request.parts[0].path
+            encoder_args = select_encoder_args(job_config, use_gpu)
+            encoder_label = infer_encoder_label(encoder_args, use_gpu)
+            finished_at = datetime.now().astimezone().isoformat(timespec="seconds")
+            original_bitrate_label = self._original_bitrate_label_for_tags(video_file)
+            tag_err_path = request.error_dir / request.manifest_path.with_suffix(".err").name
+            if job_config.general.copy_metadata:
+                self._copy_deep_metadata(
+                    source_path,
+                    job.output_path,
+                    tag_err_path,
+                    quality_tag_label,
+                    original_bitrate_label,
+                    encoder_label,
+                    video_file.size_bytes,
+                    finished_at,
+                    vbc_json_notes=vbc_json_notes,
+                    record_error_marker=False,
+                )
+            else:
+                self._write_vbc_tags(
+                    source_path,
+                    job.output_path,
+                    quality_tag_label,
+                    original_bitrate_label,
+                    encoder_label,
+                    video_file.size_bytes,
+                    finished_at,
+                    vbc_json_notes=vbc_json_notes,
+                )
+
+            verify_ok, verify_error = self._verify_output_file(job.output_path)
+            if not verify_ok:
+                message = f"Verification failed: {verify_error or 'unknown verification error'}"
+                self._fail_metadata_request(video_file, message, job=job)
+                if job_config.general.verify_fail_action != "false":
+                    self._handle_verification_failure(
+                        message,
+                        job_config.general.verify_fail_action,
+                    )
+                return
+
+            job.verification_passed = True
+            job.output_size_bytes = job.output_path.stat().st_size
+            self._delete_manifest_sources(request)
+            self._route_manifest_success(request)
+            self.event_bus.publish(JobCompleted(job=job))
+        except Exception as exc:
+            if job is not None and job.status == JobStatus.INTERRUPTED:
+                return
+            self._fail_metadata_request(
+                video_file,
+                f"Exception: {exc}",
+                job=job,
+            )
+
     def _process_file(self, video_file: VideoFile, input_dir: Optional[Path] = None):
         """Processes a single file with dynamic concurrency control."""
         filename = video_file.path.name
@@ -1516,6 +2121,20 @@ class Orchestrator:
                 return
 
             self._active_threads += 1
+
+        if video_file.metadata_request is not None:
+            manifest_path = video_file.metadata_request.manifest_path
+            with self._manifest_inflight_lock:
+                self._manifest_inflight.add(manifest_path)
+            try:
+                self._process_metadata_request(video_file)
+            finally:
+                with self._manifest_inflight_lock:
+                    self._manifest_inflight.discard(manifest_path)
+                with self._thread_lock:
+                    self._active_threads -= 1
+                    self._thread_lock.notify_all()
+            return
 
         job = None
         err_path = None
@@ -1915,13 +2534,26 @@ class Orchestrator:
     def run(self, input_dirs: Union[Path, List[Path]]):
         input_dirs = self._normalize_input_dirs(input_dirs)
         forced_files: List[Path] = []
+        scheduled_input_dirs: Optional[List[Path]] = None
+        timed_refresh = False
+        next_idle_scan: Dict[Path, float] = {}
         while True:
             # Use updated dirs if changed via Dirs tab
             if self._pending_input_dirs is not None:
                 input_dirs = self._pending_input_dirs
                 self._pending_input_dirs = None
-            self._run_once(input_dirs, forced_files=forced_files)
+                next_idle_scan.clear()
+            cycle_input_dirs = scheduled_input_dirs or input_dirs
+            processed_any = self._run_once(cycle_input_dirs, forced_files=forced_files)
+            if timed_refresh and processed_any:
+                timed_refresh = False
+            now = time.monotonic()
+            for input_dir in cycle_input_dirs:
+                entry = self._input_dir_entries.get(input_dir)
+                if entry is not None and entry.idle_interval is not None:
+                    next_idle_scan[input_dir] = now + entry.idle_interval
             forced_files = []
+            scheduled_input_dirs = None
 
             if self._verification_abort_message:
                 raise VerificationAbortError(self._verification_abort_message)
@@ -1963,7 +2595,7 @@ class Orchestrator:
                 break
 
             # Emit bell before entering wait state (if configured)
-            if self.config.general.bell_on_finish:
+            if self.config.general.bell_on_finish and not timed_refresh:
                 _emit_bell()
 
             # Publish WAITING state for UI
@@ -1973,12 +2605,44 @@ class Orchestrator:
             # Block until R (restart) or S/Ctrl+C (exit)
             self._wait_event.clear()
             self._restart_after_wait = False
-            self._wait_event.wait()
+            now = time.monotonic()
+            active_paths = set(input_dirs)
+            idle_intervals = {
+                path: entry.idle_interval
+                for path, entry in self._input_dir_entries.items()
+                if entry.enabled
+                and entry.idle_interval is not None
+                and path in active_paths
+            }
+            for path, interval in idle_intervals.items():
+                next_idle_scan.setdefault(path, now + interval)
+            next_idle_scan = {
+                path: deadline
+                for path, deadline in next_idle_scan.items()
+                if path in idle_intervals
+            }
+            timeout = None
+            if next_idle_scan:
+                timeout = max(0.0, min(next_idle_scan.values()) - now)
+            was_signaled = self._wait_event.wait(timeout=timeout)
 
             if self._shutdown_requested or self._shutdown_event.is_set():
                 break
 
+            if not was_signaled and next_idle_scan:
+                now = time.monotonic()
+                scheduled_input_dirs = [
+                    path for path, deadline in next_idle_scan.items() if deadline <= now
+                ]
+                if not scheduled_input_dirs:
+                    scheduled_input_dirs = [
+                        min(next_idle_scan, key=next_idle_scan.__getitem__)
+                    ]
+                timed_refresh = True
+                continue
+
             # User pressed R — reset state and loop for next cycle
+            timed_refresh = False
             self._restart_after_wait = False
             self._shutdown_requested = False
             with self._refresh_lock:
@@ -2036,7 +2700,7 @@ class Orchestrator:
             self.event_bus.publish(ProcessingFinished())
             if self.config.general.bell_on_finish and not self.config.general.wait_on_finish:
                 _emit_bell()
-            return
+            return False
 
         # Submit-on-demand pattern (like original vbc.py)
         from collections import deque
@@ -2117,13 +2781,15 @@ class Orchestrator:
                             new_files, new_stats = self._perform_discovery(refresh_dirs)
                             
                             # Identify currently processing files to exclude them from queue
-                            in_flight_paths = {vf.path for vf in in_flight.values()}
-                            old_pending_paths = {vf.path for vf in pending}
+                            in_flight_paths = {vf.identity_path for vf in in_flight.values()}
+                            old_pending_paths = {vf.identity_path for vf in pending}
                             
                             # Rebuild pending queue from sorted new_files, excluding in-flight ones
                             # This ensures the queue is fully re-sorted according to config
-                            new_pending_list = [vf for vf in new_files if vf.path not in in_flight_paths]
-                            new_pending_paths = {vf.path for vf in new_pending_list}
+                            new_pending_list = [
+                                vf for vf in new_files if vf.identity_path not in in_flight_paths
+                            ]
+                            new_pending_paths = {vf.identity_path for vf in new_pending_list}
                             
                             # Calculate stats
                             added = len(new_pending_paths - old_pending_paths)
@@ -2221,3 +2887,5 @@ class Orchestrator:
 
                 # Re-raise to propagate to main
                 raise
+
+        return True

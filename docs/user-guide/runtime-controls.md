@@ -192,6 +192,7 @@ When `wait_on_finish: true` (or `--wait` CLI flag) is set, VBC does not exit aut
 - After all files are processed, the status bar changes to **WAITING** with the hint line `R = restart scan  │  S / Ctrl+C = exit`
 - If failed files from the current session exist, status changes to **REPAIR** before **WAITING**
 - Press **R** to restart the scan (full re-discovery and processing of any new files)
+- Directories with `idle_interval` are re-scanned automatically while WAITING; the timer does not keep VBC alive when `wait_on_finish` is false
 - Press **S** or **Ctrl+C** to exit VBC
 
 **Use case:** Run VBC repeatedly without restarting the application — for example, processing batches as files arrive.

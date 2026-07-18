@@ -688,8 +688,8 @@ class Dashboard:
         else:
             panel_w = max(1, term_w - 4)  # 1-column mode: full width
 
-        # Reserve space for: "» " (2) + size (9) + " " (1) + fps (6) + spacing (2) = ~20
-        reserved = 20
+        # Reserve space for marker, size, FPS, part count, and column padding.
+        reserved = 25
         filename_max = max(1, panel_w - reserved)
         filename = self._sanitize_filename(file.path.name, max_len=filename_max)
 
@@ -701,10 +701,12 @@ class Dashboard:
         grid.add_column(ratio=1)  # Filename (flex)
         grid.add_column(justify="right", width=9)  # Size (fixed 9 chars)
         grid.add_column(justify="right", width=6)  # FPS (fixed 6 chars)
+        grid.add_column(justify="right", width=4)  # Logical part count
         grid.add_row(
             f"[dim]»[/] {safe_markup(filename)}",
             f"[dim]{size}[/]",
-            f"[dim]{fps}[/]" if fps else ""
+            f"[dim]{fps}[/]" if fps else "",
+            f"[dim]{file.part_count}[/]",
         )
         return grid
 

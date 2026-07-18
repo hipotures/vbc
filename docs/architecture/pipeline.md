@@ -338,6 +338,16 @@ if not in_flight and not pending:
     logger.info("All files processed, exiting")
 ```
 
+### Manifest jobs
+
+An input directory marked `metadata: true` yields one logical `VideoFile` per strict JSON
+manifest. Its display path is the requested output, while its identity and directory
+ownership remain the manifest path. Discovery probes every physical part, filters
+configured audio-only inputs, and calculates aggregate size and target resolution.
+FFmpeg receives all effective inputs in one `filter_complex`; no merged intermediate
+video is created. The manifest moves to `_out` only after output verification and source
+policy completion, or to `_err` with a sibling `.err` for any non-interruption failure.
+
 ### Graceful Shutdown
 
 ```python

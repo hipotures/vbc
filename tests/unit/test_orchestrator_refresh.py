@@ -1,8 +1,8 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from collections import deque
 from pathlib import Path
-from vbc.domain.models import VideoFile, VideoMetadata
+from vbc.domain.models import VideoFile
 from vbc.pipeline.orchestrator import Orchestrator
 from vbc.config.models import AppConfig, GeneralConfig
 
@@ -105,3 +105,50 @@ def test_refresh_excludes_inflight(mock_orchestrator):
     assert len(pending) == 2 # b, c (a is excluded)
     assert pending[0].path.name == "b.mp4"
     assert pending[1].path.name == "c.mp4"
+
+
+def test_idle_interval_rescans_configured_dir_only_in_wait_mode(monkeypatch, tmp_path):
+    input_dir = tmp_path / "metadata"
+    input_dir.mkdir()
+    config = AppConfig(
+        general=GeneralConfig(threads=1, wait_on_finish=True),
+        input_dirs=[
+            {
+                "path": str(input_dir),
+                "enabled": True,
+                "metadata": True,
+                "idle_interval": 1,
+            }
+        ],
+    )
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=MagicMock(),
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+    run_calls = []
+
+    def fake_run_once(run_dirs, forced_files=None):
+        run_calls.append(list(run_dirs))
+        if len(run_calls) == 2:
+            orchestrator._shutdown_requested = True
+
+    clock = {"value": 0.0}
+
+    def fake_monotonic():
+        clock["value"] += 2.0
+        return clock["value"]
+
+    orchestrator._run_once = fake_run_once
+    orchestrator._run_auto_repair = MagicMock(return_value=[])
+    orchestrator._wait_event = MagicMock()
+    orchestrator._wait_event.wait.return_value = False
+    monkeypatch.setattr("vbc.pipeline.orchestrator.time.monotonic", fake_monotonic)
+
+    orchestrator.run([input_dir])
+
+    assert run_calls == [[input_dir], [input_dir]]
+    orchestrator._wait_event.wait.assert_called_once()

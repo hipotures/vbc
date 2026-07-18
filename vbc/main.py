@@ -564,7 +564,7 @@ def compress(
                 f"Quality: {quality_display} (Default)",
                 f"Dynamic Quality: {dynamic_quality_info}",
                 f"Camera Filter: {camera_filter_info}",
-                f"Metadata: {metadata_method} (Analysis: {config.general.use_exif})",
+                f"Video metadata: {metadata_method} (Analysis: {config.general.use_exif})",
                 f"Autorotate: {len(config.autorotate.patterns)} rules loaded",
                 f"Manual Rotation: {manual_rotation}",
                 f"Extensions: {ext_list} → {output_suffix}",
@@ -591,7 +591,8 @@ def compress(
                 f"Quality: {quality_display} (Default)",
                 f"Dynamic Quality: {dynamic_quality_info}",
                 f"Camera Filter: {camera_filter_info}",
-                f"Metadata: {metadata_method} (Analysis: {config.general.use_exif})",
+                f"Video metadata: {metadata_method} (Analysis: {config.general.use_exif})",
+                f"Manifest audio-only: {config.metadata.audio_only}",
                 f"Autorotate: {len(config.autorotate.patterns)} rules loaded",
                 f"Manual Rotation: {manual_rotation}",
                 f"Extensions: {ext_list} → {output_suffix}",
@@ -641,6 +642,12 @@ def compress(
             # Housekeeping (Cleanup stale files)
             housekeeper = HousekeepingService()
             for input_dir in input_dirs:
+                input_entry = next(
+                    (entry for entry in config.input_dirs if Path(entry.path) == input_dir),
+                    None,
+                )
+                if input_entry is not None and input_entry.metadata:
+                    continue
                 output_dir = output_dir_map.get(input_dir)
                 if output_dir is None and config.suffix_output_dirs:
                     output_dir = input_dir.with_name(f"{input_dir.name}{config.suffix_output_dirs}")
@@ -682,6 +689,16 @@ def compress(
                 errors_dir_map=errors_dir_map,
                 local_config_registry=local_registry,
                 cli_overrides=cli_overrides,
+                config_path=config_path,
+                input_dir_entries=(
+                    {}
+                    if input_dirs_arg is not None
+                    else {
+                        Path(entry.path): entry
+                        for entry in config.input_dirs
+                        if entry.enabled
+                    }
+                ),
             )
         
         keyboard = KeyboardListener(bus, state=ui_state)

@@ -44,7 +44,7 @@ def sort_files(
             matched = False
             for input_dir in input_dirs:
                 try:
-                    rel_path = vf.path.relative_to(input_dir)
+                    rel_path = vf.origin_path.relative_to(input_dir)
                 except ValueError:
                     continue
                 files_by_dir[input_dir].append((str(rel_path), vf))

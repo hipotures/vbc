@@ -1,7 +1,7 @@
 import yaml
 from pathlib import Path
 from typing import Any, Dict, List
-from .models import AppConfig, DemoConfig
+from .models import AppConfig, DemoConfig, MetadataConfig
 
 
 def _validate_input_dirs_schema(data: Dict[str, Any]) -> None:
@@ -9,7 +9,7 @@ def _validate_input_dirs_schema(data: Dict[str, Any]) -> None:
     if "disabled_input_dirs" in data:
         raise ValueError(
             "Legacy key 'disabled_input_dirs' is no longer supported. "
-            "Use input_dirs entries with {path, enabled} only."
+            "Use input_dirs entries with {path, enabled, metadata?, idle_interval?}."
         )
 
     raw_input_dirs = data.get("input_dirs")
@@ -23,7 +23,10 @@ def _validate_input_dirs_schema(data: Dict[str, Any]) -> None:
             "Use: input_dirs: [{path: /videos, enabled: true}]"
         )
     if any(not isinstance(entry, dict) for entry in raw_input_dirs):
-        raise ValueError("input_dirs entries must be objects with keys: path, enabled.")
+        raise ValueError(
+            "input_dirs entries must be objects with keys: "
+            "path, enabled, metadata?, idle_interval?."
+        )
 
 
 def load_config(config_path: Path) -> AppConfig:
@@ -43,6 +46,15 @@ def load_config(config_path: Path) -> AppConfig:
     # Existing vbc.yaml structure has 'general' and 'autorotate' at root
     return AppConfig(**data)
 
+
+def load_metadata_config(config_path: Path) -> MetadataConfig:
+    """Reload only the hot-swappable metadata policy section."""
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    with open(config_path, 'r') as f:
+        data = yaml.safe_load(f) or {}
+    return MetadataConfig.model_validate(data.get("metadata") or {})
+
 def save_dirs_config(config_path: Path, input_dirs: List[Dict[str, Any]]) -> None:
     """Update input_dirs field in the YAML config file.
 
@@ -59,7 +71,18 @@ def save_dirs_config(config_path: Path, input_dirs: List[Dict[str, Any]]) -> Non
     with open(config_path, 'r') as f:
         data = yaml.safe_load(f) or {}
 
-    data['input_dirs'] = input_dirs
+    existing_by_path = {
+        str(entry.get("path")): entry
+        for entry in data.get("input_dirs", [])
+        if isinstance(entry, dict) and entry.get("path") is not None
+    }
+    preserved_entries = []
+    for entry in input_dirs:
+        path = str(entry.get("path"))
+        preserved = dict(existing_by_path.get(path, {}))
+        preserved.update(entry)
+        preserved_entries.append(preserved)
+    data['input_dirs'] = preserved_entries
     if 'disabled_input_dirs' in data:
         del data['disabled_input_dirs']
 

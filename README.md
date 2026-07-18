@@ -53,6 +53,7 @@ Modern video libraries grow fast. Raw 4K footage from cameras and drones consume
 ### Compression & Quality
 - ✅ **AV1 Encoding**: GPU (NVENC) for speed or CPU (SVT-AV1) for maximum quality
 - ✅ **Dynamic Quality**: Camera-specific quality presets (e.g., Sony A7RV at CQ38, DJI at CQ45)
+- ✅ **Manifest Queue**: Dynamically ingest JSON requests and concatenate multipart recordings in one FFmpeg pass
 - ✅ **Smart Filtering**: Skip AV1-already-encoded files, filter by camera model, size thresholds
 - ✅ **Min Ratio Check**: Keep original if compression savings below threshold (default 10%)
 - ✅ **Color Space Fixes**: Automatic recovery for FFmpeg 7.x "reserved" color space bugs
@@ -389,6 +390,10 @@ Create configuration file for persistent settings:
 input_dirs:
   - path: /path/to/videos
     enabled: true
+  - path: /path/to/metadata
+    enabled: false
+    metadata: true
+    idle_interval: 60
   - path: /another/path
     enabled: true
   - path: /disabled/path
@@ -412,6 +417,10 @@ errors_dirs: []
 # After processing, failed source files and their .err markers are moved here.
 # Default: "_err"
 suffix_errors_dirs: "_err"
+
+# Manifest policy. This is separate from general.copy_metadata.
+metadata:
+  audio_only: ignore
 
 # --- General Settings ---
 

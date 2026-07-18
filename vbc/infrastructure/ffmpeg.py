@@ -304,6 +304,15 @@ class FFmpegAdapter:
         Returns:
             Complete FFmpeg command as list of strings.
         """
+        if job.source_file.metadata_request is not None:
+            return self._build_multipart_command(
+                job,
+                config,
+                encoder_args,
+                use_gpu,
+                rotate=rotate,
+            )
+
         cmd = [
             "ffmpeg",
             "-y", # Overwrite output files
@@ -343,6 +352,92 @@ class FFmpegAdapter:
         if "-f" not in encoder_tokens:
             cmd.extend(["-f", "mp4"])
         cmd.append(str(tmp_path))
+        return cmd
+
+    def _build_multipart_command(
+        self,
+        job: CompressionJob,
+        config: AppConfig,
+        encoder_args: List[str],
+        use_gpu: bool,
+        rotate: Optional[int] = None,
+    ) -> List[str]:
+        """Build a one-pass normalize/concat/transcode command for manifest parts."""
+        request = job.source_file.metadata_request
+        if request is None:
+            raise ValueError("Multipart command requires metadata request context")
+
+        cmd = ["ffmpeg", "-y"]
+        cmd.extend(["-fflags", "+genpts+igndts", "-avoid_negative_ts", "make_zero"])
+        for part in request.parts:
+            cmd.extend(["-i", str(part.path)])
+
+        video_filters: List[str] = []
+        audio_filters: List[str] = []
+        concat_inputs: List[str] = []
+        for index, part in enumerate(request.parts):
+            video_chain = ["setpts=PTS-STARTPTS"]
+            if rotate == 180:
+                video_chain.extend(["transpose=2", "transpose=2"])
+            elif rotate == 90:
+                video_chain.append("transpose=1")
+            elif rotate == 270:
+                video_chain.append("transpose=2")
+            video_chain.extend(
+                [
+                    (
+                        f"scale={request.target_width}:{request.target_height}:"
+                        "force_original_aspect_ratio=decrease"
+                    ),
+                    (
+                        f"pad={request.target_width}:{request.target_height}:"
+                        "(ow-iw)/2:(oh-ih)/2"
+                    ),
+                    "setsar=1",
+                    "format=yuv420p",
+                ]
+            )
+            video_filters.append(f"[{index}:v:0]{','.join(video_chain)}[v{index}]")
+
+            if part.audio_packets > 0:
+                audio_tail = ""
+                if part.duration > 0:
+                    audio_tail = f",apad,atrim=duration={part.duration:.6f}"
+                audio_filters.append(
+                    f"[{index}:a:0]asetpts=PTS-STARTPTS,"
+                    "aresample=48000:async=1:first_pts=0,"
+                    "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+                    f"{audio_tail}"
+                    f"[a{index}]"
+                )
+            else:
+                silence_duration = max(0.001, part.duration)
+                audio_filters.append(
+                    "anullsrc=r=48000:cl=stereo,"
+                    f"atrim=duration={silence_duration:.6f},"
+                    f"asetpts=PTS-STARTPTS[a{index}]"
+                )
+            concat_inputs.extend([f"[v{index}]", f"[a{index}]"])
+
+        concat_filter = (
+            "".join(concat_inputs)
+            + f"concat=n={len(request.parts)}:v=1:a=1[vout][aout]"
+        )
+        filter_complex = ";".join(video_filters + audio_filters + [concat_filter])
+        cmd.extend(["-filter_complex", filter_complex, "-map", "[vout]", "-map", "[aout]"])
+        cmd.extend(_split_args(encoder_args))
+        cmd.extend(["-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2"])
+        if config.general.copy_metadata:
+            cmd.extend(["-map_metadata", "0"])
+            output_fmt = extract_output_format(encoder_args) or "mp4"
+            if output_fmt in ("mp4", "mov"):
+                cmd.extend(["-movflags", "use_metadata_tags"])
+        else:
+            cmd.extend(["-map_metadata", "-1"])
+        cmd.extend(["-fps_mode", "vfr"])
+        if not has_format_arg(encoder_args):
+            cmd.extend(["-f", "mp4"])
+        cmd.append(str(job.output_path.with_suffix(".tmp")))
         return cmd
 
     def compress(
@@ -565,7 +660,7 @@ class FFmpegAdapter:
             if config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
                 self.logger.info(f"FFMPEG_END: {filename} status=hw_cap_limit elapsed={elapsed:.2f}s")
-        elif color_error:
+        elif color_error and job.source_file.metadata_request is None:
             # Re-run with color fix remux (recursive call sets final status)
             if config.general.debug:
                 self.logger.info(f"FFMPEG_COLORFIX: {filename} (applying color space fix)")
@@ -582,7 +677,7 @@ class FFmpegAdapter:
             if config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
                 self.logger.info(f"FFMPEG_END: {filename} status={job.status.value} elapsed={elapsed:.2f}s (with colorfix)")
-        elif process.returncode != 0:
+        elif process.returncode != 0 or color_error:
             job.status = JobStatus.FAILED
             job.error_message = f"ffmpeg exited with code {process.returncode}"
             # Cleanup tmp file on error

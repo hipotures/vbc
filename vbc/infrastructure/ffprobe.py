@@ -166,3 +166,117 @@ class FFprobeAdapter:
             "pix_fmt": video_stream.get("pix_fmt"),
             "vbc_encoded": vbc_encoded,
         }
+
+    @staticmethod
+    def _packet_count(stream: Dict[str, Any] | None) -> int:
+        if not stream:
+            return 0
+        try:
+            return max(0, int(stream.get("nb_read_packets") or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _parse_fps(stream: Dict[str, Any] | None) -> float:
+        if not stream:
+            return 0.0
+        value = str(stream.get("avg_frame_rate") or stream.get("r_frame_rate") or "0/0")
+        try:
+            if "/" in value:
+                numerator, denominator = value.split("/", 1)
+                denominator_value = float(denominator)
+                fps = float(numerator) / denominator_value if denominator_value else 0.0
+            else:
+                fps = float(value)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return 0.0
+        return round(fps) if 0 < fps <= 240 else 0.0
+
+    def get_part_info(self, file_path: Path) -> Dict[str, Any]:
+        """Probe one manifest input, including stream packet counts."""
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-print_format", "json",
+            "-count_packets",
+            "-show_streams",
+            "-show_format",
+            str(file_path),
+        ]
+        timeout_s = self._estimate_timeout(file_path)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"ffprobe timed out after {timeout_s}s for {file_path}") from exc
+        if result.returncode != 0:
+            detail = (result.stderr or "").strip() or "unknown error (no stderr)"
+            raise RuntimeError(f"ffprobe failed for {file_path}: {detail}")
+
+        data = json.loads(result.stdout)
+        streams = data.get("streams", [])
+        video_stream = next((s for s in streams if s.get("codec_type") == "video"), None)
+        audio_stream = next((s for s in streams if s.get("codec_type") == "audio"), None)
+        fmt = data.get("format", {}) or {}
+
+        duration = self._to_float(fmt.get("duration"))
+        start_time = self._to_float(fmt.get("start_time"))
+        if start_time > 0 and duration > start_time:
+            duration -= start_time
+        if duration <= 0 and video_stream:
+            duration = self._to_float(video_stream.get("duration"))
+        if duration <= 0 and video_stream:
+            duration = self._parse_time_base_duration(
+                video_stream.get("duration_ts"),
+                video_stream.get("time_base"),
+            )
+
+        bitrate_bps = self._to_float(
+            fmt.get("bit_rate") or (video_stream or {}).get("bit_rate")
+        )
+        return {
+            "has_video_stream": video_stream is not None,
+            "has_audio_stream": audio_stream is not None,
+            "width": int((video_stream or {}).get("width") or 0),
+            "height": int((video_stream or {}).get("height") or 0),
+            "codec": (video_stream or {}).get("codec_name") or "unknown",
+            "audio_codec": (audio_stream or {}).get("codec_name") if audio_stream else None,
+            "fps": self._parse_fps(video_stream),
+            "duration": max(0.0, duration),
+            "bitrate_kbps": (bitrate_bps / 1000.0) if bitrate_bps > 0 else None,
+            "color_space": (video_stream or {}).get("color_space"),
+            "pix_fmt": (video_stream or {}).get("pix_fmt"),
+            "video_packets": self._packet_count(video_stream),
+            "audio_packets": self._packet_count(audio_stream),
+        }
+
+    def get_video_packet_duration(self, file_path: Path) -> float:
+        """Return normalized video timeline length for silence synthesis."""
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "packet=pts_time,dts_time,duration_time",
+            "-of", "json",
+            str(file_path),
+        ]
+        timeout_s = self._estimate_timeout(file_path)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"ffprobe timed out after {timeout_s}s for {file_path}") from exc
+        if result.returncode != 0:
+            detail = (result.stderr or "").strip() or "unknown error (no stderr)"
+            raise RuntimeError(f"ffprobe packet scan failed for {file_path}: {detail}")
+
+        packets = json.loads(result.stdout).get("packets", [])
+        starts: list[float] = []
+        ends: list[float] = []
+        for packet in packets:
+            start = self._to_float(packet.get("pts_time") or packet.get("dts_time"))
+            packet_duration = max(0.0, self._to_float(packet.get("duration_time")))
+            starts.append(start)
+            ends.append(start + packet_duration)
+        if not starts:
+            return 0.0
+        duration = max(ends) - min(starts)
+        return max(0.0, duration)

@@ -4,10 +4,11 @@ Defines the core entities (VideoFile, CompressionJob) and enumerations that
 represent the problem domain, independent of infrastructure and UI.
 """
 
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional
-from pydantic import BaseModel
+from typing import List, Literal, Optional
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class JobStatus(str, Enum):
@@ -78,6 +79,112 @@ class VideoMetadata(BaseModel):
     duration: Optional[float] = None
     vbc_encoded: bool = False
 
+
+class ManifestProducer(BaseModel):
+    """Producer diagnostics carried by a ttracker manifest."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    app: Literal["ttracker"]
+    username: str = Field(min_length=1)
+    recording_id: str = Field(min_length=1)
+    source_size_bytes: int = Field(gt=0)
+    source_latest_mtime_ns: int = Field(ge=0)
+
+
+class ManifestErrorPolicy(BaseModel):
+    """Error policy supported by manifest schema version 1."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    missing_input: Literal["fail"]
+
+
+class CompressionManifest(BaseModel):
+    """Strict schema for a manifest-driven concat/transcode request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1]
+    request_id: str = Field(min_length=1)
+    created_at: datetime
+    producer: ManifestProducer
+    operation: Literal["concat_transcode"]
+    inputs: List[str] = Field(min_length=1)
+    output_path: str = Field(min_length=1)
+    source_policy: Literal["keep", "delete_after_success"]
+    compression_profile: Literal["tiktok"]
+    error_policy: ManifestErrorPolicy
+
+    @field_validator("inputs")
+    @classmethod
+    def validate_unique_inputs(cls, inputs: List[str]) -> List[str]:
+        if len(inputs) != len(set(inputs)):
+            raise ValueError("manifest inputs must be unique")
+        if any(not value.strip() for value in inputs):
+            raise ValueError("manifest inputs cannot contain empty paths")
+        return inputs
+
+    @model_validator(mode="after")
+    def validate_paths(self):
+        input_paths = [Path(value) for value in self.inputs]
+        output_path = Path(self.output_path)
+        if any(not path.is_absolute() for path in input_paths):
+            raise ValueError("manifest inputs must use absolute paths")
+        if not output_path.is_absolute():
+            raise ValueError("manifest output_path must be absolute")
+        if output_path in input_paths:
+            raise ValueError("manifest output_path cannot also be an input")
+        return self
+
+
+class MultipartPart(BaseModel):
+    """Probed stream facts for one physical manifest input."""
+
+    path: Path
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    codec: str
+    audio_codec: Optional[str] = None
+    fps: float = Field(ge=0)
+    duration: float = Field(ge=0)
+    bitrate_kbps: Optional[float] = None
+    color_space: Optional[str] = None
+    pix_fmt: Optional[str] = None
+    video_packets: int = Field(ge=1)
+    audio_packets: int = Field(ge=0)
+
+    @property
+    def orientation(self) -> str:
+        if self.width == self.height:
+            return "square"
+        return "portrait" if self.height > self.width else "landscape"
+
+
+class MetadataRequest(BaseModel):
+    """Runtime context for one logical video represented by a JSON manifest."""
+
+    manifest_path: Path
+    metadata_dir: Path
+    success_dir: Path
+    error_dir: Path
+    manifest: CompressionManifest
+    parts: List[MultipartPart]
+    ignored_inputs: List[Path] = Field(default_factory=list)
+    source_policy: Literal["keep", "delete_after_success"]
+    compression_profile: str
+    audio_only: Literal["fail", "ignore"]
+    target_width: int = Field(gt=0)
+    target_height: int = Field(gt=0)
+
+    @property
+    def all_input_paths(self) -> List[Path]:
+        return [Path(value) for value in self.manifest.inputs]
+
+    @property
+    def effective_input_paths(self) -> List[Path]:
+        return [part.path for part in self.parts]
+
 class VideoFile(BaseModel):
     """A discovered video file to process.
 
@@ -90,6 +197,23 @@ class VideoFile(BaseModel):
     path: Path
     size_bytes: int
     metadata: Optional[VideoMetadata] = None
+    metadata_request: Optional[MetadataRequest] = None
+
+    @property
+    def identity_path(self) -> Path:
+        if self.metadata_request is not None:
+            return self.metadata_request.manifest_path
+        return self.path
+
+    @property
+    def origin_path(self) -> Path:
+        return self.identity_path
+
+    @property
+    def part_count(self) -> int:
+        if self.metadata_request is not None:
+            return len(self.metadata_request.parts)
+        return 1
 
 class CompressionJob(BaseModel):
     """A video compression task being processed or completed.

@@ -14,7 +14,7 @@ Configuration precedence: CLI args > YAML > defaults
 """
 
 from typing import List, Dict, Optional, Union, Literal
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from vbc.config.rate_control import validate_rate_control_inputs, parse_rate_cap_bps
 
 QUEUE_SORT_CHOICES = ("name", "rand", "dir", "size", "size-asc", "size-desc", "ext")
@@ -403,11 +403,42 @@ class WebServerConfig(BaseModel):
     host: str = "0.0.0.0"
 
 
+class MetadataErrorPolicyConfig(BaseModel):
+    """Optional global overrides for manifest error handling."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    missing_input: Literal["fail"] = "fail"
+
+
+class MetadataConfig(BaseModel):
+    """Policy overrides for manifest-driven compression jobs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    audio_only: Literal["fail", "ignore"] = "fail"
+    source_policy: Optional[Literal["keep", "delete_after_success"]] = None
+    compression_profile: Optional[str] = None
+    error_policy: Optional[MetadataErrorPolicyConfig] = None
+
+    @field_validator("compression_profile")
+    @classmethod
+    def normalize_compression_profile(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = str(v).strip()
+        if not cleaned:
+            raise ValueError("metadata.compression_profile cannot be empty.")
+        return cleaned
+
+
 class InputDirEntry(BaseModel):
     """Configured input directory entry with enabled/disabled state."""
 
     path: str
     enabled: bool = True
+    metadata: bool = False
+    idle_interval: Optional[int] = Field(default=None, gt=0)
 
     @field_validator("path", mode="before")
     @classmethod
@@ -458,6 +489,7 @@ class AppConfig(BaseModel):
     cpu_encoder: CpuEncoderConfig = Field(default_factory=CpuEncoderConfig)
     ui: UiConfig = Field(default_factory=UiConfig)
     web_server: WebServerConfig = Field(default_factory=WebServerConfig)
+    metadata: MetadataConfig = Field(default_factory=MetadataConfig)
 
     @field_validator("suffix_output_dirs")
     @classmethod

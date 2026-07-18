@@ -1,7 +1,7 @@
 import pytest
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from vbc.infrastructure.ffprobe import FFprobeAdapter
 
 def test_ffprobe_parse_streams():
@@ -160,3 +160,54 @@ def test_ffprobe_audio_codec_detected():
         info = adapter.get_stream_info(Path("test.mp4"))
 
     assert info["audio_codec"] == "aac"
+
+
+def test_ffprobe_part_info_counts_packets_and_normalizes_flv_timeline():
+    mock_output = {
+        "streams": [
+            {
+                "codec_name": "h264",
+                "codec_type": "video",
+                "width": 640,
+                "height": 1280,
+                "avg_frame_rate": "25/1",
+                "nb_read_packets": "100",
+            },
+            {
+                "codec_name": "aac",
+                "codec_type": "audio",
+                "nb_read_packets": "90",
+            },
+        ],
+        "format": {
+            "start_time": "60.0",
+            "duration": "70.0",
+            "bit_rate": "1000000",
+        },
+    }
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value.stdout = json.dumps(mock_output)
+        mock_run.return_value.returncode = 0
+
+        info = FFprobeAdapter().get_part_info(Path("part.mp4"))
+
+    assert info["video_packets"] == 100
+    assert info["audio_packets"] == 90
+    assert info["duration"] == pytest.approx(10.0)
+    assert "-count_packets" in mock_run.call_args.args[0]
+
+
+def test_ffprobe_packet_duration_uses_normalized_first_and_last_pts():
+    mock_output = {
+        "packets": [
+            {"pts_time": "148.859", "duration_time": "0.040"},
+            {"pts_time": "148.899", "duration_time": "0.040"},
+        ]
+    }
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value.stdout = json.dumps(mock_output)
+        mock_run.return_value.returncode = 0
+
+        duration = FFprobeAdapter().get_video_packet_duration(Path("part.mp4"))
+
+    assert duration == pytest.approx(0.08)

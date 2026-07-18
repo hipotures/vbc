@@ -322,7 +322,7 @@ class UIManager:
                 if status != STATUS_OK:
                     continue
                 try:
-                    vf.path.relative_to(dir_path)
+                    vf.origin_path.relative_to(dir_path)
                 except ValueError:
                     continue
                 counts[entry][0] += 1

@@ -358,7 +358,7 @@ Dashboard display settings.
 ### Input/Output
 
 #### `input_dirs`
-- **Type**: List of objects (`{path: string, enabled: bool}`)
+- **Type**: List of objects (`{path: string, enabled: bool, metadata?: bool, idle_interval?: int}`)
 - **Default**: `[]` (empty)
 - **Description**: Ordered input directory entries used when no CLI input is provided
 - **Behavior**:
@@ -369,6 +369,49 @@ Dashboard display settings.
   - Missing or inaccessible directories are skipped
   - Startup fails if no valid directories remain
   - Limits: max 50 enabled directories, max 150 characters per path
+  - `metadata: true` scans strict `*.json` compression manifests instead of video extensions
+  - `idle_interval` enables an automatic re-scan after that many idle seconds when `wait_on_finish: true`; omitted means manual refresh only
+
+#### Manifest-driven multipart input
+
+```yaml
+input_dirs:
+  - path: /mnt/1/TT/metadata
+    enabled: true
+    metadata: true
+    idle_interval: 60
+
+suffix_output_dirs: _out
+suffix_errors_dirs: _err
+
+metadata:
+  audio_only: ignore
+  # Optional hot-reloaded overrides:
+  # source_policy: delete_after_success
+  # compression_profile: tiktok
+  # error_policy:
+  #   missing_input: fail
+```
+
+Each final `*.json` file represents one logical queue item. VBC probes every path in
+`inputs`, preserves the listed order, normalizes compatible resolutions, and joins and
+transcodes all usable parts in one FFmpeg process. The exact `output_path` from the
+manifest is used for the video; the directory suffixes route the JSON itself:
+
+- success: `/metadata_out/request.json`
+- any manifest, probe, compression, verification, or cleanup error:
+  `/metadata_err/request.json` and `/metadata_err/request.err`
+
+`metadata.audio_only` is `fail` by default. `ignore` removes audio-only parts from the
+effective concat list while retaining them for `source_policy` handling. Optional policy
+overrides are reloaded before each manifest job; an invalid edit keeps the last valid
+metadata policy. `copy_metadata` remains a video-to-video setting and, for multipart
+jobs, uses the first effective video part.
+
+Manifest schema version 1 requires `operation: concat_transcode`, absolute unique input
+paths, `compression_profile: tiktok`, `error_policy.missing_input: fail`, and
+`source_policy: keep` or `delete_after_success`. The latter deletes every original input
+only after atomic output finalization and successful ffprobe/VBC-tag verification.
 
 #### `output_dirs`
 - **Type**: List of strings
@@ -417,6 +460,7 @@ Dashboard display settings.
 - **Default**: 1048576 (1 MiB)
 - **Description**: Minimum input file size to process
 - **Use case**: Skip corrupted/incomplete files
+- **Manifest behavior**: Compared with the sum of effective video-part sizes after audio-only filtering
 
 ### Metadata
 
@@ -425,6 +469,7 @@ Dashboard display settings.
 - **Default**: true
 - **Description**: Copy EXIF/XMP/GPS tags from source to output
 - **Method**: Uses ExifTool to preserve all metadata including GPS
+- **Manifest jobs**: Copies from the first effective video part; JSON metadata is never copied to the video
 
 #### `use_exif`
 - **Type**: Boolean
@@ -571,6 +616,7 @@ Dashboard display settings.
 - **Description**: After all tasks complete, wait for user input instead of auto-exiting
 - **Behavior**:
   - `true`: Displays WAITING status; press **R** to restart scan or **S**/**Ctrl+C** to exit
+  - With per-directory `idle_interval`, VBC automatically re-scans due directories while WAITING
   - `false`: VBC exits automatically when processing finishes
 
 #### `bell_on_finish`
