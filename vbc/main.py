@@ -592,7 +592,8 @@ def compress(
                 f"Dynamic Quality: {dynamic_quality_info}",
                 f"Camera Filter: {camera_filter_info}",
                 f"Video metadata: {metadata_method} (Analysis: {config.general.use_exif})",
-                f"Manifest audio-only: {config.metadata.audio_only}",
+                f"Manifest audio-only: {config.metadata.audio_only} | "
+                f"Max dropped frames: {config.metadata.max_dropped_frames}",
                 f"Autorotate: {len(config.autorotate.patterns)} rules loaded",
                 f"Manual Rotation: {manual_rotation}",
                 f"Extensions: {ext_list} → {output_suffix}",

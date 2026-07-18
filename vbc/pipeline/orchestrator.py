@@ -1234,6 +1234,7 @@ class Orchestrator:
         self,
         output_path: Path,
         expected_video_packets: Optional[int] = None,
+        max_dropped_frames: int = 0,
     ) -> Tuple[bool, Optional[str]]:
         """Verify output by probing readability and checking required VBC EXIF tags."""
         if not output_path.exists():
@@ -1250,10 +1251,21 @@ class Orchestrator:
                 actual_video_packets = int(output_info.get("video_packets") or 0)
             except Exception as exc:
                 return False, f"ffprobe frame-count check failed: {exc}"
-            if actual_video_packets != expected_video_packets:
+            dropped_frames = expected_video_packets - actual_video_packets
+            if dropped_frames < 0 or dropped_frames > max_dropped_frames:
                 return False, (
                     "video frame count mismatch: "
                     f"expected {expected_video_packets}, got {actual_video_packets}"
+                )
+            if dropped_frames:
+                self.logger.warning(
+                    "OUTPUT_FRAME_LOSS_ACCEPTED: %s expected=%s actual=%s "
+                    "dropped=%s limit=%s",
+                    output_path,
+                    expected_video_packets,
+                    actual_video_packets,
+                    dropped_frames,
+                    max_dropped_frames,
                 )
 
         try:
@@ -2097,6 +2109,7 @@ class Orchestrator:
             verify_ok, verify_error = self._verify_output_file(
                 job.output_path,
                 expected_video_packets=expected_video_packets,
+                max_dropped_frames=metadata_config.max_dropped_frames,
             )
             if not verify_ok:
                 message = f"Verification failed: {verify_error or 'unknown verification error'}"

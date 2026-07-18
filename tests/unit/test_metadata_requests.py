@@ -331,13 +331,236 @@ def test_multipart_ffmpeg_command_normalizes_video_and_synthesizes_silence(tmp_p
     filter_graph = command[command.index("-filter_complex") + 1]
 
     assert command.count("-i") == 2
-    assert command[2:4] == ["-reinit_filter", "0"]
+    assert command[2:6] == [
+        "-filter_buffered_frames",
+        "2048",
+        "-reinit_filter",
+        "0",
+    ]
     assert "scale=640:1280:force_original_aspect_ratio=decrease" in filter_graph
     assert "pad=640:1280" in filter_graph
     assert "apad,atrim=duration=10.000000" in filter_graph
     assert "anullsrc=r=48000:cl=stereo" in filter_graph
     assert "concat=n=2:v=1:a=1" in filter_graph
     assert command[-1].endswith("recording.tmp")
+
+
+def test_multipart_compress_dispatches_to_sequential_staging(tmp_path):
+    parts = [
+        MultipartPart(
+            path=tmp_path / f"part{index:03d}.mp4",
+            width=640,
+            height=1280,
+            codec="h264",
+            audio_codec="aac",
+            fps=25,
+            duration=10,
+            video_packets=250,
+            audio_packets=100,
+        )
+        for index in (1, 2)
+    ]
+    payload = CompressionManifest.model_validate(
+        _manifest([part.path for part in parts], tmp_path / "recording.mp4")
+    )
+    request = MetadataRequest(
+        manifest_path=tmp_path / "request.json",
+        metadata_dir=tmp_path,
+        success_dir=tmp_path / "out",
+        error_dir=tmp_path / "err",
+        manifest=payload,
+        parts=parts,
+        source_policy="keep",
+        compression_profile="tiktok",
+        audio_only="ignore",
+        target_width=640,
+        target_height=1280,
+    )
+    video = VideoFile(
+        path=Path(payload.output_path),
+        size_bytes=300,
+        metadata=VideoMetadata(
+            width=640,
+            height=1280,
+            codec="h264",
+            fps=25,
+            duration=20,
+        ),
+        metadata_request=request,
+    )
+    job = CompressionJob(source_file=video, output_path=video.path)
+    config = AppConfig(general=GeneralConfig(threads=1, gpu=False))
+    adapter = FFmpegAdapter(event_bus=MagicMock())
+    adapter._compress_multipart_staged = MagicMock()
+
+    adapter.compress(job, config, use_gpu=False)
+
+    adapter._compress_multipart_staged.assert_called_once_with(
+        job,
+        config,
+        False,
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+def test_staged_multipart_cleans_segments_and_finalizes_output(tmp_path):
+    parts = [
+        MultipartPart(
+            path=tmp_path / f"part{index:03d}.mp4",
+            width=640,
+            height=1280,
+            codec="h264",
+            audio_codec="aac",
+            fps=25,
+            duration=10,
+            video_packets=250,
+            audio_packets=100,
+        )
+        for index in (1, 2)
+    ]
+    payload = CompressionManifest.model_validate(
+        _manifest([part.path for part in parts], tmp_path / "recording.mp4")
+    )
+    request = MetadataRequest(
+        manifest_path=tmp_path / "request.json",
+        metadata_dir=tmp_path,
+        success_dir=tmp_path / "out",
+        error_dir=tmp_path / "err",
+        manifest=payload,
+        parts=parts,
+        source_policy="keep",
+        compression_profile="tiktok",
+        audio_only="ignore",
+        target_width=640,
+        target_height=1280,
+    )
+    video = VideoFile(
+        path=Path(payload.output_path),
+        size_bytes=300,
+        metadata=VideoMetadata(
+            width=640,
+            height=1280,
+            codec="h264",
+            fps=25,
+            duration=20,
+        ),
+        metadata_request=request,
+    )
+    job = CompressionJob(source_file=video, output_path=video.path)
+    config = AppConfig(general=GeneralConfig(threads=1, gpu=False))
+    adapter = FFmpegAdapter(event_bus=MagicMock())
+    encoded_parts = []
+
+    def fake_compress(part_job, *_args, **_kwargs):
+        encoded_parts.append(part_job.source_file.metadata_request.parts[0].path)
+        part_job.output_path.write_bytes(b"segment")
+        part_job.status = JobStatus.COMPLETED
+
+    def fake_concat(cmd, concat_text, _shutdown_event):
+        assert "part001.mp4" in concat_text
+        assert "part002.mp4" in concat_text
+        Path(cmd[-1]).write_bytes(b"joined")
+        return 0, False, ""
+
+    adapter.compress = MagicMock(side_effect=fake_compress)
+    adapter._run_concat_copy = MagicMock(side_effect=fake_concat)
+
+    adapter._compress_multipart_staged(
+        job,
+        config,
+        use_gpu=False,
+        quality=None,
+        rate_control=None,
+        rotate=None,
+        shutdown_event=None,
+    )
+
+    assert encoded_parts == [part.path for part in parts]
+    assert job.status == JobStatus.COMPLETED
+    assert job.output_path.read_bytes() == b"joined"
+    assert not list(tmp_path.glob("*.vbc-part*.mp4"))
+
+
+def test_staged_multipart_interrupt_keeps_manifest_job_retryable(tmp_path):
+    parts = [
+        MultipartPart(
+            path=tmp_path / f"part{index:03d}.mp4",
+            width=640,
+            height=1280,
+            codec="h264",
+            audio_codec="aac",
+            fps=25,
+            duration=10,
+            video_packets=250,
+            audio_packets=100,
+        )
+        for index in (1, 2)
+    ]
+    payload = CompressionManifest.model_validate(
+        _manifest([part.path for part in parts], tmp_path / "recording.mp4")
+    )
+    request = MetadataRequest(
+        manifest_path=tmp_path / "request.json",
+        metadata_dir=tmp_path,
+        success_dir=tmp_path / "out",
+        error_dir=tmp_path / "err",
+        manifest=payload,
+        parts=parts,
+        source_policy="keep",
+        compression_profile="tiktok",
+        audio_only="ignore",
+        target_width=640,
+        target_height=1280,
+    )
+    video = VideoFile(
+        path=Path(payload.output_path),
+        size_bytes=300,
+        metadata=VideoMetadata(
+            width=640,
+            height=1280,
+            codec="h264",
+            fps=25,
+            duration=20,
+        ),
+        metadata_request=request,
+    )
+    job = CompressionJob(source_file=video, output_path=video.path)
+    config = AppConfig(general=GeneralConfig(threads=1, gpu=False))
+    adapter = FFmpegAdapter(event_bus=MagicMock())
+    calls = 0
+
+    def fake_compress(part_job, *_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            part_job.output_path.write_bytes(b"segment")
+            part_job.status = JobStatus.COMPLETED
+        else:
+            part_job.output_path.with_suffix(".tmp").write_bytes(b"partial")
+            part_job.status = JobStatus.INTERRUPTED
+            part_job.error_message = "Interrupted by user (Ctrl+C)"
+
+    adapter.compress = MagicMock(side_effect=fake_compress)
+    adapter._run_concat_copy = MagicMock()
+
+    adapter._compress_multipart_staged(
+        job,
+        config,
+        use_gpu=False,
+        quality=None,
+        rate_control=None,
+        rotate=None,
+        shutdown_event=None,
+    )
+
+    assert job.status == JobStatus.INTERRUPTED
+    assert job.error_message == "Interrupted by user (Ctrl+C)"
+    assert not job.output_path.exists()
+    assert not list(tmp_path.glob("*.vbc-part*"))
+    adapter._run_concat_copy.assert_not_called()
 
 
 def test_metadata_verification_rejects_dropped_video_frames(tmp_path):
@@ -363,6 +586,51 @@ def test_metadata_verification_rejects_dropped_video_frames(tmp_path):
 
     assert not verified
     assert error == "video frame count mismatch: expected 10, got 5"
+
+
+def test_metadata_verification_accepts_configured_frame_loss(tmp_path, caplog):
+    ffprobe = MagicMock()
+    orchestrator, _, _, _ = _orchestrator(tmp_path, ffprobe)
+    output = tmp_path / "recording.mp4"
+    output.write_bytes(b"encoded")
+    ffprobe.get_stream_info.return_value = {}
+    ffprobe.get_part_info.return_value = {"video_packets": 9}
+    orchestrator.exif_adapter.extract_tags.return_value = {
+        "XMP:VBCOriginalName": "part001.mp4",
+        "XMP:VBCOriginalSize": "100",
+        "XMP:VBCQuality": "CQ45",
+        "XMP:VBCOriginalBitrate": "1 Mbps",
+        "XMP:VBCEncoder": "NVENC AV1 (GPU)",
+        "XMP:VBCFinishedAt": "2026-07-18T22:00:00+02:00",
+    }
+
+    verified, error = orchestrator._verify_output_file(
+        output,
+        expected_video_packets=10,
+        max_dropped_frames=1,
+    )
+
+    assert verified
+    assert error is None
+    assert "OUTPUT_FRAME_LOSS_ACCEPTED" in caplog.text
+
+
+def test_metadata_verification_never_accepts_extra_video_frames(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, _, _, _ = _orchestrator(tmp_path, ffprobe)
+    output = tmp_path / "recording.mp4"
+    output.write_bytes(b"encoded")
+    ffprobe.get_stream_info.return_value = {}
+    ffprobe.get_part_info.return_value = {"video_packets": 11}
+
+    verified, error = orchestrator._verify_output_file(
+        output,
+        expected_video_packets=10,
+        max_dropped_frames=1,
+    )
+
+    assert not verified
+    assert error == "video frame count mismatch: expected 10, got 11"
 
 
 def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_path):
@@ -434,6 +702,7 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
     orchestrator._verify_output_file.assert_called_once_with(
         output,
         expected_video_packets=25,
+        max_dropped_frames=0,
     )
     assert output.exists()
     assert not part.exists()

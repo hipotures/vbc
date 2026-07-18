@@ -344,9 +344,12 @@ An input directory marked `metadata: true` yields one logical `VideoFile` per st
 manifest. Its display path is the requested output, while its identity and directory
 ownership remain the manifest path. Discovery probes every physical part, filters
 configured audio-only inputs, and calculates aggregate size and target resolution.
-FFmpeg receives all effective inputs in one `filter_complex`; no merged intermediate
-video is created. The manifest moves to `_out` only after output verification and source
-policy completion, or to `_err` with a sibling `.err` for any non-interruption failure.
+FFmpeg transcodes effective parts sequentially into temporary encoded segments, then
+uses the concat demuxer to stream-copy them into the final MP4. This bounds filter-graph
+memory while avoiding a second video encode. Temporary segments are removed after
+success, failure, or interruption. The manifest moves to `_out` only after output
+verification and source policy completion, or to `_err` with a sibling `.err` for any
+non-interruption failure.
 
 ### Graceful Shutdown
 

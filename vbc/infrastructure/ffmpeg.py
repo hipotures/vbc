@@ -367,7 +367,14 @@ class FFmpegAdapter:
         if request is None:
             raise ValueError("Multipart command requires metadata request context")
 
-        cmd = ["ffmpeg", "-y", "-reinit_filter", "0"]
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-filter_buffered_frames",
+            "2048",
+            "-reinit_filter",
+            "0",
+        ]
         cmd.extend(["-fflags", "+genpts+igndts", "-avoid_negative_ts", "make_zero"])
         for part in request.parts:
             cmd.extend(["-i", str(part.path)])
@@ -440,6 +447,225 @@ class FFmpegAdapter:
         cmd.append(str(job.output_path.with_suffix(".tmp")))
         return cmd
 
+    @staticmethod
+    def _multipart_segment_path(output_path: Path, index: int) -> Path:
+        return output_path.with_name(
+            f".{output_path.name}.vbc-part{index:03d}.mp4"
+        )
+
+    @staticmethod
+    def _build_concat_copy_command(
+        segment_paths: List[Path],
+        tmp_path: Path,
+        copy_metadata: bool,
+    ) -> tuple[List[str], str]:
+        """Build a stream-copy concat command fed by an ffconcat script on stdin."""
+        lines = ["ffconcat version 1.0"]
+        for segment_path in segment_paths:
+            escaped = str(segment_path).replace("'", "'\\''")
+            lines.append(f"file 'file:{escaped}'")
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-fflags",
+            "+genpts",
+            "-avoid_negative_ts",
+            "make_zero",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-protocol_whitelist",
+            "file,pipe,fd",
+            "-i",
+            "pipe:0",
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0",
+            "-c",
+            "copy",
+        ]
+        if copy_metadata:
+            cmd.extend(["-map_metadata", "0", "-movflags", "use_metadata_tags"])
+        else:
+            cmd.extend(["-map_metadata", "-1"])
+        cmd.extend(["-f", "mp4", str(tmp_path)])
+        return cmd, "\n".join(lines) + "\n"
+
+    def _run_concat_copy(
+        self,
+        cmd: List[str],
+        concat_text: str,
+        shutdown_event: Optional[threading.Event],
+    ) -> tuple[int, bool, str]:
+        """Run the short final stream-copy pass while honoring Ctrl+C."""
+        process = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            bufsize=1,
+        )
+        if process.stdin is not None:
+            try:
+                process.stdin.write(concat_text)
+                process.stdin.flush()
+            except BrokenPipeError:
+                pass
+            finally:
+                process.stdin.close()
+
+        interrupted = False
+        while process.poll() is None:
+            if shutdown_event and shutdown_event.is_set():
+                interrupted = True
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                break
+            time.sleep(0.05)
+
+        output = process.stdout.read() if process.stdout is not None else ""
+        return process.returncode or 0, interrupted, output.strip()
+
+    def _compress_multipart_staged(
+        self,
+        job: CompressionJob,
+        config: AppConfig,
+        use_gpu: bool,
+        quality: Optional[int],
+        rate_control: Optional[ResolvedRateControl],
+        rotate: Optional[int],
+        shutdown_event: Optional[threading.Event],
+    ) -> None:
+        """Encode manifest parts sequentially, then stream-copy them into one MP4."""
+        request = job.source_file.metadata_request
+        if request is None or len(request.parts) < 2:
+            raise ValueError("Staged multipart compression requires at least two parts")
+
+        segment_paths = [
+            self._multipart_segment_path(job.output_path, index)
+            for index in range(1, len(request.parts) + 1)
+        ]
+        final_tmp_path = job.output_path.with_suffix(".tmp")
+        cleanup_paths = [final_tmp_path]
+        for segment_path in segment_paths:
+            cleanup_paths.extend([segment_path, segment_path.with_suffix(".tmp")])
+
+        for path in cleanup_paths:
+            if path.exists():
+                path.unlink()
+
+        total_duration = sum(part.duration for part in request.parts)
+        completed_duration = 0.0
+        try:
+            for index, (part, segment_path) in enumerate(
+                zip(request.parts, segment_paths, strict=True),
+                start=1,
+            ):
+                if shutdown_event and shutdown_event.is_set():
+                    job.status = JobStatus.INTERRUPTED
+                    job.error_message = "Interrupted by user (Ctrl+C)"
+                    return
+
+                part_request = request.model_copy(deep=True)
+                part_request.parts = [part]
+                part_request.ignored_inputs = []
+                part_source = job.source_file.model_copy(deep=True)
+                part_source.metadata_request = part_request
+                if part_source.metadata is not None:
+                    part_source.metadata.duration = part.duration
+
+                part_job = job.model_copy(deep=True)
+                part_job.source_file = part_source
+                part_job.output_path = segment_path
+                part_job.status = JobStatus.PENDING
+                part_job.error_message = None
+
+                self.logger.info(
+                    "FFMPEG_MULTIPART_SEGMENT: %s part=%s/%s input=%s",
+                    job.source_file.path.name,
+                    index,
+                    len(request.parts),
+                    part.path,
+                )
+                self.compress(
+                    part_job,
+                    config,
+                    use_gpu,
+                    quality=quality,
+                    rate_control=rate_control,
+                    rotate=rotate,
+                    shutdown_event=shutdown_event,
+                    progress_offset_seconds=completed_duration,
+                    progress_total_duration=total_duration,
+                )
+                if part_job.status != JobStatus.COMPLETED:
+                    job.status = part_job.status
+                    job.error_message = part_job.error_message
+                    return
+                completed_duration += part.duration
+
+            concat_cmd, concat_text = self._build_concat_copy_command(
+                segment_paths,
+                final_tmp_path,
+                config.general.copy_metadata,
+            )
+            if config.general.debug:
+                self.logger.debug("FFMPEG_CONCAT_CMD: %s", " ".join(concat_cmd))
+            returncode, interrupted, output = self._run_concat_copy(
+                concat_cmd,
+                concat_text,
+                shutdown_event,
+            )
+            if interrupted:
+                job.status = JobStatus.INTERRUPTED
+                job.error_message = "Interrupted by user (Ctrl+C)"
+                return
+            if returncode != 0:
+                job.status = JobStatus.FAILED
+                detail = f": {output}" if output else ""
+                job.error_message = f"ffmpeg concat exited with code {returncode}{detail}"
+                self.event_bus.publish(
+                    JobFailed(job=job, error_message=job.error_message)
+                )
+                return
+            if not final_tmp_path.exists():
+                job.status = JobStatus.FAILED
+                job.error_message = "ffmpeg concat succeeded but temporary output is missing"
+                self.event_bus.publish(
+                    JobFailed(job=job, error_message=job.error_message)
+                )
+                return
+
+            try:
+                final_tmp_path.rename(job.output_path)
+            except OSError as exc:
+                job.status = JobStatus.FAILED
+                job.error_message = f"ffmpeg concat failed to finalize output: {exc}"
+                self.event_bus.publish(
+                    JobFailed(job=job, error_message=job.error_message)
+                )
+                return
+
+            job.status = JobStatus.COMPLETED
+            self.event_bus.publish(
+                JobProgressUpdated(job=job, progress_percent=100.0)
+            )
+        finally:
+            for path in cleanup_paths:
+                if path.exists():
+                    path.unlink()
+
     def compress(
         self,
         job: CompressionJob,
@@ -450,6 +676,8 @@ class FFmpegAdapter:
         rotate: Optional[int] = None,
         shutdown_event: Optional[threading.Event] = None,
         input_path: Optional[Path] = None,
+        progress_offset_seconds: float = 0.0,
+        progress_total_duration: Optional[float] = None,
     ) -> None:
         """Execute AV1 compression via FFmpeg subprocess.
 
@@ -479,6 +707,27 @@ class FFmpegAdapter:
         """
         filename = job.source_file.path.name
         start_time = time.monotonic() if config.general.debug else None
+
+        request = job.source_file.metadata_request
+        if request is not None and len(request.parts) > 1:
+            self._compress_multipart_staged(
+                job,
+                config,
+                use_gpu,
+                quality,
+                rate_control,
+                rotate,
+                shutdown_event,
+            )
+            if config.general.debug and start_time:
+                elapsed = time.monotonic() - start_time
+                self.logger.info(
+                    "FFMPEG_END: %s status=%s elapsed=%.2fs (staged multipart)",
+                    filename,
+                    job.status.value,
+                    elapsed,
+                )
+            return
 
         encoder_args = select_encoder_args(config, use_gpu)
         if config.general.quality_mode == "rate":
@@ -522,7 +771,14 @@ class FFmpegAdapter:
             self.logger.debug(f"FFMPEG_CMD: {' '.join(cmd)}")
 
         # Use duration for progress calculation
-        total_duration = job.source_file.metadata.duration if job.source_file.metadata else 0.0
+        source_duration = (
+            job.source_file.metadata.duration if job.source_file.metadata else 0.0
+        )
+        total_duration = (
+            progress_total_duration
+            if progress_total_duration is not None
+            else source_duration
+        )
 
         process = subprocess.Popen(
             cmd,
@@ -613,7 +869,9 @@ class FFmpegAdapter:
                 match = time_regex.search(line)
                 if match:
                     h, m, s = map(float, match.groups())
-                    current_seconds = h * 3600 + m * 60 + s
+                    current_seconds = (
+                        progress_offset_seconds + h * 3600 + m * 60 + s
+                    )
                     if total_duration > 0:
                         progress_percent = min(100.0, (current_seconds / total_duration) * 100.0)
                         self.event_bus.publish(JobProgressUpdated(job=job, progress_percent=progress_percent))

@@ -33,6 +33,12 @@ errors_dirs: []
 # Default: "_err"
 suffix_errors_dirs: "_err"
 
+# Manifest policy. This is separate from general.copy_metadata.
+metadata:
+  audio_only: fail
+  # Maximum missing frames accepted across a complete logical manifest job.
+  max_dropped_frames: 0
+
 # --- General Settings ---
 
 general:

@@ -417,6 +417,7 @@ class MetadataConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     audio_only: Literal["fail", "ignore"] = "fail"
+    max_dropped_frames: int = Field(default=0, ge=0)
     source_policy: Optional[Literal["keep", "delete_after_success"]] = None
     compression_profile: Optional[str] = None
     error_policy: Optional[MetadataErrorPolicyConfig] = None

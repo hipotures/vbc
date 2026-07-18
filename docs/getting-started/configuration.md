@@ -386,6 +386,9 @@ suffix_errors_dirs: _err
 
 metadata:
   audio_only: ignore
+  # Maximum missing output video frames accepted for the complete logical job.
+  # Default: 0 (strict).
+  max_dropped_frames: 0
   # Optional hot-reloaded overrides:
   # source_policy: delete_after_success
   # compression_profile: tiktok
@@ -394,9 +397,10 @@ metadata:
 ```
 
 Each final `*.json` file represents one logical queue item. VBC probes every path in
-`inputs`, preserves the listed order, normalizes compatible resolutions, and joins and
-transcodes all usable parts in one FFmpeg process. The exact `output_path` from the
-manifest is used for the video; the directory suffixes route the JSON itself:
+`inputs`, preserves the listed order, normalizes compatible resolutions, transcodes
+parts sequentially, and stream-copies the encoded segments into the final MP4. The
+exact `output_path` from the manifest is used for the video; the directory suffixes
+route the JSON itself:
 
 - success: `/metadata_out/request.json`
 - any manifest, probe, compression, verification, or cleanup error:
@@ -405,8 +409,10 @@ manifest is used for the video; the directory suffixes route the JSON itself:
 `metadata.audio_only` is `fail` by default. `ignore` removes audio-only parts from the
 effective concat list while retaining them for `source_policy` handling. Optional policy
 overrides are reloaded before each manifest job; an invalid edit keeps the last valid
-metadata policy. `copy_metadata` remains a video-to-video setting and, for multipart
-jobs, uses the first effective video part.
+metadata policy. `metadata.max_dropped_frames` defaults to strict `0`; a configured
+tolerance accepts only that many missing frames across the complete logical job, logs a
+warning, and never accepts extra frames. `copy_metadata` remains a video-to-video
+setting and, for multipart jobs, uses the first effective video part.
 
 Manifest schema version 1 requires `operation: concat_transcode`, absolute unique input
 paths, `compression_profile: tiktok`, `error_policy.missing_input: fail`, and

@@ -421,6 +421,9 @@ suffix_errors_dirs: "_err"
 # Manifest policy. This is separate from general.copy_metadata.
 metadata:
   audio_only: ignore
+  # Maximum missing output video frames accepted for one logical manifest job.
+  # Default: 0 (strict).
+  max_dropped_frames: 0
 
 # --- General Settings ---
 

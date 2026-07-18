@@ -74,12 +74,14 @@ def test_metadata_policy_defaults_and_overrides():
         general=GeneralConfig(threads=1, extensions=[".mp4"]),
         metadata={
             "audio_only": "ignore",
+            "max_dropped_frames": 2,
             "source_policy": "delete_after_success",
             "compression_profile": "tiktok",
             "error_policy": {"missing_input": "fail"},
         },
     )
     assert config.metadata.audio_only == "ignore"
+    assert config.metadata.max_dropped_frames == 2
     assert config.metadata.source_policy == "delete_after_success"
     assert config.metadata.compression_profile == "tiktok"
     assert config.metadata.error_policy.missing_input == "fail"
@@ -88,6 +90,15 @@ def test_metadata_policy_defaults_and_overrides():
 def test_metadata_audio_only_defaults_to_fail():
     config = AppConfig(general=GeneralConfig(threads=1, extensions=[".mp4"]))
     assert config.metadata.audio_only == "fail"
+    assert config.metadata.max_dropped_frames == 0
+
+
+def test_metadata_rejects_negative_max_dropped_frames():
+    with pytest.raises(ValidationError):
+        AppConfig(
+            general=GeneralConfig(threads=1, extensions=[".mp4"]),
+            metadata={"max_dropped_frames": -1},
+        )
 
 
 def test_input_dirs_rejects_duplicates():
