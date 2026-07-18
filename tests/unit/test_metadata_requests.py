@@ -453,15 +453,20 @@ def test_staged_multipart_cleans_segments_and_finalizes_output(tmp_path):
     config = AppConfig(general=GeneralConfig(threads=1, gpu=False))
     adapter = FFmpegAdapter(event_bus=MagicMock())
     encoded_parts = []
+    encoded_outputs = []
+    existing_mp4 = tmp_path / ".recording.mp4.vbc-part001.mp4"
+    existing_mp4.write_bytes(b"must-not-delete")
 
     def fake_compress(part_job, *_args, **_kwargs):
         encoded_parts.append(part_job.source_file.metadata_request.parts[0].path)
+        encoded_outputs.append(part_job.output_path)
         part_job.output_path.write_bytes(b"segment")
         part_job.status = JobStatus.COMPLETED
 
     def fake_concat(cmd, concat_text, _shutdown_event):
-        assert "part001.mp4" in concat_text
-        assert "part002.mp4" in concat_text
+        assert ".vbc-part001.tmp" in concat_text
+        assert ".vbc-part002.tmp" in concat_text
+        assert ".vbc-part001.mp4" not in concat_text
         Path(cmd[-1]).write_bytes(b"joined")
         return 0, False, ""
 
@@ -479,9 +484,11 @@ def test_staged_multipart_cleans_segments_and_finalizes_output(tmp_path):
     )
 
     assert encoded_parts == [part.path for part in parts]
+    assert all(path.suffix == ".tmp" for path in encoded_outputs)
     assert job.status == JobStatus.COMPLETED
     assert job.output_path.read_bytes() == b"joined"
-    assert not list(tmp_path.glob("*.vbc-part*.mp4"))
+    assert existing_mp4.read_bytes() == b"must-not-delete"
+    assert not list(tmp_path.glob("*.vbc-part*.tmp"))
 
 
 def test_staged_multipart_interrupt_keeps_manifest_job_retryable(tmp_path):

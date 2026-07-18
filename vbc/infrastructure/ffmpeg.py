@@ -348,7 +348,7 @@ class FFmpegAdapter:
             cmd.extend(["-vf", "transpose=2"])
 
         # Write to .tmp file during compression (renamed on success)
-        tmp_path = job.output_path.with_suffix('.tmp')
+        tmp_path = self._working_output_path(job.output_path)
         if "-f" not in encoder_tokens:
             cmd.extend(["-f", "mp4"])
         cmd.append(str(tmp_path))
@@ -444,14 +444,21 @@ class FFmpegAdapter:
         cmd.extend(["-fps_mode", "vfr"])
         if not has_format_arg(encoder_args):
             cmd.extend(["-f", "mp4"])
-        cmd.append(str(job.output_path.with_suffix(".tmp")))
+        cmd.append(str(self._working_output_path(job.output_path)))
         return cmd
 
     @staticmethod
     def _multipart_segment_path(output_path: Path, index: int) -> Path:
         return output_path.with_name(
-            f".{output_path.name}.vbc-part{index:03d}.mp4"
+            f".{output_path.name}.vbc-part{index:03d}.tmp"
         )
+
+    @staticmethod
+    def _working_output_path(output_path: Path) -> Path:
+        """Return a deletable work path; staged segments are already .tmp files."""
+        if output_path.suffix == ".tmp":
+            return output_path
+        return output_path.with_suffix(".tmp")
 
     @staticmethod
     def _build_concat_copy_command(
@@ -557,9 +564,9 @@ class FFmpegAdapter:
             for index in range(1, len(request.parts) + 1)
         ]
         final_tmp_path = job.output_path.with_suffix(".tmp")
-        cleanup_paths = [final_tmp_path]
-        for segment_path in segment_paths:
-            cleanup_paths.extend([segment_path, segment_path.with_suffix(".tmp")])
+        cleanup_paths = [final_tmp_path, *segment_paths]
+        if any(path.suffix != ".tmp" for path in cleanup_paths):
+            raise ValueError("Multipart cleanup is restricted to .tmp files")
 
         for path in cleanup_paths:
             if path.exists():
@@ -821,7 +828,7 @@ class FFmpegAdapter:
                         process.wait()
 
                     # Clean up tmp file
-                    tmp_path = job.output_path.with_suffix('.tmp')
+                    tmp_path = self._working_output_path(job.output_path)
                     if tmp_path.exists():
                         tmp_path.unlink()
 
@@ -888,7 +895,7 @@ class FFmpegAdapter:
                 process.wait()
 
             # Clean up tmp file
-            tmp_path = job.output_path.with_suffix('.tmp')
+            tmp_path = self._working_output_path(job.output_path)
             if tmp_path.exists():
                 tmp_path.unlink()
 
@@ -898,7 +905,7 @@ class FFmpegAdapter:
             raise
 
         # Get tmp file path
-        tmp_path = job.output_path.with_suffix('.tmp')
+        tmp_path = self._working_output_path(job.output_path)
 
         # Check for hardware capability error (code 187 or text match)
         if hw_cap_error or process.returncode == 187:
@@ -958,7 +965,8 @@ class FFmpegAdapter:
                     )
                 return
             try:
-                tmp_path.rename(job.output_path)
+                if tmp_path != job.output_path:
+                    tmp_path.rename(job.output_path)
             except OSError as exc:
                 job.status = JobStatus.FAILED
                 job.error_message = f"ffmpeg succeeded but failed to finalize output: {exc}"
