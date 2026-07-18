@@ -348,9 +348,11 @@ FFmpeg transcodes effective parts sequentially into complete MP4 containers whos
 filenames remain `*.tmp`, then uses the concat demuxer to stream-copy them into the
 final MP4. This bounds filter-graph memory while avoiding a second video encode. Only
 `*.tmp` artifacts are cleaned after success, failure, or interruption; intermediate
-files never receive an `.mp4` name. The manifest moves to `_out` only after output
-verification and source policy completion, or to `_err` with a sibling `.err` for any
-non-interruption failure.
+files never receive an `.mp4` name. Multipart video uses timestamp passthrough so
+FFmpeg does not silently drop closely spaced source frames. Frame-count verification
+runs before VBC tags are written, ensuring a tagged output has passed the frame check.
+The manifest moves to `_out` only after output verification and source policy
+completion, or to `_err` with a sibling `.err` for any non-interruption failure.
 
 ### Graceful Shutdown
 

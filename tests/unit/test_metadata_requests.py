@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 from pydantic import ValidationError
@@ -342,6 +342,7 @@ def test_multipart_ffmpeg_command_normalizes_video_and_synthesizes_silence(tmp_p
     assert "apad,atrim=duration=10.000000" in filter_graph
     assert "anullsrc=r=48000:cl=stereo" in filter_graph
     assert "concat=n=2:v=1:a=1" in filter_graph
+    assert command[command.index("-fps_mode") + 1] == "passthrough"
     assert command[-1].endswith("recording.tmp")
 
 
@@ -706,11 +707,15 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
 
     orchestrator._process_metadata_request(video)
 
-    orchestrator._verify_output_file.assert_called_once_with(
-        output,
-        expected_video_packets=25,
-        max_dropped_frames=0,
-    )
+    assert orchestrator._verify_output_file.call_args_list == [
+        call(
+            output,
+            expected_video_packets=25,
+            max_dropped_frames=0,
+            require_vbc_tags=False,
+        ),
+        call(output),
+    ]
     assert output.exists()
     assert not part.exists()
     assert not ignored.exists()
@@ -765,7 +770,9 @@ def test_metadata_process_backs_up_untagged_output_before_compression(tmp_path):
 
     orchestrator.ffmpeg_adapter.compress.side_effect = compress
     orchestrator._write_vbc_tags = MagicMock()
-    orchestrator._verify_output_file = MagicMock(side_effect=[(False, "no tags"), (True, None)])
+    orchestrator._verify_output_file = MagicMock(
+        side_effect=[(False, "no tags"), (True, None), (True, None)]
+    )
 
     orchestrator._process_metadata_request(video)
 

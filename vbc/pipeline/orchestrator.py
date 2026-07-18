@@ -1235,6 +1235,7 @@ class Orchestrator:
         output_path: Path,
         expected_video_packets: Optional[int] = None,
         max_dropped_frames: int = 0,
+        require_vbc_tags: bool = True,
     ) -> Tuple[bool, Optional[str]]:
         """Verify output by probing readability and checking required VBC EXIF tags."""
         if not output_path.exists():
@@ -1267,6 +1268,9 @@ class Orchestrator:
                     dropped_frames,
                     max_dropped_frames,
                 )
+
+        if not require_vbc_tags:
+            return True, None
 
         try:
             tags = self.exif_adapter.extract_tags(output_path)
@@ -2074,6 +2078,23 @@ class Orchestrator:
                 )
                 return
 
+            expected_video_packets = sum(part.video_packets for part in request.parts)
+            verify_ok, verify_error = self._verify_output_file(
+                job.output_path,
+                expected_video_packets=expected_video_packets,
+                max_dropped_frames=metadata_config.max_dropped_frames,
+                require_vbc_tags=False,
+            )
+            if not verify_ok:
+                message = f"Verification failed: {verify_error or 'unknown verification error'}"
+                self._fail_metadata_request(video_file, message, job=job)
+                if job_config.general.verify_fail_action != "false":
+                    self._handle_verification_failure(
+                        message,
+                        job_config.general.verify_fail_action,
+                    )
+                return
+
             source_path = request.parts[0].path
             encoder_args = select_encoder_args(job_config, use_gpu)
             encoder_label = infer_encoder_label(encoder_args, use_gpu)
@@ -2105,11 +2126,8 @@ class Orchestrator:
                     vbc_json_notes=vbc_json_notes,
                 )
 
-            expected_video_packets = sum(part.video_packets for part in request.parts)
             verify_ok, verify_error = self._verify_output_file(
                 job.output_path,
-                expected_video_packets=expected_video_packets,
-                max_dropped_frames=metadata_config.max_dropped_frames,
             )
             if not verify_ok:
                 message = f"Verification failed: {verify_error or 'unknown verification error'}"

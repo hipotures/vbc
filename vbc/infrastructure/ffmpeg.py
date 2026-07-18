@@ -441,7 +441,7 @@ class FFmpegAdapter:
                 cmd.extend(["-movflags", "use_metadata_tags"])
         else:
             cmd.extend(["-map_metadata", "-1"])
-        cmd.extend(["-fps_mode", "vfr"])
+        cmd.extend(["-fps_mode", "passthrough"])
         if not has_format_arg(encoder_args):
             cmd.extend(["-f", "mp4"])
         cmd.append(str(self._working_output_path(job.output_path)))
