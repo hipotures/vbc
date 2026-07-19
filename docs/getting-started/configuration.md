@@ -449,6 +449,34 @@ username as the first destination directory. A missing destination setting, a mi
 unwritable directory, insufficient free space for all inputs, or an existing destination
 file makes the policy fall back to `keep` for the complete request.
 
+### Generating manifests for legacy recordings
+
+`scripts/generate_metadata_manifests.py` scans a recordings tree without modifying it and
+writes strict manifests into a separate metadata directory. Files ending in
+`_partNNN.mp4` are grouped and numerically ordered; a plain MP4 without a matching part
+group becomes a single-input request. A read-only ExifTool tree scan first excludes prior
+outputs carrying the `VBCEncoder` tag. If an untagged plain file is followed by
+`_part002.mp4`, it is treated as the legacy first part. Otherwise a complete part group
+wins over a same-name untagged plain file, which is reported as shadowed. Groups with
+unresolved missing part numbers, symlinks, VBC staging artifacts, zero total size,
+duplicate manifest names, and existing manifest files are never overwritten or silently
+accepted.
+
+```bash
+uv run python scripts/generate_metadata_manifests.py \
+  /mnt/1/TT/recordings \
+  /path/to/generated_metadata \
+  --compressed-dir /mnt/1/TT/compressed \
+  --dry-run
+```
+
+Remove `--dry-run` to create the JSON files. `--compressed-dir` defaults to a sibling
+directory named `compressed`; `--source-policy` defaults to `keep`. A configured
+`metadata.source_policy` still overrides the value generated in each manifest. An existing
+output is still represented by a manifest. VBC validates ffprobe readability and required
+VBC tags: a valid tagged output is reused, while an untagged or invalid primary output is
+preserved under the next `_N.mp4` name before VBC creates a verified replacement.
+
 #### `output_dirs`
 - **Type**: List of strings
 - **Default**: `[]` (empty)
