@@ -511,6 +511,29 @@ ffprobe readability and required VBC tags: a valid tagged output is reused, whil
 or invalid primary output is preserved under the next `_N.mp4` name before VBC creates a
 verified replacement.
 
+### Restoring a failed manifest and moved sources
+
+`scripts/restore_failed_manifest.py` restores one JSON from its configured metadata error
+directory. It reads `input_dirs`, `errors_dirs` or `suffix_errors_dirs`, and
+`metadata.move_after_success_dir` from the VBC configuration. Every source listed in the
+manifest must either already exist at its original path or be present under the archived
+producer directory. The script validates the complete plan before moving anything,
+refuses all destination collisions, restores source files first, and moves the JSON into
+the metadata input directory last so inotify cannot enqueue an incomplete request.
+
+```bash
+uv run python scripts/restore_failed_manifest.py \
+  /path/to/metadata_err/request.json \
+  --dry-run
+```
+
+The default configuration is `conf/vbc.yaml`; use `--config /path/to/vbc.yaml` to select
+another file. Remove `--dry-run` to perform the restore. Missing sources are printed with
+both their original and expected archive paths, and no files are moved when any source is
+missing. Sources that have already been manually restored are accepted when no duplicate
+archive copy exists. The existing `.err` marker remains in the error directory as failure
+history.
+
 #### `output_dirs`
 - **Type**: List of strings
 - **Default**: `[]` (empty)
