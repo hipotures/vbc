@@ -186,6 +186,18 @@ class Orchestrator:
         self._metadata_failure_reasons: Dict[Path, str] = {}
         self._metadata_failed_paths: set[Path] = set()
         self._metadata_failed_reported: set[Path] = set()
+        self._manifest_part_info_cache: Dict[
+            Path,
+            Tuple[int, int, Dict[str, Any]],
+        ] = {}
+        self._manifest_part_info_lock = threading.Lock()
+        self._output_info_cache: Dict[
+            Path,
+            Tuple[int, int, Dict[str, Any]],
+        ] = {}
+        self._output_info_lock = threading.Lock()
+        self._probe_path_locks: Dict[Path, threading.Lock] = {}
+        self._probe_path_locks_lock = threading.Lock()
 
         # Dynamic control state
         self._shutdown_requested = False
@@ -1246,6 +1258,35 @@ class Orchestrator:
         tail = str(tag_key).split(":")[-1]
         return re.sub(r"[^a-z0-9]", "", tail.lower())
 
+    def _probe_path_lock(self, path: Path) -> threading.Lock:
+        with self._probe_path_locks_lock:
+            return self._probe_path_locks.setdefault(path, threading.Lock())
+
+    def _get_output_info(self, output_path: Path) -> Dict[str, Any]:
+        """Probe each unchanged output at most once during this run."""
+        with self._probe_path_lock(output_path):
+            output_stat = output_path.stat()
+            with self._output_info_lock:
+                cached = self._output_info_cache.get(output_path)
+            if (
+                cached is not None
+                and cached[0] == output_stat.st_size
+                and cached[1] == output_stat.st_mtime_ns
+            ):
+                return cached[2]
+
+            output_info = self.ffprobe_adapter.get_part_info(
+                output_path,
+                scan_packet_timeline=False,
+            )
+            with self._output_info_lock:
+                self._output_info_cache[output_path] = (
+                    output_stat.st_size,
+                    output_stat.st_mtime_ns,
+                    output_info,
+                )
+            return output_info
+
     def _verify_output_file(
         self,
         output_path: Path,
@@ -1258,18 +1299,18 @@ class Orchestrator:
             return False, "output file missing"
 
         try:
-            self.ffprobe_adapter.get_stream_info(output_path)
+            output_info = self._get_output_info(output_path)
         except Exception as exc:
             return False, f"ffprobe check failed: {exc}"
+        if not output_info.get("has_video_stream"):
+            return False, "ffprobe check failed: output has no video stream"
+        actual_video_frames = int(output_info.get("video_packets") or 0)
+        if actual_video_frames <= 0:
+            return False, "ffprobe check failed: output has no video packets"
 
         if expected_video_frames is not None:
-            try:
-                # VBC's encoded MP4 has one video packet per output frame. Counting
-                # packets verifies the muxed result without decoding the whole file.
-                output_info = self.ffprobe_adapter.get_part_info(output_path)
-                actual_video_frames = int(output_info.get("video_packets") or 0)
-            except Exception as exc:
-                return False, f"ffprobe frame-count check failed: {exc}"
+            # VBC's encoded MP4 has one video packet per output frame. Counting
+            # packets verifies the muxed result without decoding the whole file.
             dropped_frames = expected_video_frames - actual_video_frames
             if dropped_frames < 0 or dropped_frames > max_dropped_frames:
                 return False, (
@@ -1289,6 +1330,14 @@ class Orchestrator:
 
         if not require_vbc_tags:
             return True, None
+
+        return self._verify_output_tags(output_path)
+
+    def _verify_output_tags(
+        self,
+        output_path: Path,
+    ) -> Tuple[bool, Optional[str]]:
+        """Check required VBC tags without probing media streams again."""
 
         try:
             tags = self.exif_adapter.extract_tags(output_path)
@@ -1397,6 +1446,28 @@ class Orchestrator:
                 source_path.unlink()
                 self.logger.info("MANIFEST_SOURCE_DELETED: %s", source_path)
 
+    def _get_manifest_part_info(self, source_path: Path) -> Dict[str, Any]:
+        """Probe each unchanged manifest part at most once during this run."""
+        with self._probe_path_lock(source_path):
+            source_stat = source_path.stat()
+            with self._manifest_part_info_lock:
+                cached = self._manifest_part_info_cache.get(source_path)
+            if (
+                cached is not None
+                and cached[0] == source_stat.st_size
+                and cached[1] == source_stat.st_mtime_ns
+            ):
+                return cached[2]
+
+            part_info = self.ffprobe_adapter.get_part_info(source_path)
+            with self._manifest_part_info_lock:
+                self._manifest_part_info_cache[source_path] = (
+                    source_stat.st_size,
+                    source_stat.st_mtime_ns,
+                    part_info,
+                )
+            return part_info
+
     def _hydrate_metadata_request(
         self,
         video_file: VideoFile,
@@ -1423,7 +1494,7 @@ class Orchestrator:
             source_path = Path(source_value)
             if not source_path.is_file():
                 raise FileNotFoundError(f"Missing manifest input: {source_path}")
-            part_info = self.ffprobe_adapter.get_part_info(source_path)
+            part_info = self._get_manifest_part_info(source_path)
             video_packets = int(part_info.get("video_packets") or 0)
             audio_packets = int(part_info.get("audio_packets") or 0)
             has_usable_video = bool(part_info.get("has_video_stream")) and video_packets > 0
@@ -1447,12 +1518,9 @@ class Orchestrator:
                     f"Invalid video dimensions for {source_path}: {width}x{height}"
                 )
             duration = float(part_info.get("duration") or 0.0)
-            if audio_packets == 0:
-                packet_duration = self.ffprobe_adapter.get_video_packet_duration(source_path)
-                duration = packet_duration or duration
-                if duration <= 0:
-                    fps = float(part_info.get("fps") or 0.0)
-                    duration = (1.0 / fps) if fps > 0 else 0.04
+            if duration <= 0:
+                fps = float(part_info.get("fps") or 0.0)
+                duration = (1.0 / fps) if fps > 0 else 0.04
             parts.append(
                 MultipartPart(
                     path=source_path,
@@ -2150,17 +2218,12 @@ class Orchestrator:
 
             expected_video_frames = job.expected_video_frames
             if expected_video_frames is None:
-                self.logger.warning(
-                    "FFMPEG_FRAME_COUNT_FALLBACK: %s",
-                    filename,
+                self._fail_metadata_request(
+                    video_file,
+                    "Verification failed: FFmpeg did not report encoded video frames",
+                    job=job,
                 )
-                expected_video_frames = sum(
-                    self.ffprobe_adapter.get_video_frame_count(
-                        part.path,
-                        shutdown_event=self._shutdown_event,
-                    )
-                    for part in request.parts
-                )
+                return
 
             verify_ok, verify_error = self._verify_output_file(
                 job.output_path,
@@ -2209,7 +2272,7 @@ class Orchestrator:
                     vbc_json_notes=vbc_json_notes,
                 )
 
-            verify_ok, verify_error = self._verify_output_file(
+            verify_ok, verify_error = self._verify_output_tags(
                 job.output_path,
             )
             if not verify_ok:
@@ -2310,18 +2373,32 @@ class Orchestrator:
                     self.event_bus.publish(JobFailed(job=CompressionJob(source_file=video_file, status=JobStatus.SKIPPED), error_message="Existing error marker found"))
                     return
 
-            try:
-                stream_info = self.ffprobe_adapter.get_stream_info(video_file.path)
-            except Exception as e:
-                err_msg = "File is corrupted (ffprobe failed to read). Skipped."
+            if video_file.metadata is not None:
+                stream_info = {
+                    "width": video_file.metadata.width,
+                    "height": video_file.metadata.height,
+                    "codec": video_file.metadata.codec,
+                    "audio_codec": video_file.metadata.audio_codec,
+                    "fps": video_file.metadata.fps,
+                    "duration": video_file.metadata.duration,
+                    "bitrate_kbps": video_file.metadata.bitrate_kbps,
+                    "color_space": video_file.metadata.color_space,
+                    "pix_fmt": video_file.metadata.pix_fmt,
+                    "vbc_encoded": video_file.metadata.vbc_encoded,
+                }
+            else:
                 try:
-                    self._write_job_error_marker(video_file, err_path, err_msg)
-                except Exception:
-                    pass
-                self.logger.error(f"Corrupted file detected (ffprobe failed): {filename} - {e}")
-                job = CompressionJob(source_file=video_file, status=JobStatus.FAILED, output_path=output_path, error_message=err_msg)
-                self.event_bus.publish(JobFailed(job=job, error_message=err_msg))
-                return
+                    stream_info = self.ffprobe_adapter.get_stream_info(video_file.path)
+                except Exception as e:
+                    err_msg = "File is corrupted (ffprobe failed to read). Skipped."
+                    try:
+                        self._write_job_error_marker(video_file, err_path, err_msg)
+                    except Exception:
+                        pass
+                    self.logger.error(f"Corrupted file detected (ffprobe failed): {filename} - {e}")
+                    job = CompressionJob(source_file=video_file, status=JobStatus.FAILED, output_path=output_path, error_message=err_msg)
+                    self.event_bus.publish(JobFailed(job=job, error_message=err_msg))
+                    return
 
             # Reject files with invalid source video dimensions early.
             try:
@@ -2557,7 +2634,7 @@ class Orchestrator:
                         and not kept_original
                     ):
                         try:
-                            output_info = self.ffprobe_adapter.get_stream_info(job.output_path)
+                            output_info = self._get_output_info(job.output_path)
                             output_bitrate_kbps = output_info.get("bitrate_kbps")
                             if output_bitrate_kbps and output_bitrate_kbps > 0:
                                 output_bps = int(round(output_bitrate_kbps * 1000))

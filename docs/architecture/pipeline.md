@@ -349,14 +349,17 @@ ownership remain the manifest path. Discovery reads and validates all JSON files
 their input paths, and immediately publishes lightweight queue proxies. The rolling
 25-item metadata window then probes every physical part, filters configured audio-only
 inputs, and calculates effective aggregate size and target resolution. This keeps the UI
-populated while ffprobe resolves the visible and near-future queue entries.
+populated while ffprobe resolves the visible and near-future queue entries. One cached
+probe per unchanged part returns stream facts, packet counts, and packet-timeline
+duration, so queue refreshes and output validation do not rescan source video.
 FFmpeg transcodes effective parts sequentially into complete MP4 containers whose
 filenames remain `*.tmp`, then uses the concat demuxer to stream-copy them into the
 final MP4. This bounds filter-graph memory while avoiding a second video encode. Only
 `*.tmp` artifacts are cleaned after success, failure, or interruption; intermediate
 files never receive an `.mp4` name. Multipart video uses timestamp passthrough so
 FFmpeg does not silently drop closely spaced source frames. Frame-count verification
-runs before VBC tags are written, ensuring a tagged output has passed the frame check.
+runs from FFmpeg's encoded-frame statistics and one cached output packet probe before
+VBC tags are written, ensuring a tagged output has passed the frame check.
 The manifest moves to `_out` only after output verification and source policy
 completion, or to `_err` with a sibling `.err` for any non-interruption failure.
 

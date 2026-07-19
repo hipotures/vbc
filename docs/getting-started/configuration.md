@@ -403,6 +403,11 @@ listed order, normalizes compatible resolutions, transcodes parts sequentially, 
 stream-copies the encoded segments into the final MP4. The exact `output_path` from the
 manifest is used for the video; the directory suffixes route the JSON itself:
 
+Each unchanged physical part is probed once per VBC run. That single probe supplies
+stream properties, packet counts, and the normalized video duration derived from packet
+timestamps; refreshes reuse the cached result. Output stream verification is likewise
+cached, while the post-write VBC-tag check uses ExifTool without probing the video again.
+
 - success: `/metadata_out/request.json`
 - any manifest, probe, compression, verification, or cleanup error:
   `/metadata_err/request.json` and `/metadata_err/request.err`

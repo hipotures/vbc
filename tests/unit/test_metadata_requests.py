@@ -187,6 +187,10 @@ def test_metadata_discovery_queues_proxy_then_hydrates_visible_job(tmp_path):
     assert video.metadata_request.effective_input_paths == [part1, part2]
     assert ffprobe.get_part_info.call_count == 3
 
+    refreshed_files, _ = orchestrator._perform_discovery(metadata_dir)
+    assert orchestrator._get_metadata(refreshed_files[0]) is not None
+    assert ffprobe.get_part_info.call_count == 3
+
 
 def test_metadata_preflight_routes_mixed_orientation_to_error(tmp_path):
     ffprobe = MagicMock()
@@ -589,7 +593,10 @@ def test_metadata_verification_rejects_dropped_video_frames(tmp_path):
     output = tmp_path / "recording.mp4"
     output.write_bytes(b"encoded")
     ffprobe.get_stream_info.return_value = {}
-    ffprobe.get_part_info.return_value = {"video_packets": 5}
+    ffprobe.get_part_info.return_value = {
+        "has_video_stream": True,
+        "video_packets": 5,
+    }
     orchestrator.exif_adapter.extract_tags.return_value = {
         "XMP:VBCOriginalName": "part001.mp4",
         "XMP:VBCOriginalSize": "100",
@@ -614,7 +621,10 @@ def test_metadata_verification_accepts_configured_frame_loss(tmp_path, caplog):
     output = tmp_path / "recording.mp4"
     output.write_bytes(b"encoded")
     ffprobe.get_stream_info.return_value = {}
-    ffprobe.get_part_info.return_value = {"video_packets": 9}
+    ffprobe.get_part_info.return_value = {
+        "has_video_stream": True,
+        "video_packets": 9,
+    }
     orchestrator.exif_adapter.extract_tags.return_value = {
         "XMP:VBCOriginalName": "part001.mp4",
         "XMP:VBCOriginalSize": "100",
@@ -629,9 +639,20 @@ def test_metadata_verification_accepts_configured_frame_loss(tmp_path, caplog):
         expected_video_frames=10,
         max_dropped_frames=1,
     )
+    verified_again, error_again = orchestrator._verify_output_file(
+        output,
+        expected_video_frames=10,
+        max_dropped_frames=1,
+    )
 
     assert verified
     assert error is None
+    assert verified_again
+    assert error_again is None
+    ffprobe.get_part_info.assert_called_once_with(
+        output,
+        scan_packet_timeline=False,
+    )
     assert "OUTPUT_FRAME_LOSS_ACCEPTED" in caplog.text
 
 
@@ -641,7 +662,10 @@ def test_metadata_verification_never_accepts_extra_video_frames(tmp_path):
     output = tmp_path / "recording.mp4"
     output.write_bytes(b"encoded")
     ffprobe.get_stream_info.return_value = {}
-    ffprobe.get_part_info.return_value = {"video_packets": 11}
+    ffprobe.get_part_info.return_value = {
+        "has_video_stream": True,
+        "video_packets": 11,
+    }
 
     verified, error = orchestrator._verify_output_file(
         output,
@@ -717,6 +741,7 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
     orchestrator.ffmpeg_adapter.compress.side_effect = compress
     orchestrator._write_vbc_tags = MagicMock()
     orchestrator._verify_output_file = MagicMock(return_value=(True, None))
+    orchestrator._verify_output_tags = MagicMock(return_value=(True, None))
 
     orchestrator._process_metadata_request(video)
 
@@ -727,9 +752,8 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
             max_dropped_frames=0,
             require_vbc_tags=False,
         ),
-        call(output),
     ]
-    ffprobe.get_video_frame_count.assert_not_called()
+    orchestrator._verify_output_tags.assert_called_once_with(output)
     assert output.exists()
     assert not part.exists()
     assert not ignored.exists()
@@ -781,12 +805,14 @@ def test_metadata_process_backs_up_untagged_output_before_compression(tmp_path):
     def compress(job, *_args, **_kwargs):
         job.output_path.write_bytes(b"new")
         job.status = JobStatus.COMPLETED
+        job.expected_video_frames = 25
 
     orchestrator.ffmpeg_adapter.compress.side_effect = compress
     orchestrator._write_vbc_tags = MagicMock()
     orchestrator._verify_output_file = MagicMock(
-        side_effect=[(False, "no tags"), (True, None), (True, None)]
+        side_effect=[(False, "no tags"), (True, None)]
     )
+    orchestrator._verify_output_tags = MagicMock(return_value=(True, None))
 
     orchestrator._process_metadata_request(video)
 

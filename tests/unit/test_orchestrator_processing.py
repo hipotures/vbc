@@ -427,7 +427,16 @@ def test_process_file_success_ratio_keeps_original(tmp_path):
     orchestrator._check_and_fix_color_space = MagicMock(return_value=(source, None))
     orchestrator._write_vbc_tags = MagicMock()
 
-    video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
+    video_file = VideoFile(
+        path=source,
+        size_bytes=source.stat().st_size,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=30.0,
+        ),
+    )
     orchestrator._process_file(video_file, input_dir)
 
     assert events
@@ -438,6 +447,7 @@ def test_process_file_success_ratio_keeps_original(tmp_path):
     output_path = input_dir.with_name("input_out") / "video.mp4"
     assert output_path.read_bytes() == source.read_bytes()
     orchestrator._write_vbc_tags.assert_not_called()
+    ffprobe.get_stream_info.assert_not_called()
 
 
 def test_process_file_success_ratio_keeps_original_skips_metadata_copy(tmp_path):
