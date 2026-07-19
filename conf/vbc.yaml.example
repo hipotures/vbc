@@ -9,10 +9,20 @@
 input_dirs:
   - path: /path/to/videos
     enabled: true
-  - path: /another/path
+    # false = scan video files (default).
+    metadata: false
+    # null = do not refresh this directory while idle (default).
+    idle_interval: null
+  - path: /path/to/metadata
     enabled: true
+    # true = scan manifest *.json files, which act as proxies for video inputs.
+    metadata: true
+    # Refresh this directory every 60 seconds while VBC is idle.
+    idle_interval: 60
   - path: /disabled/path
     enabled: false
+    metadata: false
+    idle_interval: null
 
 # Explicit output directories (one per enabled input directory, in order).
 # Must have the same count as enabled input_dirs entries.
@@ -34,10 +44,34 @@ errors_dirs: []
 suffix_errors_dirs: "_err"
 
 # Manifest policy. This is separate from general.copy_metadata.
+# Fields shared with a manifest override its values when set here.
 metadata:
-  audio_only: fail
-  # Maximum missing frames accepted across a complete logical manifest job.
+  # Handling of parts without video packets: "fail" or "ignore".
+  audio_only: "fail"
+
+  # Maximum missing output video frames accepted per generated output (>= 0).
   max_dropped_frames: 0
+
+  # Maximum effective duration of one part and of the complete request in seconds.
+  # Must be greater than 0. Default: 86400 (24 hours).
+  max_duration_seconds: 86400
+
+  # Optional source policy override:
+  # null, "keep", "delete_after_success", "move_after_success", or "move_all".
+  # null keeps the policy supplied by each manifest.
+  source_policy: null
+
+  # Archive root used by both move_after_success and move_all.
+  # null or a non-empty path. The producer username directory is preserved below it.
+  move_after_success_dir: null
+
+  # Optional dynamic_quality profile override. null uses the manifest value.
+  # An unknown profile uses the default compression settings.
+  compression_profile: null
+
+  # Missing manifest inputs currently support only the "fail" policy.
+  error_policy:
+    missing_input: "fail"
 
 # --- General Settings ---
 
@@ -49,6 +83,12 @@ general:
   # Submit-on-demand queue multiplier (1-5).
   # Formula: max_queued = prefetch_factor * threads.
   prefetch_factor: 1
+
+  # Run metadata/ffprobe preflight after a task takes an active worker slot.
+  # false = proactively prefetch metadata for queued tasks (default).
+  # true = show preflight in ACTIVE JOBS and prevent one slow probe from
+  # blocking preparation of the whole queue.
+  preflight_in_worker: false
 
   # Use GPU acceleration (NVENC AV1) if true, otherwise CPU (SVT-AV1).
   gpu: true
@@ -310,5 +350,5 @@ autorotate:
   # Regex pattern -> Rotation angle (0, 90, 180, 270).
   # First match wins.
   patterns:
-    "GOPR\d+\.MP4": 180
-    "IMG_\d{4}\.MOV": 90
+    'GOPR\d+\.MP4': 180
+    'IMG_\d{4}\.MOV': 90
