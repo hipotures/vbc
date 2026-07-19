@@ -41,6 +41,25 @@ def test_ui_state_active_jobs():
     state.remove_active_job(job)
     assert len(state.active_jobs) == 0
 
+
+def test_ui_state_removes_active_job_using_logical_source_identity():
+    state = UIState()
+    source = VideoFile(path=Path("multipart.mp4"), size_bytes=1000)
+    active_job = CompressionJob(
+        source_file=source,
+        status=JobStatus.PROCESSING,
+        output_path=Path("multipart.mp4"),
+    )
+    failed_part_job = active_job.model_copy(deep=True)
+    failed_part_job.status = JobStatus.FAILED
+    failed_part_job.output_path = Path(".multipart.mp4.vbc-part001.tmp")
+
+    state.add_active_job(active_job)
+    state.remove_active_job(failed_part_job)
+
+    assert state.active_jobs == []
+
+
 def test_ui_state_recent_limit():
     state = UIState()
     for i in range(10):

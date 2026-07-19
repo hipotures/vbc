@@ -163,8 +163,12 @@ class UIState:
 
     def remove_active_job(self, job: CompressionJob):
         with self._lock:
-            if job in self.active_jobs:
-                self.active_jobs.remove(job)
+            identity_path = job.source_file.identity_path
+            self.active_jobs[:] = [
+                active_job
+                for active_job in self.active_jobs
+                if active_job.source_file.identity_path != identity_path
+            ]
             # Clean up start time
             self.job_start_times.pop(job.source_file.path.name, None)
 
