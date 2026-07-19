@@ -1,6 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
+from datetime import datetime
 
+from vbc.domain.models import JobStatus
 from vbc.infrastructure import web_server
 
 
@@ -75,3 +77,32 @@ def test_parse_max_items_param_uses_default_and_clamps():
         web_server._parse_max_items_param({"max_items": ["999"]}, default=5)
         == web_server._WEB_MAX_ITEMS
     )
+
+
+def test_vm_active_jobs_marks_preflight_and_uses_arc():
+    metadata = SimpleNamespace(fps=25.0, duration=120.0, custom_cq=None)
+    source_file = SimpleNamespace(
+        path=Path("preflight.mp4"),
+        size_bytes=10 * 1024 * 1024,
+        metadata=metadata,
+    )
+    job = SimpleNamespace(
+        source_file=source_file,
+        status=JobStatus.PREFLIGHT,
+        progress_percent=0.0,
+        rotation_angle=0,
+        quality_display="cq45",
+        quality_value=45,
+    )
+
+    vm = web_server._vm_active_jobs(
+        {
+            "now": datetime.now(),
+            "active_jobs": [job],
+            "job_start_times": {},
+        }
+    )
+
+    assert vm["jobs"][0]["preflight"] is True
+    assert vm["jobs"][0]["spin"] in "◜◠◝◞◡◟"
+    assert vm["jobs"][0]["meta"] == "in 10.0MB"

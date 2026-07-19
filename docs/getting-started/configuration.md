@@ -45,6 +45,7 @@ general:
   # === Core Settings ===
   threads: 8                    # Max concurrent compression threads (>0; executor max_workers=16)
   prefetch_factor: 1            # Submit-on-demand multiplier (>=1)
+  preflight_in_worker: false    # Run metadata preparation in active worker slots
   gpu: true                     # Use GPU (NVENC) vs CPU (SVT-AV1)
   queue_sort: name              # Queue order: name, rand, dir, size, size-asc, size-desc, ext
   queue_seed: null              # Optional seed for deterministic rand order
@@ -192,6 +193,13 @@ autorotate:
 - **Default**: 1
 - **Description**: Submit-on-demand queue multiplier. Higher values = more files queued.
 - **Formula**: `max_queued = prefetch_factor × threads`
+
+#### `preflight_in_worker`
+- **Type**: Boolean
+- **Default**: `false`
+- **Description**: When enabled, disables proactive metadata probing of the pending queue. Each task performs its preflight after taking a normal worker slot and appears in **ACTIVE JOBS** with the animated arc icon before compression begins.
+- **Trade-off**: A slow `ffprobe` occupies only one worker slot instead of blocking preparation of the entire queue. Queue rows remain lightweight until their task starts.
+- **Scope**: Global; applies to regular video files and JSON metadata tasks.
 
 #### `queue_sort`
 - **Type**: String

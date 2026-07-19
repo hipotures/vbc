@@ -45,11 +45,18 @@ def test_config_defaults():
     assert gen.log_path == "/tmp/vbc/compression.log"
     assert gen.cpu_fallback is False
     assert gen.ffmpeg_cpu_threads is None
+    assert gen.preflight_in_worker is False
     assert gen.verify_fail_action == "false"
     assert "-cq 45" in config.gpu_encoder.common_args
     assert "-crf 32" in config.cpu_encoder.common_args
     assert config.errors_dirs == []
     assert config.suffix_errors_dirs == "_err"
+
+
+def test_worker_preflight_is_global_general_setting():
+    config = AppConfig(general={"preflight_in_worker": True})
+
+    assert config.general.preflight_in_worker is True
 
 
 def test_input_dirs_accepts_object_format():

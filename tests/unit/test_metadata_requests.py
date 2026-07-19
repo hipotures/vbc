@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from vbc.config.models import AppConfig, GeneralConfig
+from vbc.domain.events import JobStarted
 from vbc.domain.models import (
     CompressionJob,
     CompressionManifest,
@@ -281,7 +282,10 @@ def test_metadata_preflight_rejects_duration_above_safety_limit(tmp_path):
     assert not manifest_path.exists()
     assert (error_dir / "request.json").exists()
     assert "duration exceeds safety limit" in (error_dir / "request.err").read_text()
-    ffprobe.count_video_frames.assert_called_once_with(part)
+    ffprobe.count_video_frames.assert_called_once_with(
+        part,
+        shutdown_event=orchestrator._shutdown_event,
+    )
 
 
 def test_move_all_archives_existing_sources_after_preflight_failure(tmp_path):
@@ -377,7 +381,10 @@ def test_metadata_preflight_rebuilds_timestamps_after_exceptional_frame_check(
 
     refreshed_files, _ = orchestrator._perform_discovery(metadata_dir)
     assert orchestrator._get_metadata(refreshed_files[0]) is not None
-    ffprobe.count_video_frames.assert_called_once_with(part)
+    ffprobe.count_video_frames.assert_called_once_with(
+        part,
+        shutdown_event=orchestrator._shutdown_event,
+    )
 
 
 def test_metadata_preflight_does_not_count_frames_for_normal_duration(tmp_path):
@@ -398,6 +405,35 @@ def test_metadata_preflight_does_not_count_frames_for_normal_duration(tmp_path):
 
     assert orchestrator._get_metadata(files[0]) is not None
     ffprobe.count_video_frames.assert_not_called()
+
+
+def test_manifest_worker_preflight_starts_after_inflight_registration(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, _ = _orchestrator(tmp_path, ffprobe)
+    orchestrator.config.general.preflight_in_worker = True
+    part = tmp_path / "part001.mp4"
+    part.write_bytes(b"video")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(_manifest([part], tmp_path / "recording.mp4"))
+    )
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+    started = []
+    orchestrator.event_bus.subscribe(JobStarted, lambda event: started.append(event.job))
+    received = []
+
+    def process_request(video_file, initial_job=None):
+        assert manifest_path in orchestrator._manifest_inflight
+        received.append((video_file, initial_job))
+
+    orchestrator._process_metadata_request = MagicMock(side_effect=process_request)
+
+    orchestrator._process_file(files[0])
+
+    assert len(started) == 1
+    assert started[0].status == JobStatus.PREFLIGHT
+    assert received == [(files[0], started[0])]
+    assert manifest_path not in orchestrator._manifest_inflight
 
 
 def test_metadata_preflight_ignores_empty_part_with_ignore_policy(tmp_path):

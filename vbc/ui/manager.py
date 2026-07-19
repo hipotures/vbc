@@ -15,6 +15,7 @@ from vbc.domain.events import (
     DirsInputChar, DirsConfirmAdd, DirsCancelInput, DirsApplyChanges,
 )
 from vbc.config.input_dirs import MAX_INPUT_DIR_LEN, STATUS_OK
+from vbc.domain.models import JobStatus
 from vbc.ui.gpu_sparkline import (
     format_preset_label,
     get_gpu_sparkline_config,
@@ -229,6 +230,9 @@ class UIManager:
         from datetime import datetime
         if self.state.processing_start_time is None:
             self.state.processing_start_time = datetime.now()
+        if event.job.status == JobStatus.PROCESSING:
+            with self.state._lock:
+                self.state.job_start_times[event.job.source_file.path.name] = datetime.now()
         self.state.add_active_job(event.job)
 
     def on_job_completed(self, event: JobCompleted):
@@ -255,14 +259,21 @@ class UIManager:
     def on_job_failed(self, event: JobFailed):
         # Calculate duration
         from datetime import datetime
-        from vbc.domain.models import JobStatus
-        self.state.add_session_error(event.job, event.error_message)
         filename = event.job.source_file.path.name
         if filename in self.state.job_start_times:
             start_time = self.state.job_start_times[filename]
             event.job.duration_seconds = (datetime.now() - start_time).total_seconds()
 
-        # Check if it's an AV1 skip
+        if (
+            event.job.status == JobStatus.SKIPPED
+            and event.error_message == "Manifest ignored during preflight"
+        ):
+            self.state.add_skipped_job(event.job)
+            return
+
+        self.state.add_session_error(event.job, event.error_message)
+
+        # Check if it's an AV1 skip from an older event producer.
         if event.error_message and "Already encoded in AV1" in event.error_message:
             with self.state._lock:
                 self.state.ignored_av1_count += 1

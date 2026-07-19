@@ -861,6 +861,102 @@ def test_run_once_publishes_lightweight_queue_before_metadata_preload(
     assert [True] in queue_states
 
 
+def test_run_once_skips_pending_metadata_preload_in_worker_mode(
+    monkeypatch,
+    tmp_path,
+):
+    config = _make_config(
+        use_exif=False,
+        copy_metadata=False,
+        prefetch_factor=1,
+        preflight_in_worker=True,
+    )
+    bus = EventBus()
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+    video = VideoFile(path=tmp_path / "queued.mp4", size_bytes=10)
+    stats = {
+        "files_found": 1,
+        "files_to_process": 1,
+        "already_compressed": 0,
+        "ignored_small": 0,
+        "ignored_err": 0,
+        "ignored_err_entries": [],
+    }
+    orchestrator._perform_discovery = MagicMock(return_value=([video], stats))
+    orchestrator._get_metadata = MagicMock()
+    orchestrator._process_file = MagicMock()
+    queue_states = []
+    bus.subscribe(
+        QueueUpdated,
+        lambda event: queue_states.append(
+            [item.metadata is not None for item in event.pending_files]
+        ),
+    )
+    monkeypatch.setattr("vbc.pipeline.orchestrator.time.sleep", lambda *_: None)
+
+    orchestrator._run_once([tmp_path])
+
+    orchestrator._get_metadata.assert_not_called()
+    assert queue_states[0] == [False]
+
+
+def test_worker_preflight_transitions_to_processing_in_same_slot(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    source = input_dir / "video.mp4"
+    source.write_bytes(b"a" * 1000)
+    config = _make_config(
+        use_exif=False,
+        copy_metadata=False,
+        min_compression_ratio=0.1,
+        preflight_in_worker=True,
+    )
+    bus = EventBus()
+    started_statuses = []
+    bus.subscribe(JobStarted, lambda event: started_statuses.append(event.job.status))
+    ffprobe = MagicMock()
+    ffprobe.get_stream_info.return_value = {
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "fps": 30.0,
+    }
+    ffmpeg = MagicMock()
+
+    def fake_compress(job, *_args, **_kwargs):
+        job.status = JobStatus.COMPLETED
+        job.output_path.write_bytes(b"b" * 500)
+
+    ffmpeg.compress.side_effect = fake_compress
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=FileScanner([".mp4"], 0),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=ffprobe,
+        ffmpeg_adapter=ffmpeg,
+    )
+    orchestrator._check_and_fix_color_space = MagicMock(
+        return_value=(source, None)
+    )
+    orchestrator._write_vbc_tags = MagicMock()
+
+    orchestrator._process_file(
+        VideoFile(path=source, size_bytes=source.stat().st_size),
+        input_dir,
+    )
+
+    assert started_statuses == [JobStatus.PREFLIGHT, JobStatus.PROCESSING]
+    assert orchestrator._active_threads == 0
+
+
 def test_run_auto_repair_requeues_restored_mkv(monkeypatch, tmp_path):
     input_dir = tmp_path / "input"
     output_dir = tmp_path / "input_out"

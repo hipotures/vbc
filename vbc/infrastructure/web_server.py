@@ -23,6 +23,8 @@ from urllib.parse import parse_qs, urlsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from vbc.domain.models import JobStatus
+
 if TYPE_CHECKING:
     from vbc.ui.state import UIState
 
@@ -59,11 +61,14 @@ def _get_index_html() -> str:
 _SPIN_NORMAL = "●○◉◎"
 _SPIN_ROTATE = "◐◓◑◒"
 _SPIN_CUSTOM = "◍◌"
-def _spinner(filename: str, rotation: int, custom_cq) -> str:
+_SPIN_PREFLIGHT = "◜◠◝◞◡◟"
+def _spinner(filename: str, rotation: int, custom_cq, *, preflight: bool = False) -> str:
     """Return current spinner character for a job — one frame per 2s HTMX poll."""
     frame = int(time.time() / 2)
     h = hash(filename) & 0xFFFFFF
-    if rotation:
+    if preflight:
+        chars = _SPIN_PREFLIGHT
+    elif rotation:
         chars = _SPIN_ROTATE
     elif custom_cq is not None:
         chars = _SPIN_CUSTOM
@@ -430,20 +435,22 @@ def _vm_active_jobs(s: dict) -> dict:
             if job_elapsed > 0:
                 eta_str = _fmt_time((job_elapsed / pct) * (100.0 - pct))
 
+        preflight = getattr(job, "status", None) == JobStatus.PREFLIGHT
         meta_parts = []
-        if dur != "--:--":
+        if not preflight and dur != "--:--":
             meta_parts.append(f"dur {dur}")
-        if fps:
+        if not preflight and fps:
             meta_parts.append(fps)
         meta_parts.append(f"in {size}")
         rotation = getattr(job, "rotation_angle", None) or 0
         custom_cq = getattr(meta, "custom_cq", None) if meta else None
         meta_str = " • ".join(meta_parts)
-        if q:
+        if q and not preflight:
             meta_str += f" → {q}"
         job_items.append({
             "fname":   fname,
-            "spin":    _spinner(fname, rotation, custom_cq),
+            "spin":    _spinner(fname, rotation, custom_cq, preflight=preflight),
+            "preflight": preflight,
             "meta":    meta_str,
             "pct":     pct,
             "eta_str": eta_str,

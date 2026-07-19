@@ -378,6 +378,8 @@ class Orchestrator:
                 return None
             try:
                 return self._hydrate_metadata_request(video_file)
+            except InterruptedError:
+                raise
             except Exception as exc:
                 self._metadata_failed_paths.add(file_path)
                 self._metadata_failure_reasons[file_path] = str(exc)
@@ -1776,7 +1778,10 @@ class Orchestrator:
                 cached = part_info.get(cache_key)
             if cached is not None:
                 return int(cached)
-            decoded_frames = self.ffprobe_adapter.count_video_frames(source_path)
+            decoded_frames = self.ffprobe_adapter.count_video_frames(
+                source_path,
+                shutdown_event=self._shutdown_event,
+            )
             with self._manifest_part_info_lock:
                 part_info[cache_key] = decoded_frames
             return decoded_frames
@@ -2450,17 +2455,33 @@ class Orchestrator:
         if publish:
             self.event_bus.publish(JobFailed(job=failed_job, error_message=message))
 
-    def _process_metadata_request(self, video_file: VideoFile) -> None:
+    def _process_metadata_request(
+        self,
+        video_file: VideoFile,
+        initial_job: Optional[CompressionJob] = None,
+    ) -> None:
         request = video_file.metadata_request
         if request is None:
             return
         filename = video_file.path.name
-        job: Optional[CompressionJob] = None
+        job = initial_job
 
         try:
             if video_file.metadata is None or not request.parts:
                 video_file.metadata = self._get_metadata(video_file)
                 if video_file.metadata is None:
+                    if (
+                        initial_job is not None
+                        and video_file.path not in self._metadata_failure_reasons
+                    ):
+                        initial_job.status = JobStatus.SKIPPED
+                        initial_job.error_message = "Manifest ignored during preflight"
+                        self.event_bus.publish(
+                            JobFailed(
+                                job=initial_job,
+                                error_message=initial_job.error_message,
+                            )
+                        )
                     return
                 request = video_file.metadata_request
                 if request is None:
@@ -2836,6 +2857,12 @@ class Orchestrator:
             self.event_bus.publish(JobCompleted(job=job))
         except InterruptedError:
             self.logger.info("MANIFEST_FRAME_SCAN_INTERRUPTED: %s", filename)
+            if job is not None:
+                job.status = JobStatus.INTERRUPTED
+                job.error_message = "Interrupted by user (Ctrl+C)"
+                self.event_bus.publish(
+                    JobFailed(job=job, error_message=job.error_message)
+                )
             return
         except Exception as exc:
             if job is not None and job.status == JobStatus.INTERRUPTED:
@@ -2870,8 +2897,15 @@ class Orchestrator:
             manifest_path = video_file.metadata_request.manifest_path
             with self._manifest_inflight_lock:
                 self._manifest_inflight.add(manifest_path)
+            preflight_job = None
+            if self.config.general.preflight_in_worker:
+                preflight_job = CompressionJob(
+                    source_file=video_file,
+                    status=JobStatus.PREFLIGHT,
+                )
+                self.event_bus.publish(JobStarted(job=preflight_job))
             try:
-                self._process_metadata_request(video_file)
+                self._process_metadata_request(video_file, initial_job=preflight_job)
             finally:
                 with self._manifest_inflight_lock:
                     self._manifest_inflight.discard(manifest_path)
@@ -2881,6 +2915,12 @@ class Orchestrator:
             return
 
         job = None
+        if self.config.general.preflight_in_worker:
+            job = CompressionJob(
+                source_file=video_file,
+                status=JobStatus.PREFLIGHT,
+            )
+            self.event_bus.publish(JobStarted(job=job))
         err_path = None
         temp_fixed_file = None
         input_path = video_file.path
@@ -2891,9 +2931,14 @@ class Orchestrator:
             if input_dir is None:
                 input_dir = self._find_input_folder(video_file.path)
             if not input_dir:
-                self.logger.error(
-                    f"Cannot determine input folder for {video_file.path}"
-                )
+                err_msg = f"Cannot determine input folder for {video_file.path}"
+                self.logger.error(err_msg)
+                if job is not None:
+                    job.status = JobStatus.FAILED
+                    job.error_message = err_msg
+                    self.event_bus.publish(
+                        JobFailed(job=job, error_message=err_msg)
+                    )
                 return
             output_dir = self._folder_mapping.get(input_dir)
             if output_dir is None:
@@ -3119,8 +3164,8 @@ class Orchestrator:
             )
 
             # 2. Compress
-            self.event_bus.publish(JobStarted(job=job))
             job.status = JobStatus.PROCESSING
+            self.event_bus.publish(JobStarted(job=job))
             self.ffmpeg_adapter.compress(
                 job,
                 job_config,
@@ -3570,11 +3615,13 @@ class Orchestrator:
         # by the bounded metadata window below instead of blocking an empty UI.
         self.event_bus.publish(QueueUpdated(pending_files=[vf for vf in pending]))
 
-        # Pre-load metadata for first 25 files (for queue display)
-        for vf in list(pending)[:25]:
-            if not vf.metadata:
-                vf.metadata = self._get_metadata(vf)
-        self._prune_failed_pending(pending)
+        # Optionally pre-load metadata for the first queue page. Worker-side
+        # preflight deliberately leaves every pending task lightweight.
+        if not self.config.general.preflight_in_worker:
+            for vf in list(pending)[:25]:
+                if not vf.metadata:
+                    vf.metadata = self._get_metadata(vf)
+            self._prune_failed_pending(pending)
 
         # Refresh the first page after its metadata has been resolved.
         self.event_bus.publish(QueueUpdated(pending_files=[vf for vf in pending]))
@@ -3598,11 +3645,13 @@ class Orchestrator:
                     future = executor.submit(self._process_file, vf)
                     in_flight[future] = vf
 
-                # Pre-load metadata for next 25 files in queue (for UI display)
-                for vf in list(pending)[:25]:
-                    if not vf.metadata:
-                        vf.metadata = self._get_metadata(vf)
-                self._prune_failed_pending(pending)
+                # Pre-load metadata for the next UI page unless preflight is
+                # configured to consume worker slots instead.
+                if not self.config.general.preflight_in_worker:
+                    for vf in list(pending)[:25]:
+                        if not vf.metadata:
+                            vf.metadata = self._get_metadata(vf)
+                    self._prune_failed_pending(pending)
 
                 # Update UI with current pending files (store VideoFile objects, not just paths)
                 self.event_bus.publish(

@@ -586,6 +586,7 @@ class ReferenceOverlay:
         spinner_frames = "●○◉◎"
         spinner_rotating = "◐◓◑◒"
         spinner_custom = "◍◌"
+        spinner_preflight = "◜◠◝◞◡◟"
         spinners_table = Table(show_header=False, box=None, padding=(0, 1))
         spinners_table.add_column(width=12)
         spinners_table.add_column()
@@ -601,6 +602,10 @@ class ReferenceOverlay:
         spinners_table.add_row(
             f"[{COLORS['accent_green']}]{' '.join(spinner_custom)}[/]",
             "Custom camera settings"
+        )
+        spinners_table.add_row(
+            f"[{COLORS['accent_orange']}]{' '.join(spinner_preflight)}[/]",
+            "Preflight"
         )
         
         spinners_card = Panel(

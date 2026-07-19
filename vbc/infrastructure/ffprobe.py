@@ -1,7 +1,9 @@
 import subprocess
 import json
+import threading
+import time
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class FFprobeAdapter:
     """Wrapper around ffprobe to extract stream information."""
@@ -324,7 +326,11 @@ class FFprobeAdapter:
             "audio_packets": self._packet_count(audio_stream),
         }
 
-    def count_video_frames(self, file_path: Path) -> int:
+    def count_video_frames(
+        self,
+        file_path: Path,
+        shutdown_event: Optional[threading.Event] = None,
+    ) -> int:
         """Decode-count primary video frames for exceptional duration validation."""
         cmd = [
             "ffprobe",
@@ -336,17 +342,45 @@ class FFprobeAdapter:
             str(file_path),
         ]
         timeout_s = max(30, self._estimate_timeout(file_path) * 4)
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(
-                f"ffprobe frame count timed out after {timeout_s}s for {file_path}"
-            ) from exc
-        if result.returncode != 0:
-            detail = (result.stderr or "").strip() or "unknown error (no stderr)"
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        deadline = time.monotonic() + timeout_s
+        stdout = ""
+        stderr = ""
+        while True:
+            if shutdown_event is not None and shutdown_event.is_set():
+                process.terminate()
+                try:
+                    process.communicate(timeout=1)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate()
+                raise InterruptedError(
+                    f"ffprobe frame count interrupted for {file_path}"
+                )
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                process.kill()
+                process.communicate()
+                raise RuntimeError(
+                    f"ffprobe frame count timed out after {timeout_s}s for {file_path}"
+                )
+            try:
+                stdout, stderr = process.communicate(timeout=min(0.2, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                continue
+
+        if process.returncode != 0:
+            detail = (stderr or "").strip() or "unknown error (no stderr)"
             raise RuntimeError(f"ffprobe frame count failed for {file_path}: {detail}")
 
-        data = json.loads(result.stdout)
+        data = json.loads(stdout)
         streams = data.get("streams", [])
         if not streams:
             return 0

@@ -9,7 +9,7 @@
   {% for j in jobs %}
   <div class="job-row">
     <div class="job-name-row">
-      <span class="job-dot">{{ j.spin }}</span>
+      <span class="job-dot{% if j.preflight %} preflight{% endif %}">{{ j.spin }}</span>
       <span class="job-name vbc-primary">{{ j.fname }}</span>
     </div>
     <small class="job-meta">{{ j.meta }}</small>

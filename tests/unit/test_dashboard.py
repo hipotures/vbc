@@ -83,6 +83,32 @@ def test_dashboard_queue_item_does_not_render_fps():
     assert "25fps" not in rendered
 
 
+def test_dashboard_renders_worker_preflight_as_arc():
+    state = UIState()
+    dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
+    video = VideoFile(
+        path=Path("preflight.mp4"),
+        size_bytes=10 * 1024 * 1024,
+        metadata=VideoMetadata(
+            width=640,
+            height=1280,
+            codec="h264",
+            fps=25.0,
+            duration=120,
+        ),
+    )
+    job = CompressionJob(source_file=video, status=JobStatus.PREFLIGHT)
+    console = Console(record=True, width=120)
+
+    console.print(dashboard._render_active_job(job, "normal"))
+    rendered = console.export_text()
+
+    assert any(frame in rendered for frame in "◜◠◝◞◡◟")
+    assert "in 10.0MB" in rendered
+    assert "25fps" not in rendered
+    assert "02m 00s" not in rendered
+
+
 def test_dashboard_panels_with_state(tmp_path):
     state = UIState()
     state.completed_count = 2
@@ -194,6 +220,16 @@ def test_reference_legend_includes_multiple_outputs_icon():
     rendered = console.export_text()
 
     assert "⇉ Multiple outputs" in rendered
+
+
+def test_reference_legend_includes_preflight_arc():
+    console = Console(width=160, record=True)
+    console.print(render_reference_content())
+
+    rendered = console.export_text()
+
+    assert "◞" in rendered
+    assert "Preflight" in rendered
 
 
 def _gap_before_right_border(line: str) -> int:

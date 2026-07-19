@@ -93,9 +93,10 @@ def submit_batch():
 # Publish lightweight entries before ffprobe fills the first page
 bus.publish(QueueUpdated(pending_files=list(pending)))
 
-# Pre-load metadata for first 25 files (for UI queue display)
-for vf in list(pending)[:25]:
-    vf.metadata = _get_metadata(vf)
+# Pre-load metadata for first 25 files (default queue display mode)
+if not config.general.preflight_in_worker:
+    for vf in list(pending)[:25]:
+        vf.metadata = _get_metadata(vf)
 
 # Publish the resolved first page
 bus.publish(QueueUpdated(pending_files=list(pending)))
@@ -539,15 +540,21 @@ max_inflight = 1 × 4 = 4 jobs
 ### Prefetch Metadata for Queue
 
 ```python
-# Pre-load metadata for next 25 files in queue
-for vf in list(pending)[:25]:
-    if not vf.metadata:
-        vf.metadata = _get_metadata(vf)
+# Pre-load metadata for next 25 files in queue in the default mode
+if not config.general.preflight_in_worker:
+    for vf in list(pending)[:25]:
+        if not vf.metadata:
+            vf.metadata = _get_metadata(vf)
 
 # UI displays camera model without delay
 ```
 
 **Benefit:** Queue panel shows camera info immediately.
+
+When `general.preflight_in_worker` is enabled, both preload windows are skipped.
+The worker publishes a `PREFLIGHT` job after taking a normal concurrency slot,
+performs the same metadata work there, and then changes the job to `PROCESSING`.
+This prevents one unusually slow probe from blocking preparation of the whole queue.
 
 ## Next Steps
 

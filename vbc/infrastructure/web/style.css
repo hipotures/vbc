@@ -251,6 +251,7 @@ progress.bar-job::-moz-progress-bar {
 .job-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
 .job-name-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 5px; flex-wrap: wrap; }
 .job-dot  { color: var(--vbc-ok); font-size: 9px; }
+.job-dot.preflight { color: var(--vbc-warn); }
 .job-name { word-break: break-all; }
 .job-bar-row { display: flex; align-items: center; gap: 8px; padding-left: 15px; }
 .job-bar-row progress { flex: 1; margin: 0; }

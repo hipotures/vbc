@@ -156,10 +156,14 @@ class UIState:
 
     def add_active_job(self, job: CompressionJob):
         with self._lock:
-            if job not in self.active_jobs:
-                self.active_jobs.append(job)
-                # Track start time
-                self.job_start_times[job.source_file.path.name] = datetime.now()
+            identity_path = job.source_file.identity_path
+            for index, active_job in enumerate(self.active_jobs):
+                if active_job.source_file.identity_path == identity_path:
+                    self.active_jobs[index] = job
+                    return
+            self.active_jobs.append(job)
+            # Track start time
+            self.job_start_times[job.source_file.path.name] = datetime.now()
 
     def remove_active_job(self, job: CompressionJob):
         with self._lock:

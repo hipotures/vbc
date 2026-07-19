@@ -425,18 +425,25 @@ class Dashboard:
         spinner_frames = "●○◉◎"
         spinner_rotating = "◐◓◑◒"
         spinner_custom = "◍◌"  # toggle8
+        spinner_preflight = "◜◠◝◞◡◟"
         
         # Decide which spinner set to use
         is_custom = False
         if job.source_file.metadata and job.source_file.metadata.custom_cq is not None:
             is_custom = True
 
-        if (job.rotation_angle or 0) > 0:
+        if job.status == JobStatus.PREFLIGHT:
+            use_spinner = spinner_preflight
+            spinner_style = "yellow"
+        elif (job.rotation_angle or 0) > 0:
             use_spinner = spinner_rotating
+            spinner_style = "green"
         elif is_custom:
             use_spinner = spinner_custom
+            spinner_style = "green"
         else:
             use_spinner = spinner_frames
+            spinner_style = "green"
 
         # Metadata
         meta = job.source_file.metadata
@@ -471,8 +478,11 @@ class Dashboard:
         spinner = use_spinner[(self._spinner_frame + hash(filename)) % len(use_spinner)]
 
         safe_filename = safe_markup(filename)
-        name_line = f"[green]{spinner}[/] {safe_filename}"
-        meta_text = f"dur {dur} • {fps} • in {size}{self._active_quality_meta_suffix(job)}"
+        name_line = f"[{spinner_style}]{spinner}[/] {safe_filename}"
+        if job.status == JobStatus.PREFLIGHT:
+            meta_text = f"in {size}"
+        else:
+            meta_text = f"dur {dur} • {fps} • in {size}{self._active_quality_meta_suffix(job)}"
         safe_meta_text = safe_markup(meta_text)
 
         # Calculate widths for layout decision
@@ -508,7 +518,7 @@ class Dashboard:
             bar = ProgressBar(total=100, completed=int(pct), width=bar_available)
             l1_grid = Table.grid(padding=(0, 1))
             l1_grid.add_row(
-                f"[green]{spinner}[/] {safe_filename}",
+                f"[{spinner_style}]{spinner}[/] {safe_filename}",
                 f"[dim]{safe_meta_text}[/]",
                 bar,
                 pct_text,
@@ -530,7 +540,7 @@ class Dashboard:
                 l1_grid.add_column(ratio=1)  # Name (flex)
                 l1_grid.add_column(justify="right")  # Meta (right-aligned)
                 l1_grid.add_row(
-                    f"[green]{spinner}[/] {safe_markup(filename_2line)}",
+                    f"[{spinner_style}]{spinner}[/] {safe_markup(filename_2line)}",
                     f"[dim]{safe_meta_text}[/]"
                 )
 
@@ -1483,7 +1493,7 @@ class Dashboard:
     def _refresh_loop(self):
         while not self._stop_refresh.is_set():
             if self._live:
-                self._spinner_frame = (self._spinner_frame + 1) % 5
+                self._spinner_frame = (self._spinner_frame + 1) % 60
                 try:
                     display = self.create_display()
                     with self._ui_lock:

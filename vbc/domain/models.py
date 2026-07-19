@@ -16,6 +16,7 @@ class JobStatus(str, Enum):
 
     Attributes:
         PENDING: Waiting to be processed.
+        PREFLIGHT: Metadata is being prepared inside an active worker slot.
         PROCESSING: Currently being compressed.
         COMPLETED: Successfully compressed.
         SKIPPED: Skipped due to filter (e.g., already AV1, below min size).
@@ -25,6 +26,7 @@ class JobStatus(str, Enum):
     """
 
     PENDING = "PENDING"
+    PREFLIGHT = "PREFLIGHT"
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
     SKIPPED = "SKIPPED"

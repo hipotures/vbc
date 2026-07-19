@@ -208,6 +208,7 @@ class GeneralConfig(BaseModel):
     Attributes:
         threads: Max concurrent compression jobs (default 1, min 1).
         prefetch_factor: Submit-on-demand multiplier (jobs = threads * prefetch_factor).
+        preflight_in_worker: Run metadata preflight inside an active worker slot.
         gpu: Use GPU (NVENC) instead of CPU (SVT-AV1) encoder.
         gpu_refresh_rate: [DEPRECATED] Use gpu_config.sample_interval_s.
         queue_sort: Queue sorting mode (name, rand, dir, size-asc, size-desc, ext).
@@ -237,6 +238,7 @@ class GeneralConfig(BaseModel):
 
     threads: int = Field(default=1, gt=0)
     prefetch_factor: int = Field(default=1, ge=1)
+    preflight_in_worker: bool = False
     gpu: bool = True
     gpu_refresh_rate: int = Field(default=5, ge=1)
     queue_sort: str = Field(default="name")

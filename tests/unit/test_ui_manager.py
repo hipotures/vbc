@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 from vbc.infrastructure.event_bus import EventBus
@@ -57,6 +58,22 @@ def test_ui_manager_updates_state_on_event(tmp_path):
     assert len(state.active_jobs) == 0
     assert state.completed_count == 1
     assert state.total_output_bytes == 100
+
+
+def test_ui_manager_replaces_preflight_with_processing_job():
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+    video = VideoFile(path=Path("worker.mp4"), size_bytes=1000)
+    preflight = CompressionJob(source_file=video, status=JobStatus.PREFLIGHT)
+
+    bus.publish(JobStarted(job=preflight))
+    state.job_start_times[video.path.name] = datetime(2000, 1, 1)
+    processing = CompressionJob(source_file=video, status=JobStatus.PROCESSING)
+    bus.publish(JobStarted(job=processing))
+
+    assert state.active_jobs == [processing]
+    assert state.job_start_times[video.path.name] > datetime(2000, 1, 1)
 
 
 def test_ui_manager_discovery_and_controls():
