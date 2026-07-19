@@ -482,7 +482,7 @@ only after atomic output finalization and successful ffprobe/VBC-tag verificatio
 - **Default**: 1048576 (1 MiB)
 - **Description**: Minimum input file size to process
 - **Use case**: Skip corrupted/incomplete files
-- **Manifest behavior**: Compared with the sum of effective video-part sizes after audio-only filtering
+- **Manifest behavior**: Compared with the sum of effective video-part sizes after audio-only filtering. A smaller request creates no video, keeps every source, and moves its JSON to `_out` as a completed ignored task.
 
 ### Metadata
 

@@ -354,7 +354,8 @@ while compatible resolutions inside one group are normalized to its largest fram
 This keeps the UI populated while ffprobe resolves the visible and near-future queue
 entries. One cached probe per unchanged part returns stream facts, packet counts, and
 packet-timeline duration, so queue refreshes and output validation do not rescan source
-video.
+video. A request below `min_size_bytes` is a terminal ignored task: VBC creates no output,
+keeps all source parts, and moves the unchanged manifest to `_out`.
 
 FFmpeg transcodes each group's effective parts sequentially into complete MP4 containers
 whose filenames remain `*.tmp`, then uses the concat demuxer to stream-copy them into the

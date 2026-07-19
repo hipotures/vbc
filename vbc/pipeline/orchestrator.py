@@ -1614,6 +1614,7 @@ class Orchestrator:
                 total_size,
                 self.file_scanner.min_size_bytes,
             )
+            self._route_manifest_success(request)
             return None
 
         first_part = parts[0]
@@ -1733,10 +1734,6 @@ class Orchestrator:
                     if not source_path.is_file():
                         raise FileNotFoundError(f"Missing manifest input: {source_path}")
                     total_size += source_path.stat().st_size
-                if total_size < self.file_scanner.min_size_bytes:
-                    stats["ignored_small"] += 1
-                    stats["files_found"] -= 1
-                    continue
                 request = MetadataRequest(
                     manifest_path=manifest_path,
                     metadata_dir=input_dir,
@@ -1751,6 +1748,17 @@ class Orchestrator:
                     target_width=1,
                     target_height=1,
                 )
+                if total_size < self.file_scanner.min_size_bytes:
+                    stats["ignored_small"] += 1
+                    stats["files_found"] -= 1
+                    self.logger.info(
+                        "MANIFEST_IGNORED_SMALL: json=%s size_bytes=%s minimum=%s",
+                        manifest_path,
+                        total_size,
+                        self.file_scanner.min_size_bytes,
+                    )
+                    self._route_manifest_success(request)
+                    continue
                 self.logger.info(
                     "MANIFEST_QUEUED: json=%s output=%s parts=%s size_bytes=%s",
                     manifest_path,

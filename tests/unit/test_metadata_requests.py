@@ -225,9 +225,9 @@ def test_metadata_preflight_partitions_consecutive_orientation_groups(tmp_path):
     ]
 
 
-def test_metadata_min_size_uses_effective_aggregate_and_leaves_manifest(tmp_path):
+def test_metadata_min_size_completes_manifest_without_deleting_sources(tmp_path):
     ffprobe = MagicMock()
-    orchestrator, metadata_dir, _, error_dir = _orchestrator(
+    orchestrator, metadata_dir, output_dir, error_dir = _orchestrator(
         tmp_path,
         ffprobe,
         min_size=250,
@@ -246,7 +246,56 @@ def test_metadata_min_size_uses_effective_aggregate_and_leaves_manifest(tmp_path
 
     assert files == []
     assert stats["ignored_small"] == 1
-    assert manifest_path.exists()
+    assert not manifest_path.exists()
+    assert (output_dir / "request.json").exists()
+    assert part1.exists()
+    assert part2.exists()
+    assert not error_dir.exists()
+    ffprobe.get_part_info.assert_not_called()
+
+
+def test_metadata_effective_min_size_completes_after_ignoring_audio_only(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, error_dir = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={"audio_only": "ignore"},
+        min_size=250,
+    )
+    video = tmp_path / "part001.mp4"
+    audio = tmp_path / "part002.mp4"
+    video.write_bytes(b"v" * 200)
+    audio.write_bytes(b"a" * 100)
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(
+            _manifest(
+                [video, audio],
+                tmp_path / "recording.mp4",
+                source_policy="delete_after_success",
+            )
+        )
+    )
+    ffprobe.get_part_info.side_effect = [
+        _part_info(),
+        {
+            **_part_info(video_packets=0, audio_packets=5),
+            "has_video_stream": False,
+            "width": 0,
+            "height": 0,
+        },
+    ]
+
+    files, stats = orchestrator._perform_discovery(metadata_dir)
+
+    assert len(files) == 1
+    assert stats["ignored_small"] == 0
+    assert orchestrator._get_metadata(files[0]) is None
+    assert not manifest_path.exists()
+    assert (output_dir / "request.json").exists()
+    assert video.exists()
+    assert audio.exists()
+    assert not (tmp_path / "recording.mp4").exists()
     assert not error_dir.exists()
 
 
