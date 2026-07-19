@@ -1248,12 +1248,10 @@ class Orchestrator:
 
         if expected_video_frames is not None:
             try:
-                actual_video_frames = self.ffprobe_adapter.get_video_frame_count(
-                    output_path,
-                    shutdown_event=self._shutdown_event,
-                )
-            except InterruptedError:
-                raise
+                # VBC's encoded MP4 has one video packet per output frame. Counting
+                # packets verifies the muxed result without decoding the whole file.
+                output_info = self.ffprobe_adapter.get_part_info(output_path)
+                actual_video_frames = int(output_info.get("video_packets") or 0)
             except Exception as exc:
                 return False, f"ffprobe frame-count check failed: {exc}"
             dropped_frames = expected_video_frames - actual_video_frames
@@ -1944,14 +1942,6 @@ class Orchestrator:
                     )
                     return
 
-            expected_video_frames = sum(
-                self.ffprobe_adapter.get_video_frame_count(
-                    part.path,
-                    shutdown_event=self._shutdown_event,
-                )
-                for part in request.parts
-            )
-
             if output_path.exists():
                 backup_path = self._next_backup_path(output_path)
                 output_path.rename(backup_path)
@@ -2089,6 +2079,20 @@ class Orchestrator:
                     publish=False,
                 )
                 return
+
+            expected_video_frames = job.expected_video_frames
+            if expected_video_frames is None:
+                self.logger.warning(
+                    "FFMPEG_FRAME_COUNT_FALLBACK: %s",
+                    filename,
+                )
+                expected_video_frames = sum(
+                    self.ffprobe_adapter.get_video_frame_count(
+                        part.path,
+                        shutdown_event=self._shutdown_event,
+                    )
+                    for part in request.parts
+                )
 
             verify_ok, verify_error = self._verify_output_file(
                 job.output_path,

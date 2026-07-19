@@ -574,6 +574,8 @@ class FFmpegAdapter:
 
         total_duration = sum(part.duration for part in request.parts)
         completed_duration = 0.0
+        expected_video_frames = 0
+        frame_count_known = True
         try:
             for index, (part, segment_path) in enumerate(
                 zip(request.parts, segment_paths, strict=True),
@@ -620,6 +622,10 @@ class FFmpegAdapter:
                     job.status = part_job.status
                     job.error_message = part_job.error_message
                     return
+                if part_job.expected_video_frames is None:
+                    frame_count_known = False
+                else:
+                    expected_video_frames += part_job.expected_video_frames
                 completed_duration += part.duration
 
             concat_cmd, concat_text = self._build_concat_copy_command(
@@ -665,6 +671,9 @@ class FFmpegAdapter:
                 return
 
             job.status = JobStatus.COMPLETED
+            job.expected_video_frames = (
+                expected_video_frames if frame_count_known else None
+            )
             self.event_bus.publish(
                 JobProgressUpdated(job=job, progress_percent=100.0)
             )
@@ -713,6 +722,7 @@ class FFmpegAdapter:
             - Cleans up .tmp file on error/interruption
         """
         filename = job.source_file.path.name
+        job.expected_video_frames = None
         start_time = time.monotonic() if config.general.debug else None
 
         request = job.source_file.metadata_request
@@ -797,6 +807,12 @@ class FFmpegAdapter:
         
         # Regex to parse 'time=00:00:00.00' from ffmpeg output
         time_regex = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
+        frame_regex = re.compile(r"frame=\s*(\d+)")
+        dup_regex = re.compile(r"dup=\s*(\d+)")
+        drop_regex = re.compile(r"drop=\s*(\d+)")
+        reported_frames: Optional[int] = None
+        reported_duplicates = 0
+        reported_drops = 0
         hw_cap_error = False
         gpu_unavailable_error = False
         gpu_unavailable_detail: Optional[str] = None
@@ -882,6 +898,16 @@ class FFmpegAdapter:
                     if total_duration > 0:
                         progress_percent = min(100.0, (current_seconds / total_duration) * 100.0)
                         self.event_bus.publish(JobProgressUpdated(job=job, progress_percent=progress_percent))
+
+                frame_match = frame_regex.search(line)
+                if frame_match:
+                    reported_frames = int(frame_match.group(1))
+                dup_match = dup_regex.search(line)
+                if dup_match:
+                    reported_duplicates = int(dup_match.group(1))
+                drop_match = drop_regex.search(line)
+                if drop_match:
+                    reported_drops = int(drop_match.group(1))
 
             process.wait()
         except KeyboardInterrupt:
@@ -981,6 +1007,20 @@ class FFmpegAdapter:
                     )
                 return
             job.status = JobStatus.COMPLETED
+            if reported_frames is not None:
+                job.expected_video_frames = max(
+                    0,
+                    reported_frames + reported_drops - reported_duplicates,
+                )
+                if config.general.debug:
+                    self.logger.info(
+                        "FFMPEG_FRAME_COUNT: %s encoded=%s dup=%s drop=%s expected=%s",
+                        filename,
+                        reported_frames,
+                        reported_duplicates,
+                        reported_drops,
+                        job.expected_video_frames,
+                    )
             if config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
                 self.logger.info(f"FFMPEG_END: {filename} status=completed elapsed={elapsed:.2f}s")

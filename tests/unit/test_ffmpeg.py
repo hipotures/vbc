@@ -198,7 +198,10 @@ def test_ffmpeg_compress_success(tmp_path):
     
     with patch("subprocess.Popen") as mock_popen:
         process_instance = mock_popen.return_value
-        process_instance.stdout = ["frame= 100 fps=10.0 q=45.0 Lsize= 100kB time=00:00:05.00 bitrate= 100.0kbits/s speed=1.0x"]
+        process_instance.stdout = [
+            "frame= 100 fps=10.0 q=45.0 Lsize=100kB "
+            "time=00:00:05.00 dup=3 drop=5 speed=1.0x"
+        ]
         process_instance.wait.return_value = 0
         process_instance.returncode = 0
         
@@ -209,6 +212,7 @@ def test_ffmpeg_compress_success(tmp_path):
         assert mock_popen.called
         assert job.output_path.exists()
         assert not tmp_output.exists()
+        assert job.expected_video_frames == 102
 
 
 def test_ffmpeg_compress_missing_tmp_marks_failed(tmp_path):

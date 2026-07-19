@@ -235,6 +235,8 @@ class CompressionJob(BaseModel):
         config_source: Configuration source (GLOBAL, LOCAL, or CLI).
         verification_passed: Output verification result for completed jobs.
         verification_error: Verification error details when verification fails.
+        expected_video_frames: Decoded source frames reported by FFmpeg, adjusted
+            for any duplicated or dropped frames.
     """
 
     source_file: VideoFile
@@ -250,3 +252,4 @@ class CompressionJob(BaseModel):
     config_source: ConfigSource = ConfigSource.GLOBAL
     verification_passed: bool = False
     verification_error: Optional[str] = None
+    expected_video_frames: Optional[int] = None

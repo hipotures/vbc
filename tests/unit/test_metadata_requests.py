@@ -463,6 +463,7 @@ def test_staged_multipart_cleans_segments_and_finalizes_output(tmp_path):
         encoded_outputs.append(part_job.output_path)
         part_job.output_path.write_bytes(b"segment")
         part_job.status = JobStatus.COMPLETED
+        part_job.expected_video_frames = 250
 
     def fake_concat(cmd, concat_text, _shutdown_event):
         assert ".vbc-part001.tmp" in concat_text
@@ -487,6 +488,7 @@ def test_staged_multipart_cleans_segments_and_finalizes_output(tmp_path):
     assert encoded_parts == [part.path for part in parts]
     assert all(path.suffix == ".tmp" for path in encoded_outputs)
     assert job.status == JobStatus.COMPLETED
+    assert job.expected_video_frames == 500
     assert job.output_path.read_bytes() == b"joined"
     assert existing_mp4.read_bytes() == b"must-not-delete"
     assert not list(tmp_path.glob("*.vbc-part*.tmp"))
@@ -577,7 +579,7 @@ def test_metadata_verification_rejects_dropped_video_frames(tmp_path):
     output = tmp_path / "recording.mp4"
     output.write_bytes(b"encoded")
     ffprobe.get_stream_info.return_value = {}
-    ffprobe.get_video_frame_count.return_value = 5
+    ffprobe.get_part_info.return_value = {"video_packets": 5}
     orchestrator.exif_adapter.extract_tags.return_value = {
         "XMP:VBCOriginalName": "part001.mp4",
         "XMP:VBCOriginalSize": "100",
@@ -602,7 +604,7 @@ def test_metadata_verification_accepts_configured_frame_loss(tmp_path, caplog):
     output = tmp_path / "recording.mp4"
     output.write_bytes(b"encoded")
     ffprobe.get_stream_info.return_value = {}
-    ffprobe.get_video_frame_count.return_value = 9
+    ffprobe.get_part_info.return_value = {"video_packets": 9}
     orchestrator.exif_adapter.extract_tags.return_value = {
         "XMP:VBCOriginalName": "part001.mp4",
         "XMP:VBCOriginalSize": "100",
@@ -629,7 +631,7 @@ def test_metadata_verification_never_accepts_extra_video_frames(tmp_path):
     output = tmp_path / "recording.mp4"
     output.write_bytes(b"encoded")
     ffprobe.get_stream_info.return_value = {}
-    ffprobe.get_video_frame_count.return_value = 11
+    ffprobe.get_part_info.return_value = {"video_packets": 11}
 
     verified, error = orchestrator._verify_output_file(
         output,
@@ -700,11 +702,11 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
         assert kwargs["quality"] == 27
         job.output_path.write_bytes(b"encoded")
         job.status = JobStatus.COMPLETED
+        job.expected_video_frames = 23
 
     orchestrator.ffmpeg_adapter.compress.side_effect = compress
     orchestrator._write_vbc_tags = MagicMock()
     orchestrator._verify_output_file = MagicMock(return_value=(True, None))
-    ffprobe.get_video_frame_count.return_value = 23
 
     orchestrator._process_metadata_request(video)
 
@@ -717,10 +719,7 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
         ),
         call(output),
     ]
-    ffprobe.get_video_frame_count.assert_called_once_with(
-        part,
-        shutdown_event=orchestrator._shutdown_event,
-    )
+    ffprobe.get_video_frame_count.assert_not_called()
     assert output.exists()
     assert not part.exists()
     assert not ignored.exists()
