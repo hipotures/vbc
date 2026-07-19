@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -213,6 +214,33 @@ def test_ffmpeg_compress_success(tmp_path):
         assert job.output_path.exists()
         assert not tmp_output.exists()
         assert job.expected_video_frames == 102
+
+
+def test_ffmpeg_waits_for_final_frame_line_after_process_exit(tmp_path):
+    class DelayedStdout:
+        def __iter__(self):
+            time.sleep(0.15)
+            yield "frame= 42 time=00:00:02.00 dup=0 drop=0\n"
+
+    config = AppConfig(general=GeneralConfig(threads=1, gpu=True))
+    vf = VideoFile(path=tmp_path / "input.mp4", size_bytes=1000)
+    job = CompressionJob(source_file=vf, output_path=tmp_path / "output.mp4")
+    job.output_path.with_suffix(".tmp").write_bytes(b"tmp")
+    process_instance = MagicMock()
+    process_instance.stdout = DelayedStdout()
+    process_instance.poll.return_value = 0
+    process_instance.wait.return_value = 0
+    process_instance.returncode = 0
+
+    with patch("subprocess.Popen", return_value=process_instance):
+        FFmpegAdapter(event_bus=MagicMock()).compress(
+            job,
+            config,
+            use_gpu=True,
+        )
+
+    assert job.status == JobStatus.COMPLETED
+    assert job.expected_video_frames == 42
 
 
 def test_ffmpeg_compress_missing_tmp_marks_failed(tmp_path):

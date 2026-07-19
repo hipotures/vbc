@@ -829,12 +829,16 @@ class FFmpegAdapter:
         output_queue: "queue.Queue[Optional[str]]" = queue.Queue()
 
         def _reader():
-            if not process.stdout:
+            try:
+                if not process.stdout:
+                    return
+                for line in process.stdout:
+                    output_queue.put(line)
+            finally:
+                # The process may exit before this thread drains the final
+                # FFmpeg statistics line. The consumer must wait for this EOF
+                # marker instead of treating process.poll() as drained output.
                 output_queue.put(None)
-                return
-            for line in process.stdout:
-                output_queue.put(line)
-            output_queue.put(None)
 
         reader_thread = threading.Thread(target=_reader, daemon=True)
         reader_thread.start()
@@ -864,8 +868,6 @@ class FFmpegAdapter:
                 try:
                     line = output_queue.get(timeout=0.1)
                 except queue.Empty:
-                    if process.poll() is not None:
-                        break
                     continue
 
                 if line is None:
