@@ -33,11 +33,15 @@ class FileScanner:
                 
                 # Check size
                 try:
-                    file_size = file_path.stat().st_size
-                    if file_size < self.min_size_bytes:
+                    file_stat = file_path.stat()
+                    if file_stat.st_size < self.min_size_bytes:
                         continue
                         
-                    yield VideoFile(path=file_path, size_bytes=file_size)
+                    yield VideoFile(
+                        path=file_path,
+                        size_bytes=file_stat.st_size,
+                        source_mtime_ns=file_stat.st_mtime_ns,
+                    )
                 except OSError:
                     # Skip files we can't access
                     continue

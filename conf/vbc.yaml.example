@@ -11,17 +11,23 @@ input_dirs:
     enabled: true
     # false = scan video files (default).
     metadata: false
+    # inotify watching is available only for metadata directories.
+    watch: false
     # null = do not refresh this directory while idle (default).
     idle_interval: null
   - path: /path/to/metadata
     enabled: true
     # true = scan manifest *.json files, which act as proxies for video inputs.
     metadata: true
-    # Refresh this directory every 60 seconds while VBC is idle.
-    idle_interval: 60
+    # Watch completed *.json files with Linux inotify. Events are debounced for
+    # one second and trigger the same full refresh as the R key.
+    watch: true
+    # Optional polling fallback while idle. Normally unnecessary with watch=true.
+    idle_interval: null
   - path: /disabled/path
     enabled: false
     metadata: false
+    watch: false
     idle_interval: null
 
 # Explicit output directories (one per enabled input directory, in order).
@@ -96,7 +102,9 @@ general:
   # GPU polling interval in updates per second (legacy, see gpu_config).
   gpu_refresh_rate: 5
 
-  # Processing order: name, rand, dir, size, size-asc, size-desc, ext.
+  # Processing order: name, rand, dir, size, size-asc, size-desc, ext,
+  # or source-mtime-desc. The latter uses producer.source_latest_mtime_ns for
+  # manifests and the video file mtime for regular inputs (never JSON mtime).
   queue_sort: "name"
 
   # Optional seed for deterministic random queue sorting.

@@ -23,6 +23,16 @@ def sort_files(
     if mode == "size-desc":
         return sorted(files, key=lambda vf: (-vf.size_bytes, vf.path.name, str(vf.path)))
 
+    if mode == "source-mtime-desc":
+        return sorted(
+            files,
+            key=lambda vf: (
+                -vf.source_mtime_ns,
+                vf.path.name,
+                str(vf.identity_path),
+            ),
+        )
+
     if mode == "ext":
         if not extensions:
             raise ValueError("queue_sort 'ext' requires a non-empty extensions list.")

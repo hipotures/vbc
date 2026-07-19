@@ -9,7 +9,8 @@ def _validate_input_dirs_schema(data: Dict[str, Any]) -> None:
     if "disabled_input_dirs" in data:
         raise ValueError(
             "Legacy key 'disabled_input_dirs' is no longer supported. "
-            "Use input_dirs entries with {path, enabled, metadata?, idle_interval?}."
+            "Use input_dirs entries with "
+            "{path, enabled, metadata?, watch?, idle_interval?}."
         )
 
     raw_input_dirs = data.get("input_dirs")
@@ -25,7 +26,7 @@ def _validate_input_dirs_schema(data: Dict[str, Any]) -> None:
     if any(not isinstance(entry, dict) for entry in raw_input_dirs):
         raise ValueError(
             "input_dirs entries must be objects with keys: "
-            "path, enabled, metadata?, idle_interval?."
+            "path, enabled, metadata?, watch?, idle_interval?."
         )
 
 

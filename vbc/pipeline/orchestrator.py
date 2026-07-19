@@ -88,6 +88,7 @@ _REQUIRED_VBC_VERIFY_TAGS = {
     "vbcencoder",
     "vbcfinishedat",
 }
+_MANIFEST_SETTLE_SECONDS = 1.0
 
 
 class VerificationAbortError(RuntimeError):
@@ -562,7 +563,11 @@ class Orchestrator:
             stat = path.stat()
         except OSError:
             return None
-        return VideoFile(path=path, size_bytes=stat.st_size)
+        return VideoFile(
+            path=path,
+            size_bytes=stat.st_size,
+            source_mtime_ns=stat.st_mtime_ns,
+        )
 
     def _run_auto_repair(self, input_dirs: List[Path]) -> List[Path]:
         if not self.config.general.auto_repair_errors:
@@ -1593,6 +1598,7 @@ class Orchestrator:
         return VideoFile(
             path=video_file.path,
             size_bytes=sum(part.path.stat().st_size for part in parts),
+            source_mtime_ns=video_file.source_mtime_ns,
             metadata=group_metadata,
             metadata_request=group_request,
         )
@@ -1981,6 +1987,39 @@ class Orchestrator:
         )
         return metadata
 
+    def _wait_for_manifest_settle(self, manifest_path: Path) -> None:
+        """Wait until a newly visible manifest has been unchanged for one second."""
+        try:
+            file_stat = manifest_path.stat()
+        except OSError:
+            return
+
+        signature = (file_stat.st_size, file_stat.st_mtime_ns)
+        age_seconds = (time.time_ns() - file_stat.st_mtime_ns) / 1_000_000_000
+        initial_wait = (
+            _MANIFEST_SETTLE_SECONDS
+            if age_seconds < 0
+            else max(0.0, _MANIFEST_SETTLE_SECONDS - age_seconds)
+        )
+        if initial_wait <= 0:
+            return
+
+        deadline = time.monotonic() + initial_wait
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            if self._shutdown_event.wait(min(0.1, remaining)):
+                raise InterruptedError("Manifest settling interrupted by shutdown")
+            try:
+                current_stat = manifest_path.stat()
+            except OSError:
+                return
+            current_signature = (current_stat.st_size, current_stat.st_mtime_ns)
+            if current_signature != signature:
+                signature = current_signature
+                deadline = time.monotonic() + _MANIFEST_SETTLE_SECONDS
+
     def _discover_metadata_dir(
         self,
         input_dir: Path,
@@ -2010,9 +2049,15 @@ class Orchestrator:
                     continue
             stats["files_found"] += 1
             try:
-                manifest = CompressionManifest.model_validate_json(
-                    manifest_path.read_text()
-                )
+                try:
+                    manifest = CompressionManifest.model_validate_json(
+                        manifest_path.read_text()
+                    )
+                except Exception:
+                    self._wait_for_manifest_settle(manifest_path)
+                    manifest = CompressionManifest.model_validate_json(
+                        manifest_path.read_text()
+                    )
                 self.logger.info(
                     "MANIFEST_LOADED: json=%s request_id=%s producer=%s username=%s "
                     "recording_id=%s declared_size_bytes=%s declared_latest_mtime_ns=%s",
@@ -2096,10 +2141,13 @@ class Orchestrator:
                     VideoFile(
                         path=output_path,
                         size_bytes=total_size,
+                        source_mtime_ns=manifest.producer.source_latest_mtime_ns,
                         metadata=None,
                         metadata_request=request,
                     )
                 )
+            except InterruptedError:
+                raise
             except Exception as exc:
                 message = str(exc) or exc.__class__.__name__
                 manifest_routed = False
@@ -2285,7 +2333,11 @@ class Orchestrator:
 
                     # AV1 check is done during processing, not discovery
                     folder_files_to_process.append(
-                        VideoFile(path=fpath, size_bytes=file_stat.st_size)
+                        VideoFile(
+                            path=fpath,
+                            size_bytes=file_stat.st_size,
+                            source_mtime_ns=file_stat.st_mtime_ns,
+                        )
                     )
 
             # Aggregate stats
@@ -3484,6 +3536,13 @@ class Orchestrator:
                 self._wait_event.clear()
                 continue
 
+            with self._refresh_lock:
+                refresh_before_wait = self._refresh_requested
+                if refresh_before_wait:
+                    self._refresh_requested = False
+            if refresh_before_wait:
+                continue
+
             if not self.config.general.wait_on_finish:
                 break
             if self._shutdown_requested or self._shutdown_event.is_set():
@@ -3501,6 +3560,12 @@ class Orchestrator:
             # Block until R (restart) or S/Ctrl+C (exit)
             self._wait_event.clear()
             self._restart_after_wait = False
+            with self._refresh_lock:
+                refresh_already_pending = self._refresh_requested
+                if refresh_already_pending:
+                    self._refresh_requested = False
+            if refresh_already_pending:
+                continue
             now = time.monotonic()
             active_paths = set(input_dirs)
             idle_intervals = {

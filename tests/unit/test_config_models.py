@@ -67,6 +67,7 @@ def test_input_dirs_accepts_object_format():
                 "path": "/tmp/in_a",
                 "enabled": True,
                 "metadata": True,
+                "watch": True,
                 "idle_interval": 60,
             },
             {"path": "/tmp/in_b", "enabled": False},
@@ -75,10 +76,20 @@ def test_input_dirs_accepts_object_format():
     assert config.input_dirs[0].path == "/tmp/in_a"
     assert config.input_dirs[0].enabled is True
     assert config.input_dirs[0].metadata is True
+    assert config.input_dirs[0].watch is True
     assert config.input_dirs[0].idle_interval == 60
     assert config.input_dirs[1].enabled is False
     assert config.input_dirs[1].metadata is False
+    assert config.input_dirs[1].watch is False
     assert config.input_dirs[1].idle_interval is None
+
+
+def test_input_dirs_watch_requires_metadata_mode():
+    with pytest.raises(ValidationError, match="watch requires metadata"):
+        AppConfig(
+            general=GeneralConfig(threads=1, extensions=[".mp4"]),
+            input_dirs=[{"path": "/tmp/in_a", "watch": True}],
+        )
 
 
 def test_input_dirs_rejects_non_positive_idle_interval():
@@ -188,6 +199,15 @@ def test_suffix_missing_without_errors_dirs():
 def test_queue_sort_alias_size():
     gen = GeneralConfig(threads=1, extensions=[".mp4"], queue_sort="size")
     assert gen.queue_sort == "size-asc"
+
+
+def test_queue_sort_accepts_source_mtime_desc():
+    gen = GeneralConfig(
+        threads=1,
+        extensions=[".mp4"],
+        queue_sort="source-mtime-desc",
+    )
+    assert gen.queue_sort == "source-mtime-desc"
 
 
 def test_queue_sort_invalid_mode():
@@ -393,6 +413,7 @@ input_dirs:
     enabled: true
     metadata: true
     idle_interval: 60
+    watch: true
 """
     )
     from vbc.config.loader import save_dirs_config
@@ -406,5 +427,6 @@ input_dirs:
             "enabled": False,
             "metadata": True,
             "idle_interval": 60,
+            "watch": True,
         }
     ]

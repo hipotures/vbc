@@ -152,3 +152,46 @@ def test_idle_interval_rescans_configured_dir_only_in_wait_mode(monkeypatch, tmp
 
     assert run_calls == [[input_dir], [input_dir]]
     orchestrator._wait_event.wait.assert_called_once()
+
+
+def test_refresh_arriving_before_waiting_is_not_lost(tmp_path):
+    input_dir = tmp_path / "metadata"
+    input_dir.mkdir()
+    config = AppConfig(
+        general=GeneralConfig(threads=1, wait_on_finish=True),
+        input_dirs=[
+            {
+                "path": str(input_dir),
+                "enabled": True,
+                "metadata": True,
+                "watch": True,
+            }
+        ],
+    )
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=MagicMock(),
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+    run_calls = []
+
+    def fake_run_once(run_dirs, forced_files=None):
+        run_calls.append(list(run_dirs))
+        if len(run_calls) == 1:
+            with orchestrator._refresh_lock:
+                orchestrator._refresh_requested = True
+        else:
+            orchestrator._shutdown_requested = True
+        return False
+
+    orchestrator._run_once = fake_run_once
+    orchestrator._run_auto_repair = MagicMock(return_value=[])
+    orchestrator._wait_event = MagicMock()
+
+    orchestrator.run([input_dir])
+
+    assert run_calls == [[input_dir], [input_dir]]
+    orchestrator._wait_event.wait.assert_not_called()

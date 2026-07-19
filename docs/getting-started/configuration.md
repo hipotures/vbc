@@ -47,7 +47,7 @@ general:
   prefetch_factor: 1            # Submit-on-demand multiplier (>=1)
   preflight_in_worker: false    # Run metadata preparation in active worker slots
   gpu: true                     # Use GPU (NVENC) vs CPU (SVT-AV1)
-  queue_sort: name              # Queue order: name, rand, dir, size, size-asc, size-desc, ext
+  queue_sort: name              # Also supports source-mtime-desc (newest source first)
   queue_seed: null              # Optional seed for deterministic rand order
   log_path: /tmp/vbc/compression.log  # Log file location
   cpu_fallback: false           # Retry on CPU if NVENC hits HW cap error
@@ -205,11 +205,15 @@ autorotate:
 - **Type**: String
 - **Default**: `name`
 - **Description**: Processing order for files in the queue
-- **Values**: `name`, `rand`, `dir`, `size`, `size-asc`, `size-desc`, `ext`
+- **Values**: `name`, `rand`, `dir`, `size`, `size-asc`, `size-desc`, `ext`, `source-mtime-desc`
 - **Notes**:
   - `size` is an alias for `size-asc`
   - `rand` can be made deterministic with `queue_seed`
   - `ext` uses the order of `extensions` and requires a non-empty list
+  - `source-mtime-desc` places the newest source recording first. Manifest jobs
+    use `producer.source_latest_mtime_ns`; regular video jobs use the source
+    file's filesystem `mtime_ns`. The manifest JSON file's own mtime is never
+    used, so importing old manifests does not make archival recordings look new.
 
 #### `queue_seed`
 - **Type**: Integer or null
@@ -366,7 +370,7 @@ Dashboard display settings.
 ### Input/Output
 
 #### `input_dirs`
-- **Type**: List of objects (`{path: string, enabled: bool, metadata?: bool, idle_interval?: int}`)
+- **Type**: List of objects (`{path: string, enabled: bool, metadata?: bool, watch?: bool, idle_interval?: int}`)
 - **Default**: `[]` (empty)
 - **Description**: Ordered input directory entries used when no CLI input is provided
 - **Behavior**:
@@ -378,6 +382,9 @@ Dashboard display settings.
   - Startup fails if no valid directories remain
   - Limits: max 50 enabled directories, max 150 characters per path
   - `metadata: true` scans strict `*.json` compression manifests instead of video extensions
+  - `watch: true` uses Linux inotify to trigger a refresh when a final `*.json`
+    is closed after writing or atomically moved into a metadata directory. It is
+    rejected for regular video directories and defaults to `false`.
   - `idle_interval` enables an automatic re-scan after that many idle seconds when `wait_on_finish: true`; omitted means manual refresh only
 
 #### Manifest-driven multipart input
@@ -387,7 +394,7 @@ input_dirs:
   - path: /mnt/1/TT/metadata
     enabled: true
     metadata: true
-    idle_interval: 60
+    watch: true
 
 suffix_output_dirs: _out
 suffix_errors_dirs: _err
@@ -424,6 +431,14 @@ Each unchanged physical part is probed once per VBC run. That single probe suppl
 stream properties, packet counts, and the normalized video duration derived from packet
 timestamps; refreshes reuse the cached result. Output stream verification is likewise
 cached, while the post-write VBC-tag check uses ExifTool without probing the video again.
+
+With `watch: true`, completed JSON events are coalesced during a one-second quiet
+period and then sent through the normal full-refresh path. This works both while jobs
+are active and in **WAITING** mode; it does not preempt jobs already running. Hidden
+temporary files and all non-JSON names are ignored. If inotify reports an event-queue
+overflow, VBC shows a warning and immediately performs a full refresh. A manually copied
+JSON that is observed before its final write has settled is retried after a one-second
+stability check before it can be routed to `_err`.
 
 - success: `/metadata_out/request.json`
 - any manifest, probe, compression, verification, or cleanup error:
@@ -698,6 +713,9 @@ verified replacement.
 - **Behavior**:
   - `true`: Displays WAITING status; press **R** to restart scan or **S**/**Ctrl+C** to exit
   - With per-directory `idle_interval`, VBC automatically re-scans due directories while WAITING
+  - A metadata directory with `watch: true` triggers refreshes in both ACTIVE and
+    WAITING states. `wait_on_finish: true` is still required to keep an empty VBC
+    process alive for future events.
   - `false`: VBC exits automatically when processing finishes
 
 #### `bell_on_finish`

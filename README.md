@@ -68,7 +68,7 @@ Modern video libraries grow fast. Raw 4K footage from cameras and drones consume
 ### Intelligence & Automation
 - ✅ **Auto-Rotation**: Regex-based filename pattern matching (GoPro, DJI, iPhone patterns)
 - ✅ **Deep Metadata**: EXIF/XMP/GPS preservation + custom VBC tags (original size, quality, encoder, rate-control notes)
-- ✅ **Queue Refresh**: Re-scan directory mid-run to pick up new files
+- ✅ **Queue Refresh**: Re-scan manually or ingest completed JSON manifests through Linux inotify
 - ✅ **Error Markers**: `.err` files track failures with optional cleanup/retry
 - ✅ **Resume Capability**: Automatically skip already-compressed files
 
@@ -393,7 +393,7 @@ input_dirs:
   - path: /path/to/metadata
     enabled: false
     metadata: true
-    idle_interval: 60
+    watch: true
   - path: /another/path
     enabled: true
   - path: /disabled/path
@@ -447,7 +447,8 @@ general:
   # Use gpu_config.sample_interval_s instead.
   gpu_refresh_rate: 5
 
-  # Processing order: name, rand, dir, size, size-asc, size-desc, ext.
+  # Processing order: name, rand, dir, size, size-asc, size-desc, ext,
+  # or source-mtime-desc (newest source recording first).
   queue_sort: "name"
 
   # Optional seed for deterministic random queue sorting.
@@ -1279,6 +1280,7 @@ VBC is built with excellent open-source tools:
 - [Pydantic](https://docs.pydantic.dev/) - Data validation
 - [Typer](https://typer.tiangolo.com/) - CLI framework
 - [PyExifTool](https://github.com/sylikc/pyexiftool) - ExifTool Python wrapper
+- [inotify-simple](https://github.com/chrisjbillington/inotify_simple) - Linux manifest-directory events
 - [uv](https://github.com/astral-sh/uv) - Fast Python package manager
 
 ---

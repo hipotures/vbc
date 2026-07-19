@@ -11,6 +11,7 @@ def test_video_metadata_valid():
 def test_video_file_valid():
     vf = VideoFile(path=Path("test.mp4"), size_bytes=1024)
     assert vf.path == Path("test.mp4")
+    assert vf.source_mtime_ns == 0
     assert vf.metadata is None
 
 def test_compression_job_status_flow():

@@ -20,6 +20,7 @@ def test_file_scanner_basic(tmp_path):
     assert "video3.avi" in paths
     assert "ignored.txt" not in paths
     assert len(files) == 3
+    assert all(video.source_mtime_ns == video.path.stat().st_mtime_ns for video in files)
 
 def test_file_scanner_min_size(tmp_path):
     f1 = tmp_path / "small.mp4"

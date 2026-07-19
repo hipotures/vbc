@@ -18,6 +18,7 @@ from vbc.domain.models import JobStatus, VideoFile, VideoMetadata
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
 from vbc.pipeline.orchestrator import Orchestrator
+from vbc.pipeline.queue_sorting import sort_files
 
 
 def _make_config(**kwargs):
@@ -25,6 +26,29 @@ def _make_config(**kwargs):
     gpu = kwargs.pop("gpu", False)
     general = GeneralConfig(threads=1, gpu=gpu, **kwargs)
     return AppConfig(general=general, autorotate=AutoRotateConfig(patterns={}))
+
+
+def test_sort_source_mtime_desc_uses_cached_source_timestamp(tmp_path):
+    config = _make_config(queue_sort="source-mtime-desc", extensions=[".mp4"])
+    older = VideoFile(
+        path=tmp_path / "created_today.json",
+        size_bytes=10,
+        source_mtime_ns=100,
+    )
+    newer = VideoFile(
+        path=tmp_path / "older_filename.json",
+        size_bytes=10,
+        source_mtime_ns=200,
+    )
+
+    ordered = sort_files(
+        [older, newer],
+        [tmp_path],
+        config.general,
+        config.general.extensions,
+    )
+
+    assert ordered == [newer, older]
 
 
 def test_perform_discovery_counts_and_skips(tmp_path):

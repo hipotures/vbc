@@ -77,7 +77,10 @@ def compress(
     queue_sort: Optional[str] = typer.Option(
         None,
         "--queue-sort",
-        help="Queue sorting mode (name, rand, dir, size, size-asc, size-desc, ext)"
+        help=(
+            "Queue sorting mode (name, rand, dir, size, size-asc, size-desc, "
+            "source-mtime-desc, ext)"
+        ),
     ),
     queue_seed: Optional[int] = typer.Option(
         None,
@@ -635,6 +638,7 @@ def compress(
             web_server.start()
 
         exif = None
+        manifest_watcher = None
         if demo and demo_config:
             orchestrator = DemoOrchestrator(
                 config=config,
@@ -703,6 +707,21 @@ def compress(
                     }
                 ),
             )
+
+            if input_dirs_arg is None:
+                watchable_dirs = {
+                    Path(entry.path)
+                    for entry in config.input_dirs
+                    if entry.metadata and entry.watch
+                }
+                if watchable_dirs:
+                    from vbc.infrastructure.manifest_watcher import ManifestWatcher
+
+                    manifest_watcher = ManifestWatcher(
+                        event_bus=bus,
+                        watchable_dirs=watchable_dirs,
+                        active_dirs=input_dirs,
+                    )
         
         keyboard = KeyboardListener(bus, state=ui_state)
         
@@ -752,6 +771,8 @@ def compress(
 
         keyboard.start()
         try:
+            if manifest_watcher:
+                manifest_watcher.start()
             with dashboard:
                 if demo:
                     orchestrator.run()
@@ -767,6 +788,8 @@ def compress(
                     threading.Event().wait(2.0)
         finally:
             keyboard.stop()
+            if manifest_watcher:
+                manifest_watcher.stop()
             if web_server:
                 web_server.stop()
             if gpu_monitor:

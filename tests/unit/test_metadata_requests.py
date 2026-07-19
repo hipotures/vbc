@@ -1,5 +1,7 @@
 import json
 import shutil
+import threading
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, call
 
@@ -125,6 +127,57 @@ def test_manifest_schema_is_strict_and_requires_unique_absolute_inputs(tmp_path)
     assert CompressionManifest.model_validate(payload).source_policy == "move_all"
 
 
+def test_fresh_partial_manifest_waits_until_copy_is_stable(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "vbc.pipeline.orchestrator._MANIFEST_SETTLE_SECONDS",
+        0.05,
+    )
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(tmp_path, ffprobe)
+    part = tmp_path / "part001.mp4"
+    part.write_bytes(b"video")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text("{")
+    payload = _manifest([part], tmp_path / "output.mp4")
+
+    def finish_copy():
+        time.sleep(0.02)
+        manifest_path.write_text(json.dumps(payload))
+
+    writer = threading.Thread(target=finish_copy)
+    writer.start()
+    try:
+        files, stats = orchestrator._perform_discovery(metadata_dir)
+    finally:
+        writer.join()
+
+    assert stats["files_to_process"] == 1
+    assert len(files) == 1
+    assert manifest_path.exists()
+    assert not error_dir.exists()
+
+
+def test_stable_invalid_manifest_routes_to_error_after_settle(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "vbc.pipeline.orchestrator._MANIFEST_SETTLE_SECONDS",
+        0.05,
+    )
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(
+        tmp_path,
+        MagicMock(),
+    )
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text("{")
+
+    files, stats = orchestrator._perform_discovery(metadata_dir)
+
+    assert files == []
+    assert stats["ignored_err"] == 1
+    assert not manifest_path.exists()
+    assert (error_dir / "request.json").exists()
+    assert (error_dir / "request.err").exists()
+
+
 def test_metadata_hot_reload_keeps_last_valid_policy(tmp_path):
     config_path = tmp_path / "vbc.yaml"
     config_path.write_text("metadata:\n  audio_only: ignore\n")
@@ -180,6 +233,7 @@ def test_metadata_discovery_queues_proxy_then_hydrates_visible_job(tmp_path):
     assert video.path == output
     assert video.identity_path == manifest_path
     assert video.size_bytes == 350
+    assert video.source_mtime_ns == 123
     assert video.part_count == 3
     assert video.metadata is None
     assert video.metadata_request.parts == []

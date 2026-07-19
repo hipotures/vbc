@@ -358,6 +358,15 @@ packet-timeline duration, so queue refreshes and output validation do not rescan
 video. A request below `min_size_bytes` is a terminal ignored task: VBC creates no output,
 keeps all source parts unless `move_all` archives them, and moves the unchanged manifest
 to `_out`.
+
+Metadata directories may additionally enable `watch: true`. A single Linux inotify
+service watches the currently active configured directories for `CLOSE_WRITE` and
+`MOVED_TO` events on final `*.json` names. It coalesces events during a one-second
+quiet period and publishes the existing `RefreshRequested` event; discovery and queue
+ownership therefore remain in the orchestrator rather than forming a second ingestion
+path. `InputDirsChanged` keeps watches aligned with runtime directory selection. Queue
+overflow emits a UI warning and forces a full refresh, while deletion, movement, or
+unmounting of a watched directory emits a watch-loss warning.
 Packet timelines unwrap the 32-bit millisecond timestamp rollover before calculating
 duration. A part whose packet timeline exceeds `metadata.max_duration_seconds` receives
 an exceptional decoded-frame count. If `frames / fps` is within the limit, VBC logs the

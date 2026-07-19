@@ -206,6 +206,7 @@ class VideoFile(BaseModel):
 
     path: Path
     size_bytes: int
+    source_mtime_ns: int = Field(default=0, ge=0)
     metadata: Optional[VideoMetadata] = None
     metadata_request: Optional[MetadataRequest] = None
 

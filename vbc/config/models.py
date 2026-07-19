@@ -17,7 +17,16 @@ from typing import List, Dict, Optional, Union, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from vbc.config.rate_control import validate_rate_control_inputs, parse_rate_cap_bps
 
-QUEUE_SORT_CHOICES = ("name", "rand", "dir", "size", "size-asc", "size-desc", "ext")
+QUEUE_SORT_CHOICES = (
+    "name",
+    "rand",
+    "dir",
+    "size",
+    "size-asc",
+    "size-desc",
+    "source-mtime-desc",
+    "ext",
+)
 QUEUE_SORT_ALIASES = {"size": "size-asc"}
 
 
@@ -28,7 +37,7 @@ def normalize_queue_sort(value: Optional[str]) -> str:
         value: Raw queue_sort value from config or CLI.
 
     Returns:
-        Normalized queue_sort mode ("name", "rand", "dir", "size-asc", "size-desc", "ext").
+        Normalized queue_sort mode.
 
     Raises:
         ValueError: If value is not a valid queue_sort choice.
@@ -458,6 +467,7 @@ class InputDirEntry(BaseModel):
     path: str
     enabled: bool = True
     metadata: bool = False
+    watch: bool = False
     idle_interval: Optional[int] = Field(default=None, gt=0)
 
     @field_validator("path", mode="before")
@@ -471,6 +481,12 @@ class InputDirEntry(BaseModel):
         if not cleaned:
             raise ValueError("input_dirs.path cannot be empty.")
         return cleaned
+
+    @model_validator(mode="after")
+    def validate_watch_mode(self):
+        if self.watch and not self.metadata:
+            raise ValueError("input_dirs.watch requires metadata: true.")
+        return self
 
 
 class AppConfig(BaseModel):

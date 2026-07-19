@@ -193,6 +193,11 @@ When `wait_on_finish: true` (or `--wait` CLI flag) is set, VBC does not exit aut
 - If failed files from the current session exist, status changes to **REPAIR** before **WAITING**
 - Press **R** to restart the scan (full re-discovery and processing of any new files)
 - Directories with `idle_interval` are re-scanned automatically while WAITING; the timer does not keep VBC alive when `wait_on_finish` is false
+- Metadata directories configured with `watch: true` use Linux inotify to request
+  the same full re-discovery after completed JSON writes or atomic moves. Events
+  are coalesced for one second, work while ACTIVE or WAITING, and do not interrupt
+  running jobs. `wait_on_finish: true` is required if VBC should remain alive with
+  an empty queue.
 - Press **S** or **Ctrl+C** to exit VBC
 
 **Use case:** Run VBC repeatedly without restarting the application — for example, processing batches as files arrive.
