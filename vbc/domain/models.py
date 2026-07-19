@@ -226,6 +226,7 @@ class CompressionJob(BaseModel):
         status: Current job state (PENDING, PROCESSING, COMPLETED, FAILED, etc.).
         output_path: Path where compressed video is written (created during processing).
         output_size_bytes: Final output file size (set when complete).
+        output_count: Number of verified output files represented by this job.
         error_message: Error description if status is FAILED or HW_CAP_LIMIT.
         duration_seconds: Wall-clock time spent in FFmpeg (excludes metadata ops).
         rotation_angle: Applied rotation in degrees (0, 90, 180, 270) or None.
@@ -243,6 +244,7 @@ class CompressionJob(BaseModel):
     status: JobStatus = JobStatus.PENDING
     output_path: Optional[Path] = None
     output_size_bytes: Optional[int] = None
+    output_count: int = Field(default=1, ge=1)
     error_message: Optional[str] = None
     duration_seconds: Optional[float] = None
     rotation_angle: Optional[int] = None

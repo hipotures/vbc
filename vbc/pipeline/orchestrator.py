@@ -2439,6 +2439,7 @@ class Orchestrator:
             job.source_file = video_file
             job.status = JobStatus.COMPLETED
             job.output_path = base_output_path
+            job.output_count = len(completed_output_paths)
             job.expected_video_frames = total_expected_frames or None
             job.verification_passed = True
             job.output_size_bytes = total_output_size

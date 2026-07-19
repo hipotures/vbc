@@ -44,6 +44,18 @@ def test_vm_activity_prefers_web_recent_jobs_when_available():
     assert [job["fname"] for job in vm["jobs"]] == ["web-0.mp4", "web-1.mp4", "web-2.mp4"]
 
 
+def test_activity_uses_split_icon_for_multiple_outputs():
+    job = _recent_job("split.mp4")
+    job.output_count = 2
+    stats = {"recent_jobs": [job]}
+
+    vm = web_server._vm_activity(stats)
+    rendered = web_server._render_activity(stats)
+
+    assert vm["jobs"][0]["multiple_outputs"] is True
+    assert "⇉" in rendered
+
+
 def test_vm_queue_respects_dynamic_max_items_and_more_counter():
     stats = {"pending_files": [_queued_file(f"queue-{idx}.mp4") for idx in range(8)]}
 

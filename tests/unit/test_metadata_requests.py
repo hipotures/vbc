@@ -888,6 +888,7 @@ def test_metadata_process_writes_consecutive_orientation_groups(tmp_path):
     assert [call.args[1] for call in orchestrator._write_vbc_tags.call_args_list] == (
         expected_outputs
     )
+    assert orchestrator.ffmpeg_adapter.compress.call_args.args[0].output_count == 3
     assert not manifest_path.exists()
     completed_manifest = output_dir / "request.json"
     assert completed_manifest.exists()

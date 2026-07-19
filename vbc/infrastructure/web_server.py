@@ -490,6 +490,7 @@ def _vm_activity(s: dict, max_items: int = _WEB_DEFAULT_ACTIVITY_ITEMS) -> dict:
             "stat_str": stat_str,
             "error":    error,
             "verified": bool(getattr(job, "verification_passed", False)),
+            "multiple_outputs": getattr(job, "output_count", 1) > 1,
         })
     return {"jobs": job_items}
 

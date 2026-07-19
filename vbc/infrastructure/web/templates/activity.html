@@ -9,7 +9,9 @@
   {% for j in jobs %}
   <div class="act-row">
     {% if j.status == "COMPLETED" %}
-    {% if j.verified %}
+    {% if j.multiple_outputs %}
+    <span class="act-icon ok">⇉</span>
+    {% elif j.verified %}
     <span class="act-icon ok">&#10004;</span>
     {% else %}
     <span class="act-icon ok">&#10003;</span>

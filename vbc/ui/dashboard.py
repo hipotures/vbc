@@ -569,7 +569,11 @@ class Dashboard:
 
         if job.status == JobStatus.COMPLETED:
             verified = bool(getattr(job, "verification_passed", False))
-            icon = "[green]✔[/]" if verified else "[green]✓[/]"
+            multiple_outputs = getattr(job, "output_count", 1) > 1
+            if multiple_outputs:
+                icon = "[green]⇉[/]"
+            else:
+                icon = "[green]✔[/]" if verified else "[green]✓[/]"
             in_s = max(0, job.source_file.size_bytes or 0)
             out_s = max(0, job.output_size_bytes or 0)
             diff = in_s - out_s

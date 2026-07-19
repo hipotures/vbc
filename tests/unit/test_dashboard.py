@@ -13,7 +13,7 @@ from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadat
 from vbc.ui.state import UIState
 from vbc.ui import dashboard as dashboard_module
 from vbc.ui.dashboard import Dashboard
-from vbc.ui.modern_overlays import render_dirs_content
+from vbc.ui.modern_overlays import render_dirs_content, render_reference_content
 
 def test_dashboard_initialization():
     """Test that Dashboard can be initialized with UIState."""
@@ -141,6 +141,41 @@ def test_dashboard_activity_item_shows_heavy_checkmark_when_verified(tmp_path):
     rendered = console.export_text()
 
     assert "✔" in rendered
+
+
+def test_dashboard_activity_item_shows_split_icon_for_multiple_outputs(tmp_path):
+    state = UIState()
+    dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
+
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"x" * 100)
+    vf = VideoFile(path=source, size_bytes=source.stat().st_size)
+    completed_job = CompressionJob(
+        source_file=vf,
+        status=JobStatus.COMPLETED,
+        output_count=2,
+        verification_passed=True,
+        output_size_bytes=90,
+        duration_seconds=2.0,
+    )
+
+    renderable = dashboard._render_activity_item(completed_job, "A")
+    console = Console(width=120, record=True)
+    console.print(renderable)
+    rendered = console.export_text()
+
+    assert "⇉" in rendered
+    assert "✔" not in rendered
+    assert cell_len("⇉") == 1
+
+
+def test_reference_legend_includes_multiple_outputs_icon():
+    console = Console(width=160, record=True)
+    console.print(render_reference_content())
+
+    rendered = console.export_text()
+
+    assert "⇉ Multiple outputs" in rendered
 
 
 def _gap_before_right_border(line: str) -> int:

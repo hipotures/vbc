@@ -560,6 +560,12 @@ class ReferenceOverlay:
             f"[{COLORS['muted']}]≡[/] Kept",
             f"[{COLORS['error_red']}]⚡[/] Interrupted"
         )
+        symbols_table.add_row(
+            f"[{COLORS['accent_green']}]⇉[/] Multiple outputs",
+            "",
+            "",
+            "",
+        )
         
         status_content = Group(
             status_columns,
