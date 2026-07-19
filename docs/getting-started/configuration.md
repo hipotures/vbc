@@ -391,7 +391,7 @@ Dashboard display settings.
 
 ```yaml
 input_dirs:
-  - path: /mnt/1/TT/metadata
+  - path: /path/to/metadata
     enabled: true
     metadata: true
     watch: true
@@ -492,9 +492,9 @@ accepted.
 
 ```bash
 uv run python scripts/generate_metadata_manifests.py \
-  /mnt/1/TT/recordings \
+  /path/to/recordings \
   /path/to/generated_metadata \
-  --compressed-dir /mnt/1/TT/compressed \
+  --compressed-dir /path/to/compressed \
   --modified-before 2026-07-19T00:00:00+02:00 \
   --dry-run
 ```

@@ -1446,7 +1446,7 @@ if __name__ == "__main__":
         "Video Batch Compression - NVENC AV1 (GPU)",
         "Start: 2025-12-31 19:57:56",
         "Input folders: 1",
-        "  ✓ 1. /run/media/xai/26685cd8-5a05-46bb-b70e-2bc86d5d5c43/tt",
+        "  ✓ 1. /path/to/videos",
         "Threads: 1 (Prefetch: 1x)",
         "Encoder: NVENC AV1 (GPU) | Preset: p7 (Slow/HQ)",
         "Audio: Auto (lossless->AAC 256k, AAC/MP3 copy, other->AAC 192k)",

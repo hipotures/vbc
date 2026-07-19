@@ -344,7 +344,7 @@ def test_dashboard_activity_item_compacts_verification_error_path(tmp_path):
     failed_job = CompressionJob(source_file=vf, status=JobStatus.FAILED)
     failed_job.error_message = (
         "Verification failed: ffprobe check failed: No video stream found in "
-        "/run/media/xai/UUID/tt_out/broken.mp4"
+        "/path/to/videos_out/broken.mp4"
     )
 
     renderable = dashboard._render_activity_item(failed_job, "A")
@@ -353,7 +353,7 @@ def test_dashboard_activity_item_compacts_verification_error_path(tmp_path):
     rendered = console.export_text()
 
     assert "No video stream found" in rendered
-    assert "/run/media/xai/" not in rendered
+    assert "/path/to/videos_out/" not in rendered
 
 
 def test_dashboard_create_display_overlay():

@@ -22,10 +22,10 @@ Helper script that relocates source MP4 files for which the compressor created `
 
 ```bash
 # Move all errored videos and .err markers to /tmp/err
-python vbc/utils/move_err_files.py /run/media/xai/.../QVR
+python vbc/utils/move_err_files.py /path/to/videos
 
 # Custom destination
-python vbc/utils/move_err_files.py /run/media/xai/.../QVR --dest /path/to/quarantine
+python vbc/utils/move_err_files.py /path/to/videos --dest /path/to/quarantine
 ```
 
 ### Output

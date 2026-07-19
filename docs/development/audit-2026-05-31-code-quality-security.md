@@ -2,7 +2,7 @@
 
 Date: 2026-05-31
 
-Scope: current `/home/xai/DEV/vbc` checkout. This audit covers the local
+Scope: current VBC checkout. This audit covers the local
 single-user desktop/terminal deployment model, plus the optional read-only web
 dashboard that can expose compression progress on a LAN.
 
@@ -463,7 +463,7 @@ Evidence:
 - The scripts were renamed to `scripts/manual_proxy_cpu.sh` and
   `scripts/manual_proxy_gpu.sh`.
 - Both scripts now require an explicit input file argument and no longer embed a
-  private `/arch03/V/...mov` path.
+  private media path.
 - `docs/development/testing.md` documents them as manual media experiments, not
   automated tests.
 
