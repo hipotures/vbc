@@ -6,6 +6,8 @@ from typing import Dict, Any
 class FFprobeAdapter:
     """Wrapper around ffprobe to extract stream information."""
 
+    _TIMESTAMP_WRAP_SECONDS = (2**32) / 1000
+
     @staticmethod
     def _estimate_timeout(file_path: Path) -> int:
         """Estimate timeout based on file size (bytes)."""
@@ -206,6 +208,8 @@ class FFprobeAdapter:
 
         starts: list[float] = []
         ends: list[float] = []
+        timestamp_offset = 0.0
+        previous_timestamp: float | None = None
         for packet in packets:
             packet_index = packet.get("stream_index")
             if expected_index is not None:
@@ -220,7 +224,15 @@ class FFprobeAdapter:
                 timestamp = packet.get("dts_time")
             if timestamp in (None, "", "N/A"):
                 continue
-            start = cls._to_float(timestamp)
+            raw_start = cls._to_float(timestamp)
+            if (
+                previous_timestamp is not None
+                and raw_start - previous_timestamp
+                < -(cls._TIMESTAMP_WRAP_SECONDS / 2)
+            ):
+                timestamp_offset += cls._TIMESTAMP_WRAP_SECONDS
+            previous_timestamp = raw_start
+            start = raw_start + timestamp_offset
             packet_duration = max(0.0, cls._to_float(packet.get("duration_time")))
             starts.append(start)
             ends.append(start + packet_duration)

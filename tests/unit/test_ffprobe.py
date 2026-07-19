@@ -220,6 +220,41 @@ def test_ffprobe_part_info_counts_packets_and_normalizes_flv_timeline():
     assert "-show_packets" in mock_run.call_args.args[0]
 
 
+def test_ffprobe_part_info_unwraps_32_bit_millisecond_timestamps():
+    wrap = (2**32) / 1000
+    mock_output = {
+        "streams": [
+            {
+                "index": 1,
+                "codec_name": "h264",
+                "codec_type": "video",
+                "width": 512,
+                "height": 1024,
+                "avg_frame_rate": "24/1",
+                "nb_read_packets": "4",
+            }
+        ],
+        "format": {"duration": "0"},
+        "packets": [
+            {"stream_index": 1, "pts_time": str(wrap + 33.6)},
+            {"stream_index": 1, "pts_time": str(wrap + 153.9)},
+            {"stream_index": 1, "pts_time": "153.8"},
+            {
+                "stream_index": 1,
+                "pts_time": "1214.5",
+                "duration_time": "0.04",
+            },
+        ],
+    }
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value.stdout = json.dumps(mock_output)
+        mock_run.return_value.returncode = 0
+
+        info = FFprobeAdapter().get_part_info(Path("part.mp4"))
+
+    assert info["duration"] == pytest.approx(1180.94)
+
+
 def test_ffprobe_part_info_can_skip_packet_timeline_for_output_verification():
     mock_output = {
         "streams": [

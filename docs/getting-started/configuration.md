@@ -389,6 +389,9 @@ metadata:
   # Maximum missing output video frames accepted for the complete logical job.
   # Default: 0 (strict).
   max_dropped_frames: 0
+  # Maximum effective duration of one part and of the complete request.
+  # Default: 86400 (24 hours).
+  max_duration_seconds: 86400
   # Optional hot-reloaded overrides:
   # source_policy: delete_after_success
   # compression_profile: tiktok
@@ -422,8 +425,11 @@ effective concat list while retaining them for `source_policy` handling. Optiona
 overrides are reloaded before each manifest job; an invalid edit keeps the last valid
 metadata policy. `metadata.max_dropped_frames` defaults to strict `0`; each generated
 output accepts only that many missing frames, logs a warning, and never accepts extra
-frames. `copy_metadata` remains a video-to-video setting and uses the first effective
-video part from each generated orientation group.
+frames. `metadata.max_duration_seconds` defaults to 24 hours and aborts preflight before
+FFmpeg when either one effective part or their aggregate exceeds the limit. The failure
+is shown in the activity feed and routes the JSON to `_err`. `copy_metadata` remains a
+video-to-video setting and uses the first effective video part from each generated
+orientation group.
 
 Every generated output must pass frame, ffprobe, and VBC-tag verification before the JSON
 moves to `_out` or `delete_after_success` removes any source. Ctrl+C leaves the manifest

@@ -75,6 +75,7 @@ def test_metadata_policy_defaults_and_overrides():
         metadata={
             "audio_only": "ignore",
             "max_dropped_frames": 2,
+            "max_duration_seconds": 21600,
             "source_policy": "delete_after_success",
             "compression_profile": "tiktok",
             "error_policy": {"missing_input": "fail"},
@@ -82,6 +83,7 @@ def test_metadata_policy_defaults_and_overrides():
     )
     assert config.metadata.audio_only == "ignore"
     assert config.metadata.max_dropped_frames == 2
+    assert config.metadata.max_duration_seconds == 21600
     assert config.metadata.source_policy == "delete_after_success"
     assert config.metadata.compression_profile == "tiktok"
     assert config.metadata.error_policy.missing_input == "fail"
@@ -91,6 +93,7 @@ def test_metadata_audio_only_defaults_to_fail():
     config = AppConfig(general=GeneralConfig(threads=1, extensions=[".mp4"]))
     assert config.metadata.audio_only == "fail"
     assert config.metadata.max_dropped_frames == 0
+    assert config.metadata.max_duration_seconds == 86400
 
 
 def test_metadata_rejects_negative_max_dropped_frames():
@@ -98,6 +101,14 @@ def test_metadata_rejects_negative_max_dropped_frames():
         AppConfig(
             general=GeneralConfig(threads=1, extensions=[".mp4"]),
             metadata={"max_dropped_frames": -1},
+        )
+
+
+def test_metadata_rejects_non_positive_max_duration():
+    with pytest.raises(ValidationError):
+        AppConfig(
+            general=GeneralConfig(threads=1, extensions=[".mp4"]),
+            metadata={"max_duration_seconds": 0},
         )
 
 

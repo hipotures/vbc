@@ -225,6 +225,32 @@ def test_metadata_preflight_partitions_consecutive_orientation_groups(tmp_path):
     ]
 
 
+def test_metadata_preflight_rejects_duration_above_safety_limit(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={"max_duration_seconds": 60},
+    )
+    part = tmp_path / "part001.mp4"
+    part.write_bytes(b"video")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(_manifest([part], tmp_path / "recording.mp4"))
+    )
+    ffprobe.get_part_info.return_value = _part_info()
+    ffprobe.get_part_info.return_value["duration"] = 61
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+
+    assert orchestrator._get_metadata(files[0]) is None
+    assert not manifest_path.exists()
+    assert (error_dir / "request.json").exists()
+    assert "duration exceeds safety limit" in (
+        error_dir / "request.err"
+    ).read_text()
+
+
 def test_metadata_min_size_completes_manifest_without_deleting_sources(tmp_path):
     ffprobe = MagicMock()
     orchestrator, metadata_dir, output_dir, error_dir = _orchestrator(

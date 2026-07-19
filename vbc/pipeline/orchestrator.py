@@ -1584,6 +1584,11 @@ class Orchestrator:
             if duration <= 0:
                 fps = float(part_info.get("fps") or 0.0)
                 duration = (1.0 / fps) if fps > 0 else 0.04
+            if duration > metadata_config.max_duration_seconds:
+                raise ValueError(
+                    f"Manifest input duration exceeds safety limit: {source_path} "
+                    f"({duration:.3f}s > {metadata_config.max_duration_seconds}s)"
+                )
             parts.append(
                 MultipartPart(
                     path=source_path,
@@ -1603,6 +1608,12 @@ class Orchestrator:
 
         if not parts:
             raise ValueError("Manifest has no usable video parts")
+        total_duration = sum(part.duration for part in parts)
+        if total_duration > metadata_config.max_duration_seconds:
+            raise ValueError(
+                "Manifest total duration exceeds safety limit: "
+                f"{total_duration:.3f}s > {metadata_config.max_duration_seconds}s"
+            )
         groups = self._partition_manifest_parts(parts)
         target_width, target_height = self._manifest_group_dimensions(groups[0])
         total_size = sum(part.path.stat().st_size for part in parts)
@@ -1628,7 +1639,7 @@ class Orchestrator:
             megapixels=round(target_width * target_height / 1_000_000),
             color_space=first_part.color_space,
             pix_fmt=first_part.pix_fmt,
-            duration=sum(part.duration for part in parts),
+            duration=total_duration,
         )
         request.parts = parts
         request.ignored_inputs = ignored_inputs

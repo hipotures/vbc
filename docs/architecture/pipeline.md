@@ -356,6 +356,9 @@ entries. One cached probe per unchanged part returns stream facts, packet counts
 packet-timeline duration, so queue refreshes and output validation do not rescan source
 video. A request below `min_size_bytes` is a terminal ignored task: VBC creates no output,
 keeps all source parts, and moves the unchanged manifest to `_out`.
+Packet timelines unwrap the 32-bit millisecond timestamp rollover before calculating
+duration. Preflight rejects a part or aggregate duration above
+`metadata.max_duration_seconds` before FFmpeg starts.
 
 FFmpeg transcodes each group's effective parts sequentially into complete MP4 containers
 whose filenames remain `*.tmp`, then uses the concat demuxer to stream-copy them into the
