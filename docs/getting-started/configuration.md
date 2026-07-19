@@ -393,7 +393,8 @@ metadata:
   # Default: 86400 (24 hours).
   max_duration_seconds: 86400
   # Optional hot-reloaded overrides:
-  # source_policy: delete_after_success
+  # source_policy: move_after_success
+  # move_after_success_dir: /path/to/source-archive
   # compression_profile: tiktok
   # error_policy:
   #   missing_input: fail
@@ -435,14 +436,18 @@ activity feed and routes the JSON to `_err`. `copy_metadata` remains a video-to-
 setting and uses the first effective video part from each generated orientation group.
 
 Every generated output must pass frame, ffprobe, and VBC-tag verification before the JSON
-moves to `_out` or `delete_after_success` removes any source. Ctrl+C leaves the manifest
-and sources in place. On restart, VBC reuses verified VBC outputs in numbered order,
+moves to `_out` or a delete/move source policy runs. Ctrl+C leaves the manifest and
+sources in place. On restart, VBC reuses verified VBC outputs in numbered order,
 skips occupied untagged numbers, and continues with the first missing group.
 
 Manifest schema version 1 requires `operation: concat_transcode`, absolute unique input
-paths, `compression_profile: tiktok`, `error_policy.missing_input: fail`, and
-`source_policy: keep` or `delete_after_success`. The latter deletes every original input
-only after atomic output finalization and successful ffprobe/VBC-tag verification.
+paths, `compression_profile: tiktok`, `error_policy.missing_input: fail`, and one of
+`source_policy: keep`, `delete_after_success`, or `move_after_success`. Deletion or moving
+runs only after atomic output finalization and successful ffprobe/VBC-tag verification.
+`move_after_success` uses `metadata.move_after_success_dir` and preserves the producer
+username as the first destination directory. A missing destination setting, a missing or
+unwritable directory, insufficient free space for all inputs, or an existing destination
+file makes the policy fall back to `keep` for the complete request.
 
 #### `output_dirs`
 - **Type**: List of strings

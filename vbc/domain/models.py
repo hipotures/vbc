@@ -112,7 +112,7 @@ class CompressionManifest(BaseModel):
     operation: Literal["concat_transcode"]
     inputs: List[str] = Field(min_length=1)
     output_path: str = Field(min_length=1)
-    source_policy: Literal["keep", "delete_after_success"]
+    source_policy: Literal["keep", "delete_after_success", "move_after_success"]
     compression_profile: Literal["tiktok"]
     error_policy: ManifestErrorPolicy
 
@@ -172,7 +172,8 @@ class MetadataRequest(BaseModel):
     manifest: CompressionManifest
     parts: List[MultipartPart]
     ignored_inputs: List[Path] = Field(default_factory=list)
-    source_policy: Literal["keep", "delete_after_success"]
+    source_policy: Literal["keep", "delete_after_success", "move_after_success"]
+    move_after_success_dir: Optional[Path] = None
     compression_profile: str
     audio_only: Literal["fail", "ignore"]
     target_width: int = Field(gt=0)

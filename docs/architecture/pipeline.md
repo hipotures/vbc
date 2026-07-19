@@ -374,8 +374,10 @@ or interruption; intermediate files never receive an `.mp4` name. Multipart vide
 timestamp passthrough so FFmpeg does not silently drop closely spaced source frames.
 Frame-count verification runs from FFmpeg's encoded-frame statistics and one cached
 output packet probe before VBC tags are written, ensuring a tagged output has passed the
-frame check. The manifest moves to `_out` only after every group passes verification and
-source policy completion, or to `_err` with a sibling `.err` for any non-interruption
+frame check. After every group passes verification, `move_after_success` preflights the
+configured archive root, capacity, permissions, and every destination before moving
+inputs below the producer username directory; a failed preflight behaves as `keep`.
+The manifest moves to `_out` only after source policy completion, or to `_err` with a sibling `.err` for any non-interruption
 failure. An interrupted request keeps its JSON and reuses already verified group outputs
 when it resumes.
 

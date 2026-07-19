@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, call
 
@@ -116,6 +117,10 @@ def test_manifest_schema_is_strict_and_requires_unique_absolute_inputs(tmp_path)
     with pytest.raises(ValidationError, match="unique"):
         CompressionManifest.model_validate(payload)
 
+    payload["inputs"] = [str(part)]
+    payload["source_policy"] = "move_after_success"
+    assert CompressionManifest.model_validate(payload).source_policy == "move_after_success"
+
 
 def test_metadata_hot_reload_keeps_last_valid_policy(tmp_path):
     config_path = tmp_path / "vbc.yaml"
@@ -223,6 +228,36 @@ def test_metadata_preflight_partitions_consecutive_orientation_groups(tmp_path):
         parts[2:4],
         parts[4:],
     ]
+
+
+def test_metadata_move_policy_and_destination_override_manifest(tmp_path):
+    ffprobe = MagicMock()
+    move_root = tmp_path / "sources_compressed"
+    move_root.mkdir()
+    orchestrator, metadata_dir, _, _ = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={
+            "source_policy": "move_after_success",
+            "move_after_success_dir": str(move_root),
+        },
+    )
+    part = tmp_path / "part001.mp4"
+    part.write_bytes(b"video")
+    (metadata_dir / "request.json").write_text(
+        json.dumps(
+            _manifest(
+                [part],
+                tmp_path / "recording.mp4",
+                source_policy="keep",
+            )
+        )
+    )
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+
+    assert files[0].metadata_request.source_policy == "move_after_success"
+    assert files[0].metadata_request.move_after_success_dir == move_root
 
 
 def test_metadata_preflight_rejects_duration_above_safety_limit(tmp_path):
@@ -994,6 +1029,227 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
     assert not ignored.exists()
     assert not manifest_path.exists()
     assert (output_dir / "request.json").exists()
+
+
+def test_metadata_source_policy_moves_all_inputs_under_username(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
+    source_dir = tmp_path / "recordings" / "user"
+    source_dir.mkdir(parents=True)
+    part1 = source_dir / "part001.mp4"
+    part2 = source_dir / "part002.mp4"
+    part1.write_bytes(b"one")
+    part2.write_bytes(b"two")
+    move_root = tmp_path / "sources_compressed"
+    move_root.mkdir()
+    payload = CompressionManifest.model_validate(
+        _manifest([part1, part2], tmp_path / "recording.mp4")
+    )
+    request = MetadataRequest(
+        manifest_path=metadata_dir / "request.json",
+        metadata_dir=metadata_dir,
+        success_dir=output_dir,
+        error_dir=tmp_path / "metadata_err",
+        manifest=payload,
+        parts=[],
+        source_policy="move_after_success",
+        move_after_success_dir=move_root,
+        compression_profile="tiktok",
+        audio_only="ignore",
+        target_width=1,
+        target_height=1,
+    )
+
+    orchestrator._apply_manifest_source_policy(request)
+
+    assert not part1.exists()
+    assert not part2.exists()
+    assert (move_root / "user" / part1.name).read_bytes() == b"one"
+    assert (move_root / "user" / part2.name).read_bytes() == b"two"
+
+
+def test_metadata_source_move_without_destination_behaves_as_keep(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
+    part = tmp_path / "part001.mp4"
+    part.write_bytes(b"source")
+    payload = CompressionManifest.model_validate(
+        _manifest([part], tmp_path / "recording.mp4")
+    )
+    request = MetadataRequest(
+        manifest_path=metadata_dir / "request.json",
+        metadata_dir=metadata_dir,
+        success_dir=output_dir,
+        error_dir=tmp_path / "metadata_err",
+        manifest=payload,
+        parts=[],
+        source_policy="move_after_success",
+        compression_profile="tiktok",
+        audio_only="ignore",
+        target_width=1,
+        target_height=1,
+    )
+
+    orchestrator._apply_manifest_source_policy(request)
+
+    assert part.read_bytes() == b"source"
+
+
+def test_metadata_source_move_without_write_access_behaves_as_keep(
+    tmp_path,
+    monkeypatch,
+):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
+    part = tmp_path / "part001.mp4"
+    part.write_bytes(b"source")
+    move_root = tmp_path / "sources_compressed"
+    move_root.mkdir()
+    payload = CompressionManifest.model_validate(
+        _manifest([part], tmp_path / "recording.mp4")
+    )
+    request = MetadataRequest(
+        manifest_path=metadata_dir / "request.json",
+        metadata_dir=metadata_dir,
+        success_dir=output_dir,
+        error_dir=tmp_path / "metadata_err",
+        manifest=payload,
+        parts=[],
+        source_policy="move_after_success",
+        move_after_success_dir=move_root,
+        compression_profile="tiktok",
+        audio_only="ignore",
+        target_width=1,
+        target_height=1,
+    )
+    monkeypatch.setattr("vbc.pipeline.orchestrator.os.access", lambda *_args: False)
+
+    orchestrator._apply_manifest_source_policy(request)
+
+    assert part.read_bytes() == b"source"
+    assert not (move_root / "user" / part.name).exists()
+
+
+def test_metadata_source_move_without_space_behaves_as_keep(tmp_path, monkeypatch):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
+    source_dir = tmp_path / "recordings" / "user"
+    source_dir.mkdir(parents=True)
+    part = source_dir / "part001.mp4"
+    part.write_bytes(b"source")
+    move_root = tmp_path / "sources_compressed"
+    move_root.mkdir()
+    payload = CompressionManifest.model_validate(
+        _manifest([part], tmp_path / "recording.mp4")
+    )
+    request = MetadataRequest(
+        manifest_path=metadata_dir / "request.json",
+        metadata_dir=metadata_dir,
+        success_dir=output_dir,
+        error_dir=tmp_path / "metadata_err",
+        manifest=payload,
+        parts=[],
+        source_policy="move_after_success",
+        move_after_success_dir=move_root,
+        compression_profile="tiktok",
+        audio_only="ignore",
+        target_width=1,
+        target_height=1,
+    )
+    disk_usage = MagicMock()
+    disk_usage.free = part.stat().st_size - 1
+    monkeypatch.setattr("vbc.pipeline.orchestrator.shutil.disk_usage", lambda *_: disk_usage)
+
+    orchestrator._apply_manifest_source_policy(request)
+
+    assert part.read_bytes() == b"source"
+    assert not (move_root / "user" / part.name).exists()
+
+
+def test_metadata_source_move_with_existing_destination_behaves_as_keep(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
+    source_dir = tmp_path / "recordings" / "user"
+    source_dir.mkdir(parents=True)
+    part = source_dir / "part001.mp4"
+    part.write_bytes(b"source")
+    destination_dir = tmp_path / "sources_compressed" / "user"
+    destination_dir.mkdir(parents=True)
+    destination = destination_dir / part.name
+    destination.write_bytes(b"existing")
+    payload = CompressionManifest.model_validate(
+        _manifest([part], tmp_path / "recording.mp4")
+    )
+    request = MetadataRequest(
+        manifest_path=metadata_dir / "request.json",
+        metadata_dir=metadata_dir,
+        success_dir=output_dir,
+        error_dir=tmp_path / "metadata_err",
+        manifest=payload,
+        parts=[],
+        source_policy="move_after_success",
+        move_after_success_dir=destination_dir.parent,
+        compression_profile="tiktok",
+        audio_only="ignore",
+        target_width=1,
+        target_height=1,
+    )
+
+    orchestrator._apply_manifest_source_policy(request)
+
+    assert part.read_bytes() == b"source"
+    assert destination.read_bytes() == b"existing"
+
+
+def test_metadata_source_move_rolls_back_when_later_input_fails(
+    tmp_path,
+    monkeypatch,
+):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
+    source_dir = tmp_path / "recordings" / "user"
+    source_dir.mkdir(parents=True)
+    part1 = source_dir / "part001.mp4"
+    part2 = source_dir / "part002.mp4"
+    part1.write_bytes(b"one")
+    part2.write_bytes(b"two")
+    move_root = tmp_path / "sources_compressed"
+    move_root.mkdir()
+    payload = CompressionManifest.model_validate(
+        _manifest([part1, part2], tmp_path / "recording.mp4")
+    )
+    request = MetadataRequest(
+        manifest_path=metadata_dir / "request.json",
+        metadata_dir=metadata_dir,
+        success_dir=output_dir,
+        error_dir=tmp_path / "metadata_err",
+        manifest=payload,
+        parts=[],
+        source_policy="move_after_success",
+        move_after_success_dir=move_root,
+        compression_profile="tiktok",
+        audio_only="ignore",
+        target_width=1,
+        target_height=1,
+    )
+    real_move = shutil.move
+    call_count = 0
+
+    def fail_second_move(source, destination):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            raise OSError("simulated move failure")
+        return real_move(source, destination)
+
+    monkeypatch.setattr("vbc.pipeline.orchestrator.shutil.move", fail_second_move)
+
+    orchestrator._apply_manifest_source_policy(request)
+
+    assert part1.read_bytes() == b"one"
+    assert part2.read_bytes() == b"two"
+    assert not (move_root / "user" / part1.name).exists()
+    assert not (move_root / "user" / part2.name).exists()
 
 
 def test_metadata_process_writes_consecutive_orientation_groups(tmp_path):

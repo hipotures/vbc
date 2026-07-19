@@ -419,18 +419,21 @@ class MetadataConfig(BaseModel):
     audio_only: Literal["fail", "ignore"] = "fail"
     max_dropped_frames: int = Field(default=0, ge=0)
     max_duration_seconds: int = Field(default=86400, gt=0)
-    source_policy: Optional[Literal["keep", "delete_after_success"]] = None
+    source_policy: Optional[
+        Literal["keep", "delete_after_success", "move_after_success"]
+    ] = None
+    move_after_success_dir: Optional[str] = None
     compression_profile: Optional[str] = None
     error_policy: Optional[MetadataErrorPolicyConfig] = None
 
-    @field_validator("compression_profile")
+    @field_validator("compression_profile", "move_after_success_dir")
     @classmethod
-    def normalize_compression_profile(cls, v: Optional[str]) -> Optional[str]:
+    def normalize_optional_metadata_string(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return None
         cleaned = str(v).strip()
         if not cleaned:
-            raise ValueError("metadata.compression_profile cannot be empty.")
+            raise ValueError("metadata optional string values cannot be empty.")
         return cleaned
 
 

@@ -15,6 +15,7 @@ Key responsibilities:
 """
 
 import re
+import os
 import hashlib
 import json
 import threading
@@ -1402,10 +1403,20 @@ class Orchestrator:
     def _resolve_manifest_policies(
         manifest: CompressionManifest,
         metadata_config: MetadataConfig,
-    ) -> tuple[str, str, str]:
+    ) -> tuple[str, str, str, Optional[Path]]:
         source_policy = metadata_config.source_policy or manifest.source_policy
         compression_profile = metadata_config.compression_profile or manifest.compression_profile
-        return source_policy, compression_profile, metadata_config.audio_only
+        move_after_success_dir = (
+            Path(metadata_config.move_after_success_dir)
+            if metadata_config.move_after_success_dir
+            else None
+        )
+        return (
+            source_policy,
+            compression_profile,
+            metadata_config.audio_only,
+            move_after_success_dir,
+        )
 
     @staticmethod
     def _next_backup_path(output_path: Path) -> Path:
@@ -1501,13 +1512,104 @@ class Orchestrator:
         self.logger.error("MANIFEST_ERROR: %s (%s)", destination, message)
         return destination
 
-    def _delete_manifest_sources(self, request: MetadataRequest) -> None:
-        if request.source_policy != "delete_after_success":
+    def _apply_manifest_source_policy(self, request: MetadataRequest) -> None:
+        if request.source_policy == "keep":
             return
-        for source_path in request.all_input_paths:
-            if source_path.exists():
-                source_path.unlink()
-                self.logger.info("MANIFEST_SOURCE_DELETED: %s", source_path)
+        if request.source_policy == "delete_after_success":
+            for source_path in request.all_input_paths:
+                if source_path.exists():
+                    source_path.unlink()
+                    self.logger.info("MANIFEST_SOURCE_DELETED: %s", source_path)
+            return
+
+        move_root = request.move_after_success_dir
+        if move_root is None:
+            self.logger.warning(
+                "MANIFEST_SOURCE_MOVE_KEEP: json=%s reason=destination_not_configured",
+                request.manifest_path,
+            )
+            return
+
+        username = request.manifest.producer.username
+        if username in ("", ".", "..") or Path(username).name != username:
+            self.logger.warning(
+                "MANIFEST_SOURCE_MOVE_KEEP: json=%s reason=invalid_username username=%r",
+                request.manifest_path,
+                username,
+            )
+            return
+
+        try:
+            if not move_root.is_dir():
+                raise OSError(f"destination is not a directory: {move_root}")
+            destination_dir = move_root / username
+            permission_dir = destination_dir if destination_dir.exists() else move_root
+            if destination_dir.exists() and not destination_dir.is_dir():
+                raise OSError(f"destination user path is not a directory: {destination_dir}")
+            if not os.access(permission_dir, os.W_OK | os.X_OK):
+                raise PermissionError(f"destination is not writable: {permission_dir}")
+
+            move_plan: List[tuple[Path, Path]] = []
+            seen_destinations: set[Path] = set()
+            required_bytes = 0
+            for source_path in request.all_input_paths:
+                if not source_path.is_file():
+                    raise OSError(f"source is missing: {source_path}")
+                if source_path.parent.name != username:
+                    raise OSError(
+                        f"source is outside producer directory {username}: {source_path}"
+                    )
+                destination = destination_dir / source_path.name
+                if destination in seen_destinations or destination.exists():
+                    raise FileExistsError(f"destination already exists: {destination}")
+                seen_destinations.add(destination)
+                required_bytes += source_path.stat().st_size
+                move_plan.append((source_path, destination))
+
+            free_bytes = shutil.disk_usage(move_root).free
+            if free_bytes < required_bytes:
+                raise OSError(
+                    f"insufficient destination space: required={required_bytes}, free={free_bytes}"
+                )
+            destination_dir.mkdir(parents=True, exist_ok=True)
+            if not os.access(destination_dir, os.W_OK | os.X_OK):
+                raise PermissionError(f"destination is not writable: {destination_dir}")
+        except OSError as exc:
+            self.logger.warning(
+                "MANIFEST_SOURCE_MOVE_KEEP: json=%s destination=%s reason=%s",
+                request.manifest_path,
+                move_root,
+                exc,
+            )
+            return
+
+        moved: List[tuple[Path, Path]] = []
+        try:
+            for source_path, destination in move_plan:
+                shutil.move(str(source_path), str(destination))
+                moved.append((source_path, destination))
+                if source_path.exists() or not destination.is_file():
+                    raise OSError(f"move verification failed: {source_path} -> {destination}")
+                self.logger.info(
+                    "MANIFEST_SOURCE_MOVED: %s -> %s",
+                    source_path,
+                    destination,
+                )
+        except OSError as exc:
+            rollback_errors: List[str] = []
+            for source_path, destination in reversed(moved):
+                try:
+                    if destination.exists() and not source_path.exists():
+                        shutil.move(str(destination), str(source_path))
+                except OSError as rollback_exc:
+                    rollback_errors.append(str(rollback_exc))
+            self.logger.warning(
+                "MANIFEST_SOURCE_MOVE_KEEP: json=%s destination=%s reason=%s rollback_errors=%s",
+                request.manifest_path,
+                move_root,
+                exc,
+                rollback_errors,
+            )
 
     def _get_manifest_part_info(self, source_path: Path) -> Dict[str, Any]:
         """Probe each unchanged manifest part at most once during this run."""
@@ -1563,7 +1665,12 @@ class Orchestrator:
             raise ValueError("Manifest metadata request is missing")
 
         metadata_config = self._load_current_metadata_config()
-        source_policy, compression_profile, audio_only = self._resolve_manifest_policies(
+        (
+            source_policy,
+            compression_profile,
+            audio_only,
+            move_after_success_dir,
+        ) = self._resolve_manifest_policies(
             request.manifest,
             metadata_config,
         )
@@ -1708,6 +1815,7 @@ class Orchestrator:
         request.parts = parts
         request.ignored_inputs = ignored_inputs
         request.source_policy = source_policy
+        request.move_after_success_dir = move_after_success_dir
         request.compression_profile = compression_profile
         request.audio_only = audio_only
         request.target_width = target_width
@@ -1770,7 +1878,12 @@ class Orchestrator:
                     manifest.producer.source_size_bytes,
                     manifest.producer.source_latest_mtime_ns,
                 )
-                source_policy, compression_profile, audio_only = self._resolve_manifest_policies(
+                (
+                    source_policy,
+                    compression_profile,
+                    audio_only,
+                    move_after_success_dir,
+                ) = self._resolve_manifest_policies(
                     manifest,
                     metadata_config,
                 )
@@ -1793,12 +1906,13 @@ class Orchestrator:
                             manifest=manifest,
                             parts=[],
                             source_policy=source_policy,
+                            move_after_success_dir=move_after_success_dir,
                             compression_profile=compression_profile,
                             audio_only=audio_only,
                             target_width=1,
                             target_height=1,
                         )
-                        self._delete_manifest_sources(completed_request)
+                        self._apply_manifest_source_policy(completed_request)
                         self._route_manifest_success(completed_request)
                         stats["already_compressed"] += 1
                         continue
@@ -1818,6 +1932,7 @@ class Orchestrator:
                     parts=[],
                     ignored_inputs=[],
                     source_policy=source_policy,
+                    move_after_success_dir=move_after_success_dir,
                     compression_profile=compression_profile,
                     audio_only=audio_only,
                     target_width=1,
@@ -2180,11 +2295,17 @@ class Orchestrator:
                 if request is None:
                     return
             metadata_config = self._load_current_metadata_config()
-            source_policy, compression_profile, audio_only = self._resolve_manifest_policies(
+            (
+                source_policy,
+                compression_profile,
+                audio_only,
+                move_after_success_dir,
+            ) = self._resolve_manifest_policies(
                 request.manifest,
                 metadata_config,
             )
             request.source_policy = source_policy
+            request.move_after_success_dir = move_after_success_dir
             request.compression_profile = compression_profile
             request.audio_only = audio_only
 
@@ -2533,7 +2654,7 @@ class Orchestrator:
             job.expected_video_frames = total_expected_frames or None
             job.verification_passed = True
             job.output_size_bytes = total_output_size
-            self._delete_manifest_sources(request)
+            self._apply_manifest_source_policy(request)
             self._route_manifest_success(request)
             self.event_bus.publish(JobCompleted(job=job))
         except InterruptedError:

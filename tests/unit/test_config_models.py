@@ -76,7 +76,8 @@ def test_metadata_policy_defaults_and_overrides():
             "audio_only": "ignore",
             "max_dropped_frames": 2,
             "max_duration_seconds": 21600,
-            "source_policy": "delete_after_success",
+            "source_policy": "move_after_success",
+            "move_after_success_dir": "/archive/sources",
             "compression_profile": "tiktok",
             "error_policy": {"missing_input": "fail"},
         },
@@ -84,7 +85,8 @@ def test_metadata_policy_defaults_and_overrides():
     assert config.metadata.audio_only == "ignore"
     assert config.metadata.max_dropped_frames == 2
     assert config.metadata.max_duration_seconds == 21600
-    assert config.metadata.source_policy == "delete_after_success"
+    assert config.metadata.source_policy == "move_after_success"
+    assert config.metadata.move_after_success_dir == "/archive/sources"
     assert config.metadata.compression_profile == "tiktok"
     assert config.metadata.error_policy.missing_input == "fail"
 
