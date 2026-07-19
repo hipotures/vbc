@@ -399,9 +399,14 @@ metadata:
 Each final `*.json` file represents one logical queue item. Initial discovery validates
 the JSON and input paths, then publishes a lightweight queue proxy immediately. VBC
 probes every path in `inputs` through the rolling 25-item metadata window, preserves the
-listed order, normalizes compatible resolutions, transcodes parts sequentially, and
-stream-copies the encoded segments into the final MP4. The exact `output_path` from the
-manifest is used for the video; the directory suffixes route the JSON itself:
+listed order, and splits consecutive parts whenever their orientation changes. Compatible
+resolutions within one orientation group are normalized to that group's largest frame,
+transcoded sequentially, and stream-copied into one MP4. The first group uses the exact
+manifest `output_path`; later groups use the first available numbered name (`_1`, `_2`,
+and so on). Existing MP4 files are never overwritten and share the same numbered namespace,
+so an untagged file protected as `_1` makes the next orientation group use `_2`. The
+split is based only on probed orientation; VBC does not fingerprint or trim repeated
+content with a compatible orientation. The directory suffixes route the JSON itself:
 
 Each unchanged physical part is probed once per VBC run. That single probe supplies
 stream properties, packet counts, and the normalized video duration derived from packet
@@ -415,10 +420,15 @@ cached, while the post-write VBC-tag check uses ExifTool without probing the vid
 `metadata.audio_only` is `fail` by default. `ignore` removes audio-only parts from the
 effective concat list while retaining them for `source_policy` handling. Optional policy
 overrides are reloaded before each manifest job; an invalid edit keeps the last valid
-metadata policy. `metadata.max_dropped_frames` defaults to strict `0`; a configured
-tolerance accepts only that many missing frames across the complete logical job, logs a
-warning, and never accepts extra frames. `copy_metadata` remains a video-to-video
-setting and, for multipart jobs, uses the first effective video part.
+metadata policy. `metadata.max_dropped_frames` defaults to strict `0`; each generated
+output accepts only that many missing frames, logs a warning, and never accepts extra
+frames. `copy_metadata` remains a video-to-video setting and uses the first effective
+video part from each generated orientation group.
+
+Every generated output must pass frame, ffprobe, and VBC-tag verification before the JSON
+moves to `_out` or `delete_after_success` removes any source. Ctrl+C leaves the manifest
+and sources in place. On restart, VBC reuses verified VBC outputs in numbered order,
+skips occupied untagged numbers, and continues with the first missing group.
 
 Manifest schema version 1 requires `operation: concat_transcode`, absolute unique input
 paths, `compression_profile: tiktok`, `error_policy.missing_input: fail`, and

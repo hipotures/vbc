@@ -192,30 +192,37 @@ def test_metadata_discovery_queues_proxy_then_hydrates_visible_job(tmp_path):
     assert ffprobe.get_part_info.call_count == 3
 
 
-def test_metadata_preflight_routes_mixed_orientation_to_error(tmp_path):
+def test_metadata_preflight_partitions_consecutive_orientation_groups(tmp_path):
     ffprobe = MagicMock()
     orchestrator, metadata_dir, _, error_dir = _orchestrator(tmp_path, ffprobe)
-    part1 = tmp_path / "part001.mp4"
-    part2 = tmp_path / "part002.mp4"
-    part1.write_bytes(b"a")
-    part2.write_bytes(b"b")
+    parts = [tmp_path / f"part{index:03d}.mp4" for index in range(1, 6)]
+    for index, part in enumerate(parts, start=1):
+        part.write_bytes(bytes([index]))
     manifest_path = metadata_dir / "request.json"
     manifest_path.write_text(
-        json.dumps(_manifest([part1, part2], tmp_path / "recording.mp4"))
+        json.dumps(_manifest(parts, tmp_path / "recording.mp4"))
     )
     ffprobe.get_part_info.side_effect = [
         _part_info(640, 1280),
+        _part_info(720, 1280),
         _part_info(1280, 640),
+        _part_info(1920, 1080),
+        _part_info(720, 1280),
     ]
 
     files, stats = orchestrator._perform_discovery(metadata_dir)
 
     assert len(files) == 1
     assert stats["ignored_err"] == 0
-    assert orchestrator._get_metadata(files[0]) is None
-    assert not manifest_path.exists()
-    assert (error_dir / "request.json").exists()
-    assert "orientations" in (error_dir / "request.err").read_text()
+    assert orchestrator._get_metadata(files[0]) is not None
+    assert manifest_path.exists()
+    assert not error_dir.exists()
+    groups = orchestrator._partition_manifest_parts(files[0].metadata_request.parts)
+    assert [[part.path for part in group] for group in groups] == [
+        parts[:2],
+        parts[2:4],
+        parts[4:],
+    ]
 
 
 def test_metadata_min_size_uses_effective_aggregate_and_leaves_manifest(tmp_path):
@@ -265,6 +272,31 @@ def test_tagged_output_completes_delete_policy_before_missing_input_check(tmp_pa
     assert not source.exists()
     assert not manifest_path.exists()
     assert (output_dir / "request.json").exists()
+    ffprobe.get_part_info.assert_not_called()
+
+
+def test_tagged_primary_output_does_not_finish_unprobed_multipart_manifest(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, _ = _orchestrator(tmp_path, ffprobe)
+    part1 = tmp_path / "part001.mp4"
+    part2 = tmp_path / "part002.mp4"
+    part1.write_bytes(b"one")
+    part2.write_bytes(b"two")
+    output = tmp_path / "recording.mp4"
+    output.write_bytes(b"encoded primary group")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(json.dumps(_manifest([part1, part2], output)))
+    orchestrator._verify_output_file = MagicMock(return_value=(True, None))
+
+    files, stats = orchestrator._perform_discovery(metadata_dir)
+
+    assert len(files) == 1
+    assert files[0].path == output
+    assert stats["already_compressed"] == 0
+    assert manifest_path.exists()
+    assert part1.exists()
+    assert part2.exists()
+    orchestrator._verify_output_file.assert_not_called()
     ffprobe.get_part_info.assert_not_called()
 
 
@@ -761,6 +793,187 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
     assert (output_dir / "request.json").exists()
 
 
+def test_metadata_process_writes_consecutive_orientation_groups(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
+    source_paths = [tmp_path / f"part{index:03d}.mp4" for index in range(1, 6)]
+    for index, source_path in enumerate(source_paths, start=1):
+        source_path.write_bytes(bytes([index]) * index)
+    output = tmp_path / "recording.mp4"
+    output.write_bytes(b"old output")
+    manifest_path = metadata_dir / "request.json"
+    payload = CompressionManifest.model_validate(_manifest(source_paths, output))
+    parts = [
+        MultipartPart(
+            path=source_paths[0], width=320, height=640, codec="h264", fps=25,
+            duration=1, video_packets=25, audio_packets=10,
+        ),
+        MultipartPart(
+            path=source_paths[1], width=640, height=1280, codec="h264", fps=25,
+            duration=1, video_packets=25, audio_packets=10,
+        ),
+        MultipartPart(
+            path=source_paths[2], width=1280, height=720, codec="h264", fps=25,
+            duration=1, video_packets=25, audio_packets=10,
+        ),
+        MultipartPart(
+            path=source_paths[3], width=1920, height=1080, codec="h264", fps=25,
+            duration=1, video_packets=25, audio_packets=10,
+        ),
+        MultipartPart(
+            path=source_paths[4], width=720, height=1280, codec="h264", fps=25,
+            duration=1, video_packets=25, audio_packets=10,
+        ),
+    ]
+    request = MetadataRequest(
+        manifest_path=manifest_path,
+        metadata_dir=metadata_dir,
+        success_dir=output_dir,
+        error_dir=tmp_path / "metadata_err",
+        manifest=payload,
+        parts=parts,
+        source_policy="keep",
+        compression_profile="tiktok",
+        audio_only="fail",
+        target_width=640,
+        target_height=1280,
+    )
+    manifest_path.write_text(payload.model_dump_json())
+    video = VideoFile(
+        path=output,
+        size_bytes=sum(path.stat().st_size for path in source_paths),
+        metadata=VideoMetadata(width=640, height=1280, codec="h264", fps=25),
+        metadata_request=request,
+    )
+    compressed_groups = []
+
+    def compress(job, *_args, **_kwargs):
+        group_request = job.source_file.metadata_request
+        compressed_groups.append(
+            (
+                [part.path for part in group_request.parts],
+                group_request.target_width,
+                group_request.target_height,
+                job.output_path,
+            )
+        )
+        job.output_path.write_bytes(b"encoded")
+        job.status = JobStatus.COMPLETED
+        job.expected_video_frames = sum(
+            part.video_packets for part in group_request.parts
+        )
+
+    orchestrator.ffmpeg_adapter.compress.side_effect = compress
+    orchestrator.config.general.copy_metadata = False
+    orchestrator._write_vbc_tags = MagicMock()
+    orchestrator._verify_output_file = MagicMock(
+        side_effect=[(False, "no tags"), (True, None), (True, None), (True, None)]
+    )
+    orchestrator._verify_output_tags = MagicMock(return_value=(True, None))
+
+    orchestrator._process_metadata_request(video)
+
+    expected_outputs = [
+        output,
+        tmp_path / "recording_2.mp4",
+        tmp_path / "recording_3.mp4",
+    ]
+    assert compressed_groups == [
+        (source_paths[:2], 640, 1280, expected_outputs[0]),
+        (source_paths[2:4], 1920, 1080, expected_outputs[1]),
+        (source_paths[4:], 720, 1280, expected_outputs[2]),
+    ]
+    assert all(path.read_bytes() == b"encoded" for path in expected_outputs)
+    assert (tmp_path / "recording_1.mp4").read_bytes() == b"old output"
+    assert [call.args[1] for call in orchestrator._write_vbc_tags.call_args_list] == (
+        expected_outputs
+    )
+    assert not manifest_path.exists()
+    completed_manifest = output_dir / "request.json"
+    assert completed_manifest.exists()
+
+    completed_manifest.replace(manifest_path)
+    orchestrator.ffmpeg_adapter.compress.reset_mock()
+    orchestrator._verify_output_file.reset_mock(side_effect=True)
+    orchestrator._verify_output_file.side_effect = [
+        (True, None),
+        (False, "no tags"),
+        (True, None),
+        (True, None),
+    ]
+
+    orchestrator._process_metadata_request(video)
+
+    orchestrator.ffmpeg_adapter.compress.assert_not_called()
+    assert not manifest_path.exists()
+    assert completed_manifest.exists()
+
+
+def test_metadata_process_resumes_missing_orientation_group(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
+    portrait = tmp_path / "part001.mp4"
+    landscape = tmp_path / "part002.mp4"
+    portrait.write_bytes(b"portrait")
+    landscape.write_bytes(b"landscape")
+    output = tmp_path / "recording.mp4"
+    output.write_bytes(b"completed portrait")
+    manifest_path = metadata_dir / "request.json"
+    payload = CompressionManifest.model_validate(_manifest([portrait, landscape], output))
+    request = MetadataRequest(
+        manifest_path=manifest_path,
+        metadata_dir=metadata_dir,
+        success_dir=output_dir,
+        error_dir=tmp_path / "metadata_err",
+        manifest=payload,
+        parts=[
+            MultipartPart(
+                path=portrait, width=640, height=1280, codec="h264", fps=25,
+                duration=1, video_packets=25, audio_packets=10,
+            ),
+            MultipartPart(
+                path=landscape, width=1280, height=640, codec="h264", fps=25,
+                duration=1, video_packets=25, audio_packets=10,
+            ),
+        ],
+        source_policy="keep",
+        compression_profile="tiktok",
+        audio_only="fail",
+        target_width=640,
+        target_height=1280,
+    )
+    manifest_path.write_text(payload.model_dump_json())
+    video = VideoFile(
+        path=output,
+        size_bytes=portrait.stat().st_size + landscape.stat().st_size,
+        metadata=VideoMetadata(width=640, height=1280, codec="h264", fps=25),
+        metadata_request=request,
+    )
+
+    def compress(job, *_args, **_kwargs):
+        job.output_path.write_bytes(b"completed landscape")
+        job.status = JobStatus.COMPLETED
+        job.expected_video_frames = 25
+
+    orchestrator.ffmpeg_adapter.compress.side_effect = compress
+    orchestrator.config.general.copy_metadata = False
+    orchestrator._write_vbc_tags = MagicMock()
+    orchestrator._verify_output_file = MagicMock(
+        side_effect=[(True, None), (True, None)]
+    )
+    orchestrator._verify_output_tags = MagicMock(return_value=(True, None))
+
+    orchestrator._process_metadata_request(video)
+
+    orchestrator.ffmpeg_adapter.compress.assert_called_once()
+    compressed_job = orchestrator.ffmpeg_adapter.compress.call_args.args[0]
+    assert compressed_job.output_path == output
+    assert (tmp_path / "recording_1.mp4").read_bytes() == b"completed landscape"
+    orchestrator._write_vbc_tags.assert_called_once()
+    assert not manifest_path.exists()
+    assert (output_dir / "request.json").exists()
+
+
 def test_metadata_process_backs_up_untagged_output_before_compression(tmp_path):
     ffprobe = MagicMock()
     orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
@@ -871,6 +1084,74 @@ def test_metadata_process_interruption_leaves_manifest_and_sources(tmp_path):
 
     assert manifest_path.exists()
     assert part.exists()
+    assert not error_dir.exists()
+
+
+def test_metadata_split_interruption_keeps_completed_group_and_manifest(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(tmp_path, ffprobe)
+    portrait = tmp_path / "part001.mp4"
+    landscape = tmp_path / "part002.mp4"
+    portrait.write_bytes(b"portrait")
+    landscape.write_bytes(b"landscape")
+    output = tmp_path / "recording.mp4"
+    manifest_path = metadata_dir / "request.json"
+    payload = CompressionManifest.model_validate(_manifest([portrait, landscape], output))
+    request = MetadataRequest(
+        manifest_path=manifest_path,
+        metadata_dir=metadata_dir,
+        success_dir=tmp_path / "metadata_out",
+        error_dir=error_dir,
+        manifest=payload,
+        parts=[
+            MultipartPart(
+                path=portrait, width=640, height=1280, codec="h264", fps=25,
+                duration=1, video_packets=25, audio_packets=10,
+            ),
+            MultipartPart(
+                path=landscape, width=1280, height=640, codec="h264", fps=25,
+                duration=1, video_packets=25, audio_packets=10,
+            ),
+        ],
+        source_policy="keep",
+        compression_profile="tiktok",
+        audio_only="fail",
+        target_width=640,
+        target_height=1280,
+    )
+    manifest_path.write_text(payload.model_dump_json())
+    video = VideoFile(
+        path=output,
+        size_bytes=portrait.stat().st_size + landscape.stat().st_size,
+        metadata=VideoMetadata(width=640, height=1280, codec="h264", fps=25),
+        metadata_request=request,
+    )
+    call_count = 0
+
+    def compress(job, *_args, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            job.output_path.write_bytes(b"completed portrait")
+            job.status = JobStatus.COMPLETED
+            job.expected_video_frames = 25
+            return
+        job.status = JobStatus.INTERRUPTED
+        job.error_message = "Interrupted by user (Ctrl+C)"
+
+    orchestrator.ffmpeg_adapter.compress.side_effect = compress
+    orchestrator.config.general.copy_metadata = False
+    orchestrator._write_vbc_tags = MagicMock()
+    orchestrator._verify_output_file = MagicMock(return_value=(True, None))
+    orchestrator._verify_output_tags = MagicMock(return_value=(True, None))
+
+    orchestrator._process_metadata_request(video)
+
+    assert output.read_bytes() == b"completed portrait"
+    assert not (tmp_path / "recording_1.mp4").exists()
+    assert manifest_path.exists()
+    assert portrait.exists()
+    assert landscape.exists()
     assert not error_dir.exists()
 
 

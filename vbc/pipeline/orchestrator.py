@@ -1416,6 +1416,69 @@ class Orchestrator:
                 return candidate
             index += 1
 
+    @staticmethod
+    def _partition_manifest_parts(
+        parts: List[MultipartPart],
+    ) -> List[List[MultipartPart]]:
+        """Split ordered parts whenever their portrait/landscape class changes."""
+        groups: List[List[MultipartPart]] = []
+        for part in parts:
+            if not groups or groups[-1][-1].orientation != part.orientation:
+                groups.append([part])
+            else:
+                groups[-1].append(part)
+        return groups
+
+    @staticmethod
+    def _manifest_group_output_path(output_path: Path, group_index: int) -> Path:
+        if group_index == 0:
+            return output_path
+        return output_path.with_name(
+            f"{output_path.stem}_{group_index}{output_path.suffix}"
+        )
+
+    @staticmethod
+    def _manifest_group_dimensions(parts: List[MultipartPart]) -> tuple[int, int]:
+        target_part = max(parts, key=lambda part: part.width * part.height)
+        return (
+            target_part.width + (target_part.width % 2),
+            target_part.height + (target_part.height % 2),
+        )
+
+    def _manifest_group_video_file(
+        self,
+        video_file: VideoFile,
+        parts: List[MultipartPart],
+    ) -> VideoFile:
+        request = video_file.metadata_request
+        if request is None:
+            raise ValueError("Manifest metadata request is missing")
+        target_width, target_height = self._manifest_group_dimensions(parts)
+        group_request = request.model_copy(deep=True)
+        group_request.parts = parts
+        group_request.ignored_inputs = []
+        group_request.target_width = target_width
+        group_request.target_height = target_height
+        first_part = parts[0]
+        group_metadata = VideoMetadata(
+            width=target_width,
+            height=target_height,
+            codec=first_part.codec,
+            audio_codec=first_part.audio_codec or "no-audio",
+            fps=first_part.fps,
+            bitrate_kbps=first_part.bitrate_kbps,
+            megapixels=round(target_width * target_height / 1_000_000),
+            color_space=first_part.color_space,
+            pix_fmt=first_part.pix_fmt,
+            duration=sum(part.duration for part in parts),
+        )
+        return VideoFile(
+            path=video_file.path,
+            size_bytes=sum(part.path.stat().st_size for part in parts),
+            metadata=group_metadata,
+            metadata_request=group_request,
+        )
+
     def _route_manifest_success(self, request: MetadataRequest) -> Path:
         request.success_dir.mkdir(parents=True, exist_ok=True)
         destination = request.success_dir / request.manifest_path.name
@@ -1540,16 +1603,8 @@ class Orchestrator:
 
         if not parts:
             raise ValueError("Manifest has no usable video parts")
-        orientations = {part.orientation for part in parts}
-        if len(orientations) != 1:
-            raise ValueError(
-                "Manifest mixes incompatible video orientations: "
-                + ", ".join(sorted(orientations))
-            )
-
-        target_part = max(parts, key=lambda part: part.width * part.height)
-        target_width = target_part.width + (target_part.width % 2)
-        target_height = target_part.height + (target_part.height % 2)
+        groups = self._partition_manifest_parts(parts)
+        target_width, target_height = self._manifest_group_dimensions(groups[0])
         total_size = sum(part.path.stat().st_size for part in parts)
         if total_size < self.file_scanner.min_size_bytes:
             self._metadata_failed_paths.add(video_file.path)
@@ -1584,12 +1639,13 @@ class Orchestrator:
         video_file.size_bytes = total_size
         video_file.metadata = metadata
         self.logger.info(
-            "MANIFEST_READY: json=%s output=%s parts=%s/%s size_bytes=%s "
-            "target=%sx%s source_policy=%s compression_profile=%s",
+            "MANIFEST_READY: json=%s output=%s parts=%s/%s groups=%s size_bytes=%s "
+            "primary_target=%sx%s source_policy=%s compression_profile=%s",
             request.manifest_path,
             request.manifest.output_path,
             len(parts),
             len(request.manifest.inputs),
+            len(groups),
             total_size,
             target_width,
             target_height,
@@ -1648,7 +1704,9 @@ class Orchestrator:
                     tmp_path.unlink()
                     self.logger.info("MANIFEST_STALE_TMP_REMOVED: %s", tmp_path)
 
-                if output_path.exists():
+                # A multipart manifest may produce additional numbered outputs,
+                # which are known only after its parts have been probed.
+                if output_path.exists() and len(manifest.inputs) == 1:
                     output_ok, _ = self._verify_output_file(output_path)
                     if output_ok:
                         completed_request = MetadataRequest(
@@ -2048,28 +2106,6 @@ class Orchestrator:
                 )
                 return
 
-            output_path = Path(request.manifest.output_path)
-            tmp_path = output_path.with_suffix(".tmp")
-            if tmp_path.exists():
-                tmp_path.unlink()
-                self.logger.info("MANIFEST_STALE_TMP_REMOVED: %s", tmp_path)
-
-            if output_path.exists():
-                output_ok, _ = self._verify_output_file(output_path)
-                if output_ok:
-                    self._delete_manifest_sources(request)
-                    self._route_manifest_success(request)
-                    job = CompressionJob(
-                        source_file=video_file,
-                        status=JobStatus.COMPLETED,
-                        output_path=output_path,
-                        output_size_bytes=output_path.stat().st_size,
-                        duration_seconds=0.0,
-                        verification_passed=True,
-                    )
-                    self.event_bus.publish(JobCompleted(job=job))
-                    return
-
             for source_path in request.all_input_paths:
                 if not source_path.is_file():
                     self._fail_metadata_request(
@@ -2078,23 +2114,23 @@ class Orchestrator:
                     )
                     return
 
-            if output_path.exists():
-                backup_path = self._next_backup_path(output_path)
-                output_path.rename(backup_path)
-                self.logger.warning(
-                    "MANIFEST_OUTPUT_BACKUP: untagged output %s -> %s",
-                    output_path,
-                    backup_path,
+            groups = self._partition_manifest_parts(request.parts)
+            if not groups:
+                self._fail_metadata_request(video_file, "Manifest has no usable video groups")
+                return
+            base_output_path = Path(request.manifest.output_path)
+            base_output_path.parent.mkdir(parents=True, exist_ok=True)
+            if len(groups) > 1:
+                self.logger.info(
+                    "MANIFEST_ORIENTATION_SPLIT: json=%s groups=%s",
+                    request.manifest_path,
+                    len(groups),
                 )
-            output_path.parent.mkdir(parents=True, exist_ok=True)
 
             job_config = self.config.model_copy(deep=True)
             profile_rule = job_config.general.dynamic_quality.get(compression_profile)
             if profile_rule is None:
                 job_config.general.dynamic_quality = {}
-                if video_file.metadata:
-                    video_file.metadata.custom_cq = None
-                    video_file.metadata.camera_model = None
                 self.logger.info(
                     "MANIFEST_PROFILE_DEFAULT: json=%s profile=%s",
                     request.manifest_path,
@@ -2102,191 +2138,310 @@ class Orchestrator:
                 )
             else:
                 job_config.general.dynamic_quality = {compression_profile: profile_rule}
-                if video_file.metadata:
-                    video_file.metadata.custom_cq = profile_rule.cq
-                    video_file.metadata.camera_model = compression_profile
 
-            use_gpu = job_config.general.gpu
-            rotation = self._determine_rotation(video_file, config=job_config)
-            quality_value: Optional[int] = None
-            rate_control: Optional[ResolvedRateControl] = None
-            vbc_json_notes: Optional[str] = None
-            if job_config.general.quality_mode == "rate":
-                rate_control = self._determine_rate_control(
-                    video_file,
-                    config=job_config,
-                    use_gpu=use_gpu,
-                )
-                quality_display = format_bps_human(rate_control.target_bps)
-                quality_tag_label = self._quality_label_for_rate_tags(
-                    video_file,
-                    config=job_config,
-                )
-                vbc_json_notes = self._rate_json_notes_for_tags(rate_control)
-            else:
-                quality_value = self._determine_cq(
-                    video_file,
-                    use_gpu=use_gpu,
-                    config=job_config,
-                )
-                quality_display = self._quality_display_for_cq(
-                    quality_value,
-                    use_gpu=use_gpu,
-                    config=job_config,
-                )
-                quality_tag_label = quality_display
+            total_output_size = 0
+            total_expected_frames = 0
+            completed_output_paths: List[Path] = []
+            protected_output_paths: set[Path] = set()
+            next_suffix_index = 1
+            for group_index, parts in enumerate(groups, start=1):
+                reuse_output = False
+                if group_index == 1:
+                    output_path = base_output_path
+                    if output_path.exists():
+                        output_ok, _ = self._verify_output_file(output_path)
+                        if output_ok:
+                            reuse_output = True
+                        else:
+                            backup_path = self._next_backup_path(base_output_path)
+                            output_path.rename(backup_path)
+                            protected_output_paths.add(backup_path)
+                            self.logger.warning(
+                                "MANIFEST_OUTPUT_BACKUP: untagged output %s -> %s",
+                                output_path,
+                                backup_path,
+                            )
+                else:
+                    while True:
+                        output_path = self._manifest_group_output_path(
+                            base_output_path,
+                            next_suffix_index,
+                        )
+                        next_suffix_index += 1
+                        if output_path in protected_output_paths:
+                            continue
+                        if not output_path.exists():
+                            break
+                        output_ok, _ = self._verify_output_file(output_path)
+                        if output_ok:
+                            reuse_output = True
+                            break
+                        self.logger.info(
+                            "MANIFEST_NUMBERED_OUTPUT_OCCUPIED: json=%s output=%s",
+                            request.manifest_path,
+                            output_path,
+                        )
 
-            job = CompressionJob(
-                source_file=video_file,
-                output_path=output_path,
-                rotation_angle=rotation or 0,
-                quality_value=quality_value,
-                quality_display=quality_display,
-            )
-            self.event_bus.publish(JobStarted(job=job))
-            job.status = JobStatus.PROCESSING
-            self.ffmpeg_adapter.compress(
-                job,
-                job_config,
-                use_gpu,
-                quality=quality_value,
-                rate_control=rate_control,
-                rotate=rotation,
-                shutdown_event=self._shutdown_event,
-            )
+                tmp_path = output_path.with_suffix(".tmp")
+                if tmp_path.exists():
+                    tmp_path.unlink()
+                    self.logger.info("MANIFEST_STALE_TMP_REMOVED: %s", tmp_path)
 
-            if (
-                job.status == JobStatus.HW_CAP_LIMIT
-                and job_config.general.cpu_fallback
-                and use_gpu
-            ):
-                self.logger.info("FFMPEG_FALLBACK: %s (manifest hw_cap -> CPU)", filename)
-                use_gpu = False
+                if reuse_output:
+                    completed_output_paths.append(output_path)
+                    total_output_size += output_path.stat().st_size
+                    self.logger.info(
+                        "MANIFEST_GROUP_REUSED: json=%s group=%s/%s output=%s",
+                        request.manifest_path,
+                        group_index,
+                        len(groups),
+                        output_path,
+                    )
+                    continue
+
+                group_video = self._manifest_group_video_file(video_file, parts)
+                if group_video.metadata is not None:
+                    if profile_rule is None:
+                        group_video.metadata.custom_cq = None
+                        group_video.metadata.camera_model = None
+                    else:
+                        group_video.metadata.custom_cq = profile_rule.cq
+                        group_video.metadata.camera_model = compression_profile
+
+                use_gpu = job_config.general.gpu
+                rotation = self._determine_rotation(group_video, config=job_config)
+                quality_value: Optional[int] = None
+                rate_control: Optional[ResolvedRateControl] = None
+                vbc_json_notes: Optional[str] = None
                 if job_config.general.quality_mode == "rate":
                     rate_control = self._determine_rate_control(
-                        video_file,
+                        group_video,
                         config=job_config,
-                        use_gpu=False,
+                        use_gpu=use_gpu,
                     )
-                    quality_value = None
                     quality_display = format_bps_human(rate_control.target_bps)
                     quality_tag_label = self._quality_label_for_rate_tags(
-                        video_file,
+                        group_video,
                         config=job_config,
                     )
                     vbc_json_notes = self._rate_json_notes_for_tags(rate_control)
                 else:
                     quality_value = self._determine_cq(
-                        video_file,
-                        use_gpu=False,
+                        group_video,
+                        use_gpu=use_gpu,
                         config=job_config,
                     )
                     quality_display = self._quality_display_for_cq(
                         quality_value,
-                        use_gpu=False,
+                        use_gpu=use_gpu,
                         config=job_config,
                     )
                     quality_tag_label = quality_display
+
+                if job is None:
+                    job = CompressionJob(source_file=group_video)
+                job.source_file = group_video
+                job.output_path = output_path
+                job.output_size_bytes = None
                 job.status = JobStatus.PROCESSING
                 job.error_message = None
+                job.progress_percent = 0.0
+                job.rotation_angle = rotation or 0
                 job.quality_value = quality_value
                 job.quality_display = quality_display
+                job.verification_passed = False
                 self.event_bus.publish(JobStarted(job=job))
+                self.logger.info(
+                    "MANIFEST_GROUP_START: json=%s group=%s/%s orientation=%s "
+                    "parts=%s output=%s target=%sx%s",
+                    request.manifest_path,
+                    group_index,
+                    len(groups),
+                    parts[0].orientation,
+                    len(parts),
+                    output_path,
+                    group_video.metadata.width if group_video.metadata else 0,
+                    group_video.metadata.height if group_video.metadata else 0,
+                )
                 self.ffmpeg_adapter.compress(
                     job,
                     job_config,
-                    False,
+                    use_gpu,
                     quality=quality_value,
                     rate_control=rate_control,
                     rotate=rotation,
                     shutdown_event=self._shutdown_event,
                 )
 
-            if job.status == JobStatus.INTERRUPTED:
-                self.event_bus.publish(
-                    JobFailed(job=job, error_message=job.error_message or "Interrupted")
+                if (
+                    job.status == JobStatus.HW_CAP_LIMIT
+                    and job_config.general.cpu_fallback
+                    and use_gpu
+                ):
+                    self.logger.info(
+                        "FFMPEG_FALLBACK: %s group=%s/%s (manifest hw_cap -> CPU)",
+                        filename,
+                        group_index,
+                        len(groups),
+                    )
+                    use_gpu = False
+                    if job_config.general.quality_mode == "rate":
+                        rate_control = self._determine_rate_control(
+                            group_video,
+                            config=job_config,
+                            use_gpu=False,
+                        )
+                        quality_value = None
+                        quality_display = format_bps_human(rate_control.target_bps)
+                        quality_tag_label = self._quality_label_for_rate_tags(
+                            group_video,
+                            config=job_config,
+                        )
+                        vbc_json_notes = self._rate_json_notes_for_tags(rate_control)
+                    else:
+                        quality_value = self._determine_cq(
+                            group_video,
+                            use_gpu=False,
+                            config=job_config,
+                        )
+                        quality_display = self._quality_display_for_cq(
+                            quality_value,
+                            use_gpu=False,
+                            config=job_config,
+                        )
+                        quality_tag_label = quality_display
+                    job.status = JobStatus.PROCESSING
+                    job.error_message = None
+                    job.quality_value = quality_value
+                    job.quality_display = quality_display
+                    self.event_bus.publish(JobStarted(job=job))
+                    self.ffmpeg_adapter.compress(
+                        job,
+                        job_config,
+                        False,
+                        quality=quality_value,
+                        rate_control=rate_control,
+                        rotate=rotation,
+                        shutdown_event=self._shutdown_event,
+                    )
+
+                if job.status == JobStatus.INTERRUPTED:
+                    self.event_bus.publish(
+                        JobFailed(job=job, error_message=job.error_message or "Interrupted")
+                    )
+                    return
+                if job.status != JobStatus.COMPLETED or job.output_path is None:
+                    self._fail_metadata_request(
+                        video_file,
+                        job.error_message or "Compression failed",
+                        job=job,
+                        publish=False,
+                    )
+                    return
+
+                expected_video_frames = job.expected_video_frames
+                if expected_video_frames is None:
+                    self._fail_metadata_request(
+                        video_file,
+                        "Verification failed: FFmpeg did not report encoded video frames",
+                        job=job,
+                    )
+                    return
+
+                verify_ok, verify_error = self._verify_output_file(
+                    job.output_path,
+                    expected_video_frames=expected_video_frames,
+                    max_dropped_frames=metadata_config.max_dropped_frames,
+                    require_vbc_tags=False,
                 )
-                return
-            if job.status != JobStatus.COMPLETED or job.output_path is None:
+                if not verify_ok:
+                    message = (
+                        f"Verification failed for {job.output_path.name}: "
+                        f"{verify_error or 'unknown verification error'}"
+                    )
+                    self._fail_metadata_request(video_file, message, job=job)
+                    if job_config.general.verify_fail_action != "false":
+                        self._handle_verification_failure(
+                            message,
+                            job_config.general.verify_fail_action,
+                        )
+                    return
+
+                source_path = parts[0].path
+                encoder_args = select_encoder_args(job_config, use_gpu)
+                encoder_label = infer_encoder_label(encoder_args, use_gpu)
+                finished_at = datetime.now().astimezone().isoformat(timespec="seconds")
+                original_bitrate_label = self._original_bitrate_label_for_tags(group_video)
+                tag_err_path = (
+                    request.error_dir / request.manifest_path.with_suffix(".err").name
+                )
+                if job_config.general.copy_metadata:
+                    self._copy_deep_metadata(
+                        source_path,
+                        job.output_path,
+                        tag_err_path,
+                        quality_tag_label,
+                        original_bitrate_label,
+                        encoder_label,
+                        group_video.size_bytes,
+                        finished_at,
+                        vbc_json_notes=vbc_json_notes,
+                        record_error_marker=False,
+                    )
+                else:
+                    self._write_vbc_tags(
+                        source_path,
+                        job.output_path,
+                        quality_tag_label,
+                        original_bitrate_label,
+                        encoder_label,
+                        group_video.size_bytes,
+                        finished_at,
+                        vbc_json_notes=vbc_json_notes,
+                    )
+
+                verify_ok, verify_error = self._verify_output_tags(job.output_path)
+                if not verify_ok:
+                    message = (
+                        f"Verification failed for {job.output_path.name}: "
+                        f"{verify_error or 'unknown verification error'}"
+                    )
+                    self._fail_metadata_request(video_file, message, job=job)
+                    if job_config.general.verify_fail_action != "false":
+                        self._handle_verification_failure(
+                            message,
+                            job_config.general.verify_fail_action,
+                        )
+                    return
+
+                total_expected_frames += expected_video_frames
+                output_size = job.output_path.stat().st_size
+                total_output_size += output_size
+                completed_output_paths.append(job.output_path)
+                self.logger.info(
+                    "MANIFEST_GROUP_DONE: json=%s group=%s/%s output=%s size_bytes=%s",
+                    request.manifest_path,
+                    group_index,
+                    len(groups),
+                    job.output_path,
+                    output_size,
+                )
+
+            if len(completed_output_paths) != len(groups):
                 self._fail_metadata_request(
                     video_file,
-                    job.error_message or "Compression failed",
-                    job=job,
-                    publish=False,
-                )
-                return
-
-            expected_video_frames = job.expected_video_frames
-            if expected_video_frames is None:
-                self._fail_metadata_request(
-                    video_file,
-                    "Verification failed: FFmpeg did not report encoded video frames",
+                    "Manifest did not complete every orientation group",
                     job=job,
                 )
                 return
-
-            verify_ok, verify_error = self._verify_output_file(
-                job.output_path,
-                expected_video_frames=expected_video_frames,
-                max_dropped_frames=metadata_config.max_dropped_frames,
-                require_vbc_tags=False,
-            )
-            if not verify_ok:
-                message = f"Verification failed: {verify_error or 'unknown verification error'}"
-                self._fail_metadata_request(video_file, message, job=job)
-                if job_config.general.verify_fail_action != "false":
-                    self._handle_verification_failure(
-                        message,
-                        job_config.general.verify_fail_action,
-                    )
-                return
-
-            source_path = request.parts[0].path
-            encoder_args = select_encoder_args(job_config, use_gpu)
-            encoder_label = infer_encoder_label(encoder_args, use_gpu)
-            finished_at = datetime.now().astimezone().isoformat(timespec="seconds")
-            original_bitrate_label = self._original_bitrate_label_for_tags(video_file)
-            tag_err_path = request.error_dir / request.manifest_path.with_suffix(".err").name
-            if job_config.general.copy_metadata:
-                self._copy_deep_metadata(
-                    source_path,
-                    job.output_path,
-                    tag_err_path,
-                    quality_tag_label,
-                    original_bitrate_label,
-                    encoder_label,
-                    video_file.size_bytes,
-                    finished_at,
-                    vbc_json_notes=vbc_json_notes,
-                    record_error_marker=False,
-                )
-            else:
-                self._write_vbc_tags(
-                    source_path,
-                    job.output_path,
-                    quality_tag_label,
-                    original_bitrate_label,
-                    encoder_label,
-                    video_file.size_bytes,
-                    finished_at,
-                    vbc_json_notes=vbc_json_notes,
-                )
-
-            verify_ok, verify_error = self._verify_output_tags(
-                job.output_path,
-            )
-            if not verify_ok:
-                message = f"Verification failed: {verify_error or 'unknown verification error'}"
-                self._fail_metadata_request(video_file, message, job=job)
-                if job_config.general.verify_fail_action != "false":
-                    self._handle_verification_failure(
-                        message,
-                        job_config.general.verify_fail_action,
-                    )
-                return
-
+            if job is None:
+                job = CompressionJob(source_file=video_file)
+            job.source_file = video_file
+            job.status = JobStatus.COMPLETED
+            job.output_path = base_output_path
+            job.expected_video_frames = total_expected_frames or None
             job.verification_passed = True
-            job.output_size_bytes = job.output_path.stat().st_size
+            job.output_size_bytes = total_output_size
             self._delete_manifest_sources(request)
             self._route_manifest_success(request)
             self.event_bus.publish(JobCompleted(job=job))
