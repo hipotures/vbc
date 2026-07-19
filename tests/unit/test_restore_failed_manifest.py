@@ -1,10 +1,18 @@
 import json
+from io import StringIO
 from pathlib import Path
 
 import pytest
+from rich.console import Console
 
 from scripts import restore_failed_manifest as restore_module
-from scripts.restore_failed_manifest import RestoreError, restore_failed_manifest
+from scripts.restore_failed_manifest import (
+    RestoreError,
+    RestoreResult,
+    SourceRestore,
+    _render_result,
+    restore_failed_manifest,
+)
 
 
 def _manifest(inputs: list[Path], output_path: Path) -> dict:
@@ -193,6 +201,47 @@ def test_existing_destination_manifest_aborts_before_source_moves(tmp_path):
     assert archived_second.exists()
     assert task["failed_manifest"].exists()
     assert destination.read_text() == "existing"
+
+
+@pytest.mark.parametrize(
+    ("dry_run", "action", "summary"),
+    [
+        (False, "RESTORED", "Recovery complete"),
+        (True, "WOULD MOVE", "Plan validated"),
+    ],
+)
+def test_render_result_uses_compact_three_column_table(
+    tmp_path,
+    dry_run,
+    action,
+    summary,
+):
+    output = StringIO()
+    console = Console(file=output, force_terminal=False, width=240)
+    result = RestoreResult(
+        manifest_destination=tmp_path / "metadata" / "request.json",
+        restored_sources=(
+            SourceRestore(
+                tmp_path / "archive" / "part001.mp4",
+                tmp_path / "recordings" / "part001.mp4",
+            ),
+        ),
+        already_present_sources=(tmp_path / "recordings" / "part002.mp4",),
+        error_marker=tmp_path / "metadata_err" / "request.err",
+        dry_run=dry_run,
+    )
+
+    _render_result(result, console)
+
+    rendered = output.getvalue()
+    assert "Status" in rendered
+    assert "Item" in rendered
+    assert "Path" in rendered
+    assert action in rendered
+    assert "PRESENT" in rendered
+    assert "RETAINED" in rendered
+    assert summary in rendered
+    assert "2 source(s) ready" in rendered
 
 
 def test_source_move_failure_rolls_back_earlier_sources(tmp_path, monkeypatch):
