@@ -577,7 +577,7 @@ def test_metadata_verification_rejects_dropped_video_frames(tmp_path):
     output = tmp_path / "recording.mp4"
     output.write_bytes(b"encoded")
     ffprobe.get_stream_info.return_value = {}
-    ffprobe.get_part_info.return_value = {"video_packets": 5}
+    ffprobe.get_video_frame_count.return_value = 5
     orchestrator.exif_adapter.extract_tags.return_value = {
         "XMP:VBCOriginalName": "part001.mp4",
         "XMP:VBCOriginalSize": "100",
@@ -589,7 +589,7 @@ def test_metadata_verification_rejects_dropped_video_frames(tmp_path):
 
     verified, error = orchestrator._verify_output_file(
         output,
-        expected_video_packets=10,
+        expected_video_frames=10,
     )
 
     assert not verified
@@ -602,7 +602,7 @@ def test_metadata_verification_accepts_configured_frame_loss(tmp_path, caplog):
     output = tmp_path / "recording.mp4"
     output.write_bytes(b"encoded")
     ffprobe.get_stream_info.return_value = {}
-    ffprobe.get_part_info.return_value = {"video_packets": 9}
+    ffprobe.get_video_frame_count.return_value = 9
     orchestrator.exif_adapter.extract_tags.return_value = {
         "XMP:VBCOriginalName": "part001.mp4",
         "XMP:VBCOriginalSize": "100",
@@ -614,7 +614,7 @@ def test_metadata_verification_accepts_configured_frame_loss(tmp_path, caplog):
 
     verified, error = orchestrator._verify_output_file(
         output,
-        expected_video_packets=10,
+        expected_video_frames=10,
         max_dropped_frames=1,
     )
 
@@ -629,11 +629,11 @@ def test_metadata_verification_never_accepts_extra_video_frames(tmp_path):
     output = tmp_path / "recording.mp4"
     output.write_bytes(b"encoded")
     ffprobe.get_stream_info.return_value = {}
-    ffprobe.get_part_info.return_value = {"video_packets": 11}
+    ffprobe.get_video_frame_count.return_value = 11
 
     verified, error = orchestrator._verify_output_file(
         output,
-        expected_video_packets=10,
+        expected_video_frames=10,
         max_dropped_frames=1,
     )
 
@@ -704,18 +704,23 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
     orchestrator.ffmpeg_adapter.compress.side_effect = compress
     orchestrator._write_vbc_tags = MagicMock()
     orchestrator._verify_output_file = MagicMock(return_value=(True, None))
+    ffprobe.get_video_frame_count.return_value = 23
 
     orchestrator._process_metadata_request(video)
 
     assert orchestrator._verify_output_file.call_args_list == [
         call(
             output,
-            expected_video_packets=25,
+            expected_video_frames=23,
             max_dropped_frames=0,
             require_vbc_tags=False,
         ),
         call(output),
     ]
+    ffprobe.get_video_frame_count.assert_called_once_with(
+        part,
+        shutdown_event=orchestrator._shutdown_event,
+    )
     assert output.exists()
     assert not part.exists()
     assert not ignored.exists()

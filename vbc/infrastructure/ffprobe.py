@@ -1,7 +1,9 @@
 import subprocess
 import json
+import threading
+import time
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class FFprobeAdapter:
     """Wrapper around ffprobe to extract stream information."""
@@ -15,6 +17,16 @@ class FFprobeAdapter:
         except OSError:
             return 30
         return max(1, (size_bytes + rate_bytes - 1) // rate_bytes)
+
+    @staticmethod
+    def _estimate_frame_scan_timeout(file_path: Path) -> int:
+        """Allow enough time for ffprobe to decode and count every video frame."""
+        rate_bytes = 1024 * 1024  # 1 MiB/s conservative decode baseline
+        try:
+            size_bytes = file_path.stat().st_size
+        except OSError:
+            return 30
+        return max(30, (size_bytes + rate_bytes - 1) // rate_bytes)
 
     @staticmethod
     def _to_float(value: Any) -> float:
@@ -248,6 +260,71 @@ class FFprobeAdapter:
             "video_packets": self._packet_count(video_stream),
             "audio_packets": self._packet_count(audio_stream),
         }
+
+    def get_video_frame_count(
+        self,
+        file_path: Path,
+        shutdown_event: Optional[threading.Event] = None,
+    ) -> int:
+        """Decode the primary video stream and return its presentable frame count."""
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-count_frames",
+            "-show_entries", "stream=nb_read_frames",
+            "-of", "json",
+            str(file_path),
+        ]
+        timeout_s = self._estimate_frame_scan_timeout(file_path)
+        if shutdown_event and shutdown_event.is_set():
+            raise InterruptedError(f"ffprobe frame scan interrupted for {file_path}")
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        deadline = time.monotonic() + timeout_s
+        while True:
+            if shutdown_event and shutdown_event.is_set():
+                process.terminate()
+                try:
+                    process.communicate(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate()
+                raise InterruptedError(f"ffprobe frame scan interrupted for {file_path}")
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                process.kill()
+                process.communicate()
+                raise RuntimeError(
+                    f"ffprobe frame scan timed out after {timeout_s}s for {file_path}"
+                )
+            try:
+                stdout, stderr = process.communicate(timeout=min(0.2, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                continue
+
+        if process.returncode != 0:
+            detail = (stderr or "").strip() or "unknown error (no stderr)"
+            raise RuntimeError(f"ffprobe frame scan failed for {file_path}: {detail}")
+
+        data = json.loads(stdout)
+        streams = data.get("streams", [])
+        if not streams:
+            raise ValueError(f"No video stream found in {file_path}")
+        try:
+            frame_count = int(streams[0].get("nb_read_frames") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid video frame count for {file_path}") from exc
+        if frame_count <= 0:
+            raise ValueError(f"No decodable video frames found in {file_path}")
+        return frame_count
 
     def get_video_packet_duration(self, file_path: Path) -> float:
         """Return normalized video timeline length for silence synthesis."""

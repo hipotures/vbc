@@ -1233,7 +1233,7 @@ class Orchestrator:
     def _verify_output_file(
         self,
         output_path: Path,
-        expected_video_packets: Optional[int] = None,
+        expected_video_frames: Optional[int] = None,
         max_dropped_frames: int = 0,
         require_vbc_tags: bool = True,
     ) -> Tuple[bool, Optional[str]]:
@@ -1246,25 +1246,29 @@ class Orchestrator:
         except Exception as exc:
             return False, f"ffprobe check failed: {exc}"
 
-        if expected_video_packets is not None:
+        if expected_video_frames is not None:
             try:
-                output_info = self.ffprobe_adapter.get_part_info(output_path)
-                actual_video_packets = int(output_info.get("video_packets") or 0)
+                actual_video_frames = self.ffprobe_adapter.get_video_frame_count(
+                    output_path,
+                    shutdown_event=self._shutdown_event,
+                )
+            except InterruptedError:
+                raise
             except Exception as exc:
                 return False, f"ffprobe frame-count check failed: {exc}"
-            dropped_frames = expected_video_packets - actual_video_packets
+            dropped_frames = expected_video_frames - actual_video_frames
             if dropped_frames < 0 or dropped_frames > max_dropped_frames:
                 return False, (
                     "video frame count mismatch: "
-                    f"expected {expected_video_packets}, got {actual_video_packets}"
+                    f"expected {expected_video_frames}, got {actual_video_frames}"
                 )
             if dropped_frames:
                 self.logger.warning(
                     "OUTPUT_FRAME_LOSS_ACCEPTED: %s expected=%s actual=%s "
                     "dropped=%s limit=%s",
                     output_path,
-                    expected_video_packets,
-                    actual_video_packets,
+                    expected_video_frames,
+                    actual_video_frames,
                     dropped_frames,
                     max_dropped_frames,
                 )
@@ -1940,6 +1944,14 @@ class Orchestrator:
                     )
                     return
 
+            expected_video_frames = sum(
+                self.ffprobe_adapter.get_video_frame_count(
+                    part.path,
+                    shutdown_event=self._shutdown_event,
+                )
+                for part in request.parts
+            )
+
             if output_path.exists():
                 backup_path = self._next_backup_path(output_path)
                 output_path.rename(backup_path)
@@ -2078,10 +2090,9 @@ class Orchestrator:
                 )
                 return
 
-            expected_video_packets = sum(part.video_packets for part in request.parts)
             verify_ok, verify_error = self._verify_output_file(
                 job.output_path,
-                expected_video_packets=expected_video_packets,
+                expected_video_frames=expected_video_frames,
                 max_dropped_frames=metadata_config.max_dropped_frames,
                 require_vbc_tags=False,
             )
@@ -2144,6 +2155,9 @@ class Orchestrator:
             self._delete_manifest_sources(request)
             self._route_manifest_success(request)
             self.event_bus.publish(JobCompleted(job=job))
+        except InterruptedError:
+            self.logger.info("MANIFEST_FRAME_SCAN_INTERRUPTED: %s", filename)
+            return
         except Exception as exc:
             if job is not None and job.status == JobStatus.INTERRUPTED:
                 return

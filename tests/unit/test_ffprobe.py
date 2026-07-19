@@ -1,7 +1,11 @@
-import pytest
 import json
+import subprocess
+import threading
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from vbc.infrastructure.ffprobe import FFprobeAdapter
 
 def test_ffprobe_parse_streams():
@@ -195,6 +199,51 @@ def test_ffprobe_part_info_counts_packets_and_normalizes_flv_timeline():
     assert info["audio_packets"] == 90
     assert info["duration"] == pytest.approx(10.0)
     assert "-count_packets" in mock_run.call_args.args[0]
+
+
+def test_ffprobe_video_frame_count_decodes_primary_stream():
+    mock_output = {"streams": [{"nb_read_frames": "98"}]}
+    adapter = FFprobeAdapter()
+    process = MagicMock()
+    process.communicate.return_value = (json.dumps(mock_output), "")
+    process.returncode = 0
+    with (
+        patch.object(adapter, "_estimate_frame_scan_timeout", return_value=123),
+        patch("subprocess.Popen", return_value=process) as mock_popen,
+    ):
+        frame_count = adapter.get_video_frame_count(Path("part.mp4"))
+
+    assert frame_count == 98
+    command = mock_popen.call_args.args[0]
+    assert "-count_frames" in command
+
+
+def test_ffprobe_video_frame_count_honors_shutdown_during_scan():
+    adapter = FFprobeAdapter()
+    shutdown_event = threading.Event()
+    process = MagicMock()
+    calls = 0
+
+    def wait_then_interrupt(*, timeout):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            shutdown_event.set()
+            raise subprocess.TimeoutExpired("ffprobe", timeout)
+        return "", ""
+
+    process.communicate.side_effect = wait_then_interrupt
+    with (
+        patch.object(adapter, "_estimate_frame_scan_timeout", return_value=123),
+        patch("subprocess.Popen", return_value=process),
+        pytest.raises(InterruptedError),
+    ):
+        adapter.get_video_frame_count(
+            Path("part.mp4"),
+            shutdown_event=shutdown_event,
+        )
+
+    process.terminate.assert_called_once_with()
 
 
 def test_ffprobe_packet_duration_uses_normalized_first_and_last_pts():
