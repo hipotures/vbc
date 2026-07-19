@@ -393,7 +393,7 @@ metadata:
   # Default: 86400 (24 hours).
   max_duration_seconds: 86400
   # Optional hot-reloaded overrides:
-  # source_policy: move_after_success
+  # source_policy: move_all
   # move_after_success_dir: /path/to/source-archive
   # compression_profile: tiktok
   # error_policy:
@@ -442,12 +442,17 @@ skips occupied untagged numbers, and continues with the first missing group.
 
 Manifest schema version 1 requires `operation: concat_transcode`, absolute unique input
 paths, `compression_profile: tiktok`, `error_policy.missing_input: fail`, and one of
-`source_policy: keep`, `delete_after_success`, or `move_after_success`. Deletion or moving
-runs only after atomic output finalization and successful ffprobe/VBC-tag verification.
+`source_policy: keep`, `delete_after_success`, `move_after_success`, or `move_all`.
+Deletion and `move_after_success` run only after atomic output finalization and successful
+ffprobe/VBC-tag verification.
 `move_after_success` uses `metadata.move_after_success_dir` and preserves the producer
 username as the first destination directory. A missing destination setting, a missing or
 unwritable directory, insufficient free space for all inputs, or an existing destination
-file makes the policy fall back to `keep` for the complete request.
+file makes the policy fall back to `keep` for the complete request. `move_all` uses the
+same destination and movement safeguards, but also moves every existing input after a
+terminal preflight, compression, or verification failure. The JSON and `.err` are routed
+to `metadata_err` first, so they retain the source list. Invalid JSON cannot move sources
+because its input list is not trusted. Ctrl+C is not terminal and never moves sources.
 
 ### Generating manifests for legacy recordings
 

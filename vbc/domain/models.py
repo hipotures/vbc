@@ -46,6 +46,7 @@ class ConfigSource(str, Enum):
     LOCAL = "L"
     CLI = "C"
 
+
 class VideoMetadata(BaseModel):
     """Extracted video stream information.
 
@@ -112,7 +113,9 @@ class CompressionManifest(BaseModel):
     operation: Literal["concat_transcode"]
     inputs: List[str] = Field(min_length=1)
     output_path: str = Field(min_length=1)
-    source_policy: Literal["keep", "delete_after_success", "move_after_success"]
+    source_policy: Literal[
+        "keep", "delete_after_success", "move_after_success", "move_all"
+    ]
     compression_profile: Literal["tiktok"]
     error_policy: ManifestErrorPolicy
 
@@ -172,7 +175,9 @@ class MetadataRequest(BaseModel):
     manifest: CompressionManifest
     parts: List[MultipartPart]
     ignored_inputs: List[Path] = Field(default_factory=list)
-    source_policy: Literal["keep", "delete_after_success", "move_after_success"]
+    source_policy: Literal[
+        "keep", "delete_after_success", "move_after_success", "move_all"
+    ]
     move_after_success_dir: Optional[Path] = None
     compression_profile: str
     audio_only: Literal["fail", "ignore"]
@@ -186,6 +191,7 @@ class MetadataRequest(BaseModel):
     @property
     def effective_input_paths(self) -> List[Path]:
         return [part.path for part in self.parts]
+
 
 class VideoFile(BaseModel):
     """A discovered video file to process.
@@ -216,6 +222,7 @@ class VideoFile(BaseModel):
         if self.metadata_request is not None:
             return len(self.metadata_request.manifest.inputs)
         return 1
+
 
 class CompressionJob(BaseModel):
     """A video compression task being processed or completed.

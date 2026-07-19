@@ -97,15 +97,18 @@ class VerificationAbortError(RuntimeError):
 def _emit_bell() -> None:
     """Write two terminal bells 0.3s apart directly to /dev/tty, bypassing Rich's stdout capture."""
     import time
+
     def _ring():
         try:
-            with open('/dev/tty', 'w') as tty:
-                tty.write('\x07')
+            with open("/dev/tty", "w") as tty:
+                tty.write("\x07")
                 tty.flush()
         except OSError:
             import sys
-            sys.stderr.write('\x07')
+
+            sys.stderr.write("\x07")
             sys.stderr.flush()
+
     _ring()
     time.sleep(0.3)
     _ring()
@@ -208,8 +211,8 @@ class Orchestrator:
         self._refresh_requested = False
         self._refresh_lock = threading.Lock()
         self._shutdown_event = threading.Event()  # Signal workers to stop
-        self._wait_event = threading.Event()       # Signals wait loop to unblock
-        self._restart_after_wait = False           # True = R pressed; False = S/Ctrl+C
+        self._wait_event = threading.Event()  # Signals wait loop to unblock
+        self._restart_after_wait = False  # True = R pressed; False = S/Ctrl+C
         self._pause_requested = False
         self._pause_message: Optional[str] = None
         self._verification_abort_message: Optional[str] = None
@@ -234,6 +237,7 @@ class Orchestrator:
 
     def _setup_subscriptions(self):
         from vbc.domain.events import RefreshRequested, InputDirsChanged
+
         self.event_bus.subscribe(RequestShutdown, self._on_shutdown_request)
         self.event_bus.subscribe(ThreadControlEvent, self._on_thread_control)
         self.event_bus.subscribe(RefreshRequested, self._on_refresh_request)
@@ -258,6 +262,7 @@ class Orchestrator:
             self._thread_lock.notify_all()
         # Publish feedback message
         from vbc.domain.events import ActionMessage
+
         self.event_bus.publish(ActionMessage(message=message))
 
     def _on_thread_control(self, event: ThreadControlEvent):
@@ -271,12 +276,21 @@ class Orchestrator:
             self._thread_lock.notify_all()
         # Publish feedback message (like old vbc.py lines 769, 776)
         from vbc.domain.events import ActionMessage
+
         if self._current_max_threads != old_val:
-            self.event_bus.publish(ActionMessage(message=f"Threads: {old_val} → {self._current_max_threads}"))
+            self.event_bus.publish(
+                ActionMessage(
+                    message=f"Threads: {old_val} → {self._current_max_threads}"
+                )
+            )
         elif requested > self._current_max_threads:
-            self.event_bus.publish(ActionMessage(message=f"Threads: {self._current_max_threads} (max)"))
+            self.event_bus.publish(
+                ActionMessage(message=f"Threads: {self._current_max_threads} (max)")
+            )
         elif requested < self._current_max_threads:
-            self.event_bus.publish(ActionMessage(message=f"Threads: {self._current_max_threads} (min)"))
+            self.event_bus.publish(
+                ActionMessage(message=f"Threads: {self._current_max_threads} (min)")
+            )
 
     def _on_input_dirs_changed(self, event) -> None:
         """Update active input dirs for the next re-scan cycle."""
@@ -293,7 +307,10 @@ class Orchestrator:
         """Handle Ctrl+C interrupt from keyboard listener."""
         self.logger.info("Interrupt requested (Ctrl+C) - stopping orchestrator...")
         from vbc.domain.events import ActionMessage
-        self.event_bus.publish(ActionMessage(message="Ctrl+C - interrupting active compressions..."))
+
+        self.event_bus.publish(
+            ActionMessage(message="Ctrl+C - interrupting active compressions...")
+        )
 
         # Signal all workers to stop immediately
         self._shutdown_event.set()
@@ -317,7 +334,9 @@ class Orchestrator:
                 # New dir added at runtime — fall back to suffix
                 suffix = self.config.suffix_output_dirs
                 if not suffix:
-                    raise ValueError(f"Output directory mapping missing for {input_dir}")
+                    raise ValueError(
+                        f"Output directory mapping missing for {input_dir}"
+                    )
                 return input_dir.with_name(f"{input_dir.name}{suffix}")
             return mapped
         if self.config.output_dirs:
@@ -347,7 +366,9 @@ class Orchestrator:
                 continue
         return None
 
-    def _get_metadata(self, video_file: VideoFile, base_metadata: Optional[Dict[str, Any]] = None) -> Optional[VideoMetadata]:
+    def _get_metadata(
+        self, video_file: VideoFile, base_metadata: Optional[Dict[str, Any]] = None
+    ) -> Optional[VideoMetadata]:
         """Get metadata with thread-safe caching (ffprobe + ExifTool like legacy)."""
         file_path = video_file.path
         if video_file.metadata_request is not None:
@@ -384,7 +405,9 @@ class Orchestrator:
                     f"(attempt {attempt}/{self._metadata_failure_limit})"
                 )
 
-            stream_info = base_metadata or self.ffprobe_adapter.get_stream_info(file_path)
+            stream_info = base_metadata or self.ffprobe_adapter.get_stream_info(
+                file_path
+            )
             metadata = self._build_metadata(video_file, stream_info)
 
             # Cache it
@@ -412,7 +435,9 @@ class Orchestrator:
                 )
             return None
 
-    def _register_metadata_failure(self, video_file: VideoFile, error: Exception) -> None:
+    def _register_metadata_failure(
+        self, video_file: VideoFile, error: Exception
+    ) -> None:
         file_path = video_file.path
         if file_path in self._metadata_failed_paths:
             return
@@ -422,7 +447,9 @@ class Orchestrator:
 
         output_path = self._write_error_marker(video_file, err_msg)
         if output_path:
-            self.logger.error(f"Corrupted file detected (ffprobe failed): {video_file.path.name} - {error}")
+            self.logger.error(
+                f"Corrupted file detected (ffprobe failed): {video_file.path.name} - {error}"
+            )
         else:
             self.logger.warning(
                 f"Failed to write error marker for {video_file.path.name} after ffprobe error: {error}"
@@ -447,7 +474,9 @@ class Orchestrator:
         )
         self.event_bus.publish(JobFailed(job=job, error_message=err_msg))
 
-    def _write_error_marker(self, video_file: VideoFile, err_msg: str) -> Optional[Path]:
+    def _write_error_marker(
+        self, video_file: VideoFile, err_msg: str
+    ) -> Optional[Path]:
         input_dir = self._find_input_folder(video_file.path)
         if not input_dir:
             return None
@@ -471,7 +500,9 @@ class Orchestrator:
             return None
         return output_path
 
-    def _write_job_error_marker(self, video_file: VideoFile, err_path: Path, err_msg: str) -> None:
+    def _write_job_error_marker(
+        self, video_file: VideoFile, err_path: Path, err_msg: str
+    ) -> None:
         err_path.parent.mkdir(parents=True, exist_ok=True)
         err_path.write_text(err_msg)
         self._record_session_error_marker(video_file.path, err_path)
@@ -493,10 +524,11 @@ class Orchestrator:
         self._errors_dir_map[input_dir] = mapped
         return mapped
 
-    def _collect_session_repair_entries(self, input_dirs: List[Path]) -> List[Tuple[Path, Path, Path, Path]]:
+    def _collect_session_repair_entries(
+        self, input_dirs: List[Path]
+    ) -> List[Tuple[Path, Path, Path, Path]]:
         output_dir_map = {
-            input_dir: self._get_output_dir(input_dir)
-            for input_dir in input_dirs
+            input_dir: self._get_output_dir(input_dir) for input_dir in input_dirs
         }
         errors_dir_map = {
             input_dir: errors_dir
@@ -544,7 +576,9 @@ class Orchestrator:
             f"Auto-repair pass: {len(repair_entries)} candidate(s) from current session"
         )
         self.event_bus.publish(RepairStarted(candidate_count=len(repair_entries)))
-        self.event_bus.publish(ActionMessage(message=f"REPAIR started: {len(repair_entries)} files"))
+        self.event_bus.publish(
+            ActionMessage(message=f"REPAIR started: {len(repair_entries)} files")
+        )
 
         moved_files = move_failed_files(
             input_dirs,
@@ -578,8 +612,14 @@ class Orchestrator:
             for repaired_path in repaired_paths:
                 self._auto_repair_attempted_sources.add(repaired_path)
 
-        self.event_bus.publish(RepairFinished(attempted=len(repair_entries), repaired=repaired_count))
-        self.event_bus.publish(ActionMessage(message=f"REPAIR finished: {repaired_count}/{len(repair_entries)} repaired"))
+        self.event_bus.publish(
+            RepairFinished(attempted=len(repair_entries), repaired=repaired_count)
+        )
+        self.event_bus.publish(
+            ActionMessage(
+                message=f"REPAIR finished: {repaired_count}/{len(repair_entries)} repaired"
+            )
+        )
         self.logger.info(
             f"Auto-repair pass complete: {repaired_count}/{len(repair_entries)} repaired, "
             f"{len(repaired_paths)} file(s) queued for compression"
@@ -593,6 +633,7 @@ class Orchestrator:
         if not failed_paths:
             return 0
         from collections import deque
+
         kept = deque()
         removed = 0
         while pending:
@@ -604,14 +645,16 @@ class Orchestrator:
         pending.extend(kept)
         return removed
 
-    def _build_metadata(self, video_file: VideoFile, stream_info: Dict[str, Any]) -> VideoMetadata:
+    def _build_metadata(
+        self, video_file: VideoFile, stream_info: Dict[str, Any]
+    ) -> VideoMetadata:
         width = int(stream_info.get("width", 0) or 0)
         height = int(stream_info.get("height", 0) or 0)
         megapixels = round(width * height / 1_000_000) if width and height else None
-        
+
         # Check vbc_encoded from ffprobe
         vbc_encoded = bool(stream_info.get("vbc_encoded", False))
-        
+
         metadata = VideoMetadata(
             width=width,
             height=height,
@@ -628,7 +671,9 @@ class Orchestrator:
 
         if self.config.general.use_exif:
             try:
-                exif_info = self.exif_adapter.extract_exif_info(video_file, self.config.general.dynamic_quality)
+                exif_info = self.exif_adapter.extract_exif_info(
+                    video_file, self.config.general.dynamic_quality
+                )
                 metadata.camera_model = exif_info.get("camera_model")
                 metadata.camera_raw = exif_info.get("camera_raw")
                 metadata.custom_cq = exif_info.get("custom_cq")
@@ -638,26 +683,37 @@ class Orchestrator:
                 # Merge vbc_encoded from ExifTool (more reliable for XMP)
                 if exif_info.get("vbc_encoded"):
                     metadata.vbc_encoded = True
-                    
+
                 matched_pattern = exif_info.get("matched_pattern")
                 if self.config.general.debug and matched_pattern:
                     raw_model = metadata.camera_raw or "None"
-                    matched_rule = self.config.general.dynamic_quality.get(str(matched_pattern))
+                    matched_rule = self.config.general.dynamic_quality.get(
+                        str(matched_pattern)
+                    )
                     has_rate_rule = bool(matched_rule and matched_rule.rate is not None)
-                    cq_value = metadata.custom_cq if metadata.custom_cq is not None else "none"
+                    cq_value = (
+                        metadata.custom_cq if metadata.custom_cq is not None else "none"
+                    )
                     self.logger.debug(
                         f"DYNAMIC_QUALITY_MATCH: {video_file.path.name} "
-                        f"pattern=\"{matched_pattern}\" raw=\"{raw_model}\" "
+                        f'pattern="{matched_pattern}" raw="{raw_model}" '
                         f"quality_mode={self.config.general.quality_mode} cq={cq_value} "
                         f"has_rate_rule={has_rate_rule}"
                     )
             except Exception as e:
                 if self.config.general.debug:
-                    self.logger.debug(f"ExifTool analysis failed for {video_file.path.name}: {e}")
+                    self.logger.debug(
+                        f"ExifTool analysis failed for {video_file.path.name}: {e}"
+                    )
 
         return metadata
 
-    def _determine_cq(self, file: VideoFile, use_gpu: Optional[bool] = None, config: Optional[AppConfig] = None) -> int:
+    def _determine_cq(
+        self,
+        file: VideoFile,
+        use_gpu: Optional[bool] = None,
+        config: Optional[AppConfig] = None,
+    ) -> int:
         """Determine the quality value based on camera model and encoder defaults.
 
         Args:
@@ -733,11 +789,15 @@ class Orchestrator:
         cfg = config if config is not None else self.config
         use_gpu = cfg.general.gpu if use_gpu is None else use_gpu
         source_bps = None
-        if file.metadata and file.metadata.bitrate_kbps and file.metadata.bitrate_kbps > 0:
+        if (
+            file.metadata
+            and file.metadata.bitrate_kbps
+            and file.metadata.bitrate_kbps > 0
+        ):
             source_bps = file.metadata.bitrate_kbps * 1000.0
 
-        bps, minrate, maxrate, rate_target_max_bps, rate_source, cap_source = self._select_rate_config_for_file(
-            file, cfg
+        bps, minrate, maxrate, rate_target_max_bps, rate_source, cap_source = (
+            self._select_rate_config_for_file(file, cfg)
         )
 
         if cfg.general.debug:
@@ -771,7 +831,9 @@ class Orchestrator:
         )
         encoder_args = select_encoder_args(cfg, use_gpu)
         encoder_codec = self._extract_encoder_codec(encoder_args)
-        encoder_cap_bps = SVT_AV1_TARGET_MAX_BPS if encoder_codec == "libsvtav1" else None
+        encoder_cap_bps = (
+            SVT_AV1_TARGET_MAX_BPS if encoder_codec == "libsvtav1" else None
+        )
 
         effective_cap_bps = None
         final_cap_source = None
@@ -812,14 +874,16 @@ class Orchestrator:
                 max(1, applied_target_bps // 1000),
             )
             applied_target_bps = applied_target_kbps * 1000
-            if applied_minrate_bps is not None and applied_minrate_bps > applied_target_bps:
+            if (
+                applied_minrate_bps is not None
+                and applied_minrate_bps > applied_target_bps
+            ):
                 applied_minrate_bps = applied_target_bps
 
         # "capped" means the resolved target exceeded an explicit cap (config or encoder).
         # Do not treat codec-specific rounding (e.g. SVT kbps quantization) as capping.
         was_capped = bool(
-            effective_cap_bps is not None
-            and resolved_target_bps > effective_cap_bps
+            effective_cap_bps is not None and resolved_target_bps > effective_cap_bps
         )
         source_bps_int = int(round(source_bps)) if source_bps is not None else None
         resolved = ResolvedRateControl(
@@ -880,15 +944,23 @@ class Orchestrator:
 
     def _original_bitrate_label_for_tags(self, file: VideoFile) -> str:
         """Return source bitrate label used by VBCOriginalBitrate tag."""
-        if file.metadata and file.metadata.bitrate_kbps and file.metadata.bitrate_kbps > 0:
+        if (
+            file.metadata
+            and file.metadata.bitrate_kbps
+            and file.metadata.bitrate_kbps > 0
+        ):
             return self._format_mbps_label_from_bps(file.metadata.bitrate_kbps * 1000.0)
         return "unknown"
 
-    def _quality_display_for_cq(self, cq_value: int, use_gpu: bool, config: Optional[AppConfig] = None) -> str:
+    def _quality_display_for_cq(
+        self, cq_value: int, use_gpu: bool, config: Optional[AppConfig] = None
+    ) -> str:
         cfg = config if config is not None else self.config
         encoder_args = select_encoder_args(cfg, use_gpu)
         quality_flag = extract_quality_flag(encoder_args)
-        quality_label = "CQ" if quality_flag == "-cq" else "CRF" if quality_flag == "-crf" else "Q"
+        quality_label = (
+            "CQ" if quality_flag == "-cq" else "CRF" if quality_flag == "-crf" else "Q"
+        )
         return f"{quality_label}{cq_value}"
 
     def _output_suffix_for_mode(self, use_gpu: Optional[bool] = None) -> str:
@@ -897,7 +969,9 @@ class Orchestrator:
         encoder_args = select_encoder_args(self.config, use_gpu)
         return output_extension_for_args(encoder_args)
 
-    def _determine_rotation(self, file: VideoFile, config: Optional[AppConfig] = None) -> Optional[int]:
+    def _determine_rotation(
+        self, file: VideoFile, config: Optional[AppConfig] = None
+    ) -> Optional[int]:
         """Determines if rotation is needed based on filename pattern.
 
         Args:
@@ -917,10 +991,7 @@ class Orchestrator:
         return None
 
     def _check_and_fix_color_space(
-        self,
-        input_path: Path,
-        output_path: Path,
-        stream_info: Dict[str, Any]
+        self, input_path: Path, output_path: Path, stream_info: Dict[str, Any]
     ) -> tuple[Path, Optional[Path]]:
         """Fix reserved color space via remux when needed (legacy behavior)."""
         color_space = stream_info.get("color_space")
@@ -937,24 +1008,30 @@ class Orchestrator:
         elif codec_name == "h264":
             bsf = "h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1"
         else:
-            self.logger.warning(f"Cannot fix color space for codec {codec_name}, proceeding with original file")
+            self.logger.warning(
+                f"Cannot fix color space for codec {codec_name}, proceeding with original file"
+            )
             return input_path, None
 
         try:
             fix_result = subprocess.run(
                 [
                     "ffmpeg",
-                    "-i", str(input_path),
-                    "-c", "copy",
-                    "-bsf:v", bsf,
+                    "-i",
+                    str(input_path),
+                    "-c",
+                    "copy",
+                    "-bsf:v",
+                    bsf,
                     str(temp_fixed),
                     "-y",
                     "-hide_banner",
-                    "-loglevel", "error",
+                    "-loglevel",
+                    "error",
                 ],
                 capture_output=True,
                 text=True,
-                timeout=300
+                timeout=300,
             )
         except subprocess.TimeoutExpired:
             self.logger.error(f"Timeout while fixing color space for {input_path.name}")
@@ -968,11 +1045,15 @@ class Orchestrator:
 
         if temp_fixed.exists():
             temp_fixed.unlink()
-        self.logger.warning(f"Failed to fix color space for {input_path.name}, proceeding with original file")
+        self.logger.warning(
+            f"Failed to fix color space for {input_path.name}, proceeding with original file"
+        )
         return input_path, None
 
     @staticmethod
-    def _rate_json_notes_for_tags(rate_control: Optional[ResolvedRateControl]) -> Optional[str]:
+    def _rate_json_notes_for_tags(
+        rate_control: Optional[ResolvedRateControl],
+    ) -> Optional[str]:
         if rate_control is None:
             return None
         payload = {
@@ -1043,38 +1124,41 @@ class Orchestrator:
         exiftool_cmd = ["exiftool"]
         if config_path.exists():
             exiftool_cmd.extend(["-config", str(config_path)])
-        exiftool_cmd.extend([
-            "-m",
-            "-tagsFromFile", str(source_path),
-            "-XMP:all", "-QuickTime:all", "-Keys:all", "-UserData:all",
-            "-EXIF:all", "-GPS:all",
-            "-XMP-exif:GPSLatitude<GPSLatitude",
-            "-XMP-exif:GPSLongitude<GPSLongitude",
-            "-XMP-exif:GPSAltitude<GPSAltitude",
-            "-XMP-exif:GPSPosition<GPSPosition",
-            "-QuickTime:GPSCoordinates<GPSPosition",
-            "-Keys:GPSCoordinates<GPSPosition",
-            # Fix for MTS/AVCHD missing dates in MP4
-            "-QuickTime:CreateDate<DateTimeOriginal",
-            "-QuickTime:ModifyDate<DateTimeOriginal",
-            "-QuickTime:TrackCreateDate<DateTimeOriginal",
-            "-QuickTime:TrackModifyDate<DateTimeOriginal",
-            "-QuickTime:MediaCreateDate<DateTimeOriginal",
-            "-QuickTime:MediaModifyDate<DateTimeOriginal",
-            "-QuickTime:CreationDate<DateTimeOriginal",
-            # Fix missing Make/Model
-            "-QuickTime:Make<Make",
-            "-QuickTime:Model<Model",
-            "-UserData:Make<Make",
-            "-UserData:Model<Model",
-        ])
+        exiftool_cmd.extend(
+            [
+                "-m",
+                "-tagsFromFile",
+                str(source_path),
+                "-XMP:all",
+                "-QuickTime:all",
+                "-Keys:all",
+                "-UserData:all",
+                "-EXIF:all",
+                "-GPS:all",
+                "-XMP-exif:GPSLatitude<GPSLatitude",
+                "-XMP-exif:GPSLongitude<GPSLongitude",
+                "-XMP-exif:GPSAltitude<GPSAltitude",
+                "-XMP-exif:GPSPosition<GPSPosition",
+                "-QuickTime:GPSCoordinates<GPSPosition",
+                "-Keys:GPSCoordinates<GPSPosition",
+                # Fix for MTS/AVCHD missing dates in MP4
+                "-QuickTime:CreateDate<DateTimeOriginal",
+                "-QuickTime:ModifyDate<DateTimeOriginal",
+                "-QuickTime:TrackCreateDate<DateTimeOriginal",
+                "-QuickTime:TrackModifyDate<DateTimeOriginal",
+                "-QuickTime:MediaCreateDate<DateTimeOriginal",
+                "-QuickTime:MediaModifyDate<DateTimeOriginal",
+                "-QuickTime:CreationDate<DateTimeOriginal",
+                # Fix missing Make/Model
+                "-QuickTime:Make<Make",
+                "-QuickTime:Model<Model",
+                "-UserData:Make<Make",
+                "-UserData:Model<Model",
+            ]
+        )
         if config_path.exists():
             exiftool_cmd.extend(vbc_tags)
-        exiftool_cmd.extend([
-            "-unsafe",
-            "-overwrite_original",
-            str(output_path)
-        ])
+        exiftool_cmd.extend(["-unsafe", "-overwrite_original", str(output_path)])
 
         filename = source_path.name
         rate_bytes = 10 * 1024 * 1024  # 10 MiB/s
@@ -1109,7 +1193,7 @@ class Orchestrator:
                         capture_output=True,
                         text=True,
                         check=True,
-                        timeout=timeout_s
+                        timeout=timeout_s,
                     )
                     exif_elapsed = time.monotonic() - exif_start
                     self.logger.info(
@@ -1139,7 +1223,9 @@ class Orchestrator:
                         f"elapsed={exif_elapsed:.2f}s returncode={e.returncode} "
                         f"stderr={stderr!r} stdout={stdout!r}"
                     )
-                    self.logger.warning(f"Failed to copy deep metadata for {filename}: {e}")
+                    self.logger.warning(
+                        f"Failed to copy deep metadata for {filename}: {e}"
+                    )
                     timed_out = False
                     break
                 except Exception as e:
@@ -1148,7 +1234,9 @@ class Orchestrator:
                         f"EXIF_COPY_ERROR: {filename} attempt {attempt}/{max_attempts} "
                         f"elapsed={exif_elapsed:.2f}s error={e}"
                     )
-                    self.logger.warning(f"Failed to copy deep metadata for {filename}: {e}")
+                    self.logger.warning(
+                        f"Failed to copy deep metadata for {filename}: {e}"
+                    )
                     timed_out = False
                     break
             if timed_out:
@@ -1206,7 +1294,8 @@ class Orchestrator:
 
         exiftool_cmd = [
             "exiftool",
-            "-config", str(config_path),
+            "-config",
+            str(config_path),
             "-overwrite_original",
         ]
         exiftool_cmd.extend(
@@ -1346,7 +1435,9 @@ class Orchestrator:
             return False, f"ExifTool tag read failed: {exc}"
 
         normalized_keys = {self._normalize_exif_tag_name(k) for k in tags.keys()}
-        missing = sorted(tag for tag in _REQUIRED_VBC_VERIFY_TAGS if tag not in normalized_keys)
+        missing = sorted(
+            tag for tag in _REQUIRED_VBC_VERIFY_TAGS if tag not in normalized_keys
+        )
         if missing:
             return False, f"missing VBC tags: {', '.join(missing)}"
 
@@ -1364,7 +1455,11 @@ class Orchestrator:
             if not self._pause_requested:
                 self._pause_requested = True
                 self._pause_message = message
-            self.event_bus.publish(ActionMessage(message=f"ERROR: verification failed, pausing queue ({message})"))
+            self.event_bus.publish(
+                ActionMessage(
+                    message=f"ERROR: verification failed, pausing queue ({message})"
+                )
+            )
             return
 
         if normalized_action == "exit":
@@ -1374,11 +1469,17 @@ class Orchestrator:
             self._shutdown_event.set()
             self._verification_abort_message = message
             self._wait_event.set()
-            self.event_bus.publish(ActionMessage(message=f"ERROR: verification failed, aborting ({message})"))
+            self.event_bus.publish(
+                ActionMessage(
+                    message=f"ERROR: verification failed, aborting ({message})"
+                )
+            )
             return
 
         # Default: log and continue
-        self.event_bus.publish(ActionMessage(message=f"Verification failed, continuing ({message})"))
+        self.event_bus.publish(
+            ActionMessage(message=f"Verification failed, continuing ({message})")
+        )
 
     def _is_metadata_input_dir(self, input_dir: Path) -> bool:
         return input_dir in self._metadata_input_entries
@@ -1405,7 +1506,9 @@ class Orchestrator:
         metadata_config: MetadataConfig,
     ) -> tuple[str, str, str, Optional[Path]]:
         source_policy = metadata_config.source_policy or manifest.source_policy
-        compression_profile = metadata_config.compression_profile or manifest.compression_profile
+        compression_profile = (
+            metadata_config.compression_profile or manifest.compression_profile
+        )
         move_after_success_dir = (
             Path(metadata_config.move_after_success_dir)
             if metadata_config.move_after_success_dir
@@ -1422,7 +1525,9 @@ class Orchestrator:
     def _next_backup_path(output_path: Path) -> Path:
         index = 1
         while True:
-            candidate = output_path.with_name(f"{output_path.stem}_{index}{output_path.suffix}")
+            candidate = output_path.with_name(
+                f"{output_path.stem}_{index}{output_path.suffix}"
+            )
             if not candidate.exists():
                 return candidate
             index += 1
@@ -1512,15 +1617,32 @@ class Orchestrator:
         self.logger.error("MANIFEST_ERROR: %s (%s)", destination, message)
         return destination
 
-    def _apply_manifest_source_policy(self, request: MetadataRequest) -> None:
-        if request.source_policy == "keep":
+    def _apply_manifest_source_policy(
+        self,
+        request: MetadataRequest,
+        *,
+        succeeded: bool = True,
+    ) -> None:
+        if not succeeded and request.source_policy != "move_all":
             return
-        if request.source_policy == "delete_after_success":
+        if succeeded and request.source_policy == "keep":
+            return
+        if succeeded and request.source_policy == "delete_after_success":
             for source_path in request.all_input_paths:
                 if source_path.exists():
                     source_path.unlink()
                     self.logger.info("MANIFEST_SOURCE_DELETED: %s", source_path)
             return
+
+        source_paths = request.all_input_paths
+        if not succeeded:
+            source_paths = [path for path in source_paths if path.is_file()]
+            if not source_paths:
+                self.logger.warning(
+                    "MANIFEST_SOURCE_MOVE_KEEP: json=%s reason=no_existing_sources",
+                    request.manifest_path,
+                )
+                return
 
         move_root = request.move_after_success_dir
         if move_root is None:
@@ -1545,14 +1667,16 @@ class Orchestrator:
             destination_dir = move_root / username
             permission_dir = destination_dir if destination_dir.exists() else move_root
             if destination_dir.exists() and not destination_dir.is_dir():
-                raise OSError(f"destination user path is not a directory: {destination_dir}")
+                raise OSError(
+                    f"destination user path is not a directory: {destination_dir}"
+                )
             if not os.access(permission_dir, os.W_OK | os.X_OK):
                 raise PermissionError(f"destination is not writable: {permission_dir}")
 
             move_plan: List[tuple[Path, Path]] = []
             seen_destinations: set[Path] = set()
             required_bytes = 0
-            for source_path in request.all_input_paths:
+            for source_path in source_paths:
                 if not source_path.is_file():
                     raise OSError(f"source is missing: {source_path}")
                 if source_path.parent.name != username:
@@ -1589,7 +1713,9 @@ class Orchestrator:
                 shutil.move(str(source_path), str(destination))
                 moved.append((source_path, destination))
                 if source_path.exists() or not destination.is_file():
-                    raise OSError(f"move verification failed: {source_path} -> {destination}")
+                    raise OSError(
+                        f"move verification failed: {source_path} -> {destination}"
+                    )
                 self.logger.info(
                     "MANIFEST_SOURCE_MOVED: %s -> %s",
                     source_path,
@@ -1674,6 +1800,10 @@ class Orchestrator:
             request.manifest,
             metadata_config,
         )
+        request.source_policy = source_policy
+        request.move_after_success_dir = move_after_success_dir
+        request.compression_profile = compression_profile
+        request.audio_only = audio_only
         self.logger.info(
             "MANIFEST_PREFLIGHT_START: json=%s inputs=%s",
             request.manifest_path,
@@ -1689,9 +1819,13 @@ class Orchestrator:
             part_info = self._get_manifest_part_info(source_path)
             video_packets = int(part_info.get("video_packets") or 0)
             audio_packets = int(part_info.get("audio_packets") or 0)
-            has_usable_video = bool(part_info.get("has_video_stream")) and video_packets > 0
+            has_usable_video = (
+                bool(part_info.get("has_video_stream")) and video_packets > 0
+            )
             if not has_usable_video:
-                is_audio_only = bool(part_info.get("has_audio_stream")) and audio_packets > 0
+                is_audio_only = (
+                    bool(part_info.get("has_audio_stream")) and audio_packets > 0
+                )
                 if audio_only == "ignore":
                     ignored_inputs.append(source_path)
                     if is_audio_only:
@@ -1707,7 +1841,11 @@ class Orchestrator:
                             source_path,
                         )
                     continue
-                reason = "audio-only input" if is_audio_only else "input has no video packets"
+                reason = (
+                    "audio-only input"
+                    if is_audio_only
+                    else "input has no video packets"
+                )
                 raise ValueError(f"Invalid manifest input ({reason}): {source_path}")
 
             width = int(part_info.get("width") or 0)
@@ -1777,6 +1915,8 @@ class Orchestrator:
                 request.manifest_path,
                 len(ignored_inputs),
             )
+            if request.source_policy == "move_all":
+                self._apply_manifest_source_policy(request)
             self._route_manifest_success(request)
             return None
         total_duration = sum(part.duration for part in parts)
@@ -1796,6 +1936,8 @@ class Orchestrator:
                 total_size,
                 self.file_scanner.min_size_bytes,
             )
+            if request.source_policy == "move_all":
+                self._apply_manifest_source_policy(request)
             self._route_manifest_success(request)
             return None
 
@@ -1814,10 +1956,6 @@ class Orchestrator:
         )
         request.parts = parts
         request.ignored_inputs = ignored_inputs
-        request.source_policy = source_policy
-        request.move_after_success_dir = move_after_success_dir
-        request.compression_profile = compression_profile
-        request.audio_only = audio_only
         request.target_width = target_width
         request.target_height = target_height
         video_file.size_bytes = total_size
@@ -1856,6 +1994,7 @@ class Orchestrator:
         metadata_config = self._load_current_metadata_config()
 
         for manifest_path in sorted(input_dir.rglob("*.json")):
+            request: Optional[MetadataRequest] = None
             with self._manifest_inflight_lock:
                 if manifest_path in self._manifest_inflight:
                     if self.config.general.debug:
@@ -1866,7 +2005,9 @@ class Orchestrator:
                     continue
             stats["files_found"] += 1
             try:
-                manifest = CompressionManifest.model_validate_json(manifest_path.read_text())
+                manifest = CompressionManifest.model_validate_json(
+                    manifest_path.read_text()
+                )
                 self.logger.info(
                     "MANIFEST_LOADED: json=%s request_id=%s producer=%s username=%s "
                     "recording_id=%s declared_size_bytes=%s declared_latest_mtime_ns=%s",
@@ -1887,42 +2028,6 @@ class Orchestrator:
                     manifest,
                     metadata_config,
                 )
-                output_path = Path(manifest.output_path)
-                tmp_path = output_path.with_suffix(".tmp")
-                if tmp_path.exists():
-                    tmp_path.unlink()
-                    self.logger.info("MANIFEST_STALE_TMP_REMOVED: %s", tmp_path)
-
-                # A multipart manifest may produce additional numbered outputs,
-                # which are known only after its parts have been probed.
-                if output_path.exists() and len(manifest.inputs) == 1:
-                    output_ok, _ = self._verify_output_file(output_path)
-                    if output_ok:
-                        completed_request = MetadataRequest(
-                            manifest_path=manifest_path,
-                            metadata_dir=input_dir,
-                            success_dir=success_dir,
-                            error_dir=error_dir,
-                            manifest=manifest,
-                            parts=[],
-                            source_policy=source_policy,
-                            move_after_success_dir=move_after_success_dir,
-                            compression_profile=compression_profile,
-                            audio_only=audio_only,
-                            target_width=1,
-                            target_height=1,
-                        )
-                        self._apply_manifest_source_policy(completed_request)
-                        self._route_manifest_success(completed_request)
-                        stats["already_compressed"] += 1
-                        continue
-
-                total_size = 0
-                for source_value in manifest.inputs:
-                    source_path = Path(source_value)
-                    if not source_path.is_file():
-                        raise FileNotFoundError(f"Missing manifest input: {source_path}")
-                    total_size += source_path.stat().st_size
                 request = MetadataRequest(
                     manifest_path=manifest_path,
                     metadata_dir=input_dir,
@@ -1938,6 +2043,30 @@ class Orchestrator:
                     target_width=1,
                     target_height=1,
                 )
+                output_path = Path(manifest.output_path)
+                tmp_path = output_path.with_suffix(".tmp")
+                if tmp_path.exists():
+                    tmp_path.unlink()
+                    self.logger.info("MANIFEST_STALE_TMP_REMOVED: %s", tmp_path)
+
+                # A multipart manifest may produce additional numbered outputs,
+                # which are known only after its parts have been probed.
+                if output_path.exists() and len(manifest.inputs) == 1:
+                    output_ok, _ = self._verify_output_file(output_path)
+                    if output_ok:
+                        self._apply_manifest_source_policy(request)
+                        self._route_manifest_success(request)
+                        stats["already_compressed"] += 1
+                        continue
+
+                total_size = 0
+                for source_value in manifest.inputs:
+                    source_path = Path(source_value)
+                    if not source_path.is_file():
+                        raise FileNotFoundError(
+                            f"Missing manifest input: {source_path}"
+                        )
+                    total_size += source_path.stat().st_size
                 if total_size < self.file_scanner.min_size_bytes:
                     stats["ignored_small"] += 1
                     stats["files_found"] -= 1
@@ -1947,6 +2076,8 @@ class Orchestrator:
                         total_size,
                         self.file_scanner.min_size_bytes,
                     )
+                    if request.source_policy == "move_all":
+                        self._apply_manifest_source_policy(request)
                     self._route_manifest_success(request)
                     continue
                 self.logger.info(
@@ -1966,12 +2097,20 @@ class Orchestrator:
                 )
             except Exception as exc:
                 message = str(exc) or exc.__class__.__name__
+                manifest_routed = False
                 try:
-                    destination = self._route_manifest_error(manifest_path, error_dir, message)
+                    destination = self._route_manifest_error(
+                        manifest_path, error_dir, message
+                    )
+                    manifest_routed = True
                 except Exception as move_exc:
-                    self.logger.exception("Failed to route manifest error for %s", manifest_path)
+                    self.logger.exception(
+                        "Failed to route manifest error for %s", manifest_path
+                    )
                     destination = manifest_path
                     message = f"{message}; failed to route manifest: {move_exc}"
+                if manifest_routed and request is not None:
+                    self._apply_manifest_source_policy(request, succeeded=False)
                 try:
                     size_bytes = destination.stat().st_size
                 except OSError:
@@ -1996,12 +2135,12 @@ class Orchestrator:
         input_dirs = self._normalize_input_dirs(input_dirs)
         all_files = []
         total_stats = {
-            'files_found': 0,
-            'files_to_process': 0,
-            'already_compressed': 0,
-            'ignored_small': 0,
-            'ignored_err': 0,
-            'ignored_err_entries': [],
+            "files_found": 0,
+            "files_to_process": 0,
+            "already_compressed": 0,
+            "ignored_small": 0,
+            "ignored_err": 0,
+            "ignored_err_entries": [],
         }
 
         for idx, input_dir in enumerate(input_dirs):
@@ -2013,7 +2152,9 @@ class Orchestrator:
                         # New dir added at runtime — fall back to suffix
                         suffix = self.config.suffix_output_dirs
                         if not suffix:
-                            raise ValueError(f"Output directory mapping missing for {input_dir}")
+                            raise ValueError(
+                                f"Output directory mapping missing for {input_dir}"
+                            )
                         output_dir = input_dir.with_name(f"{input_dir.name}{suffix}")
                 else:
                     output_dir = self._resolve_output_dir(input_dir, idx)
@@ -2022,7 +2163,9 @@ class Orchestrator:
             if self._is_metadata_input_dir(input_dir):
                 errors_dir = self._get_errors_dir(input_dir)
                 if errors_dir is None:
-                    raise ValueError(f"Errors directory mapping missing for {input_dir}")
+                    raise ValueError(
+                        f"Errors directory mapping missing for {input_dir}"
+                    )
                 metadata_files, metadata_stats = self._discover_metadata_dir(
                     input_dir,
                     output_dir,
@@ -2084,7 +2227,7 @@ class Orchestrator:
                         rel_path = Path(fpath.name)
                     output_suffix = self._output_suffix_for_mode()
                     output_path = output_dir / rel_path.with_suffix(output_suffix)
-                    err_path = output_path.with_suffix('.err')
+                    err_path = output_path.with_suffix(".err")
 
                     # Check for error markers FIRST (before timestamp check)
                     if err_path.exists():
@@ -2094,7 +2237,10 @@ class Orchestrator:
                             # Distinguish hw_cap errors from regular errors
                             try:
                                 err_content = err_path.read_text()
-                                if "Hardware is lacking required capabilities" in err_content:
+                                if (
+                                    "Hardware is lacking required capabilities"
+                                    in err_content
+                                ):
                                     if self.config.general.cpu_fallback:
                                         err_path.unlink()
                                     else:
@@ -2106,7 +2252,10 @@ class Orchestrator:
                                         DiscoveryErrorEntry(
                                             path=fpath,
                                             size_bytes=file_stat.st_size,
-                                            error_message=(err_content.strip() or "Error marker present"),
+                                            error_message=(
+                                                err_content.strip()
+                                                or "Error marker present"
+                                            ),
                                         )
                                     )
                             except (OSError, UnicodeDecodeError):
@@ -2122,7 +2271,10 @@ class Orchestrator:
                                 continue
 
                     # Check if already compressed
-                    if output_path.exists() and output_path.stat().st_mtime >= file_stat.st_mtime:
+                    if (
+                        output_path.exists()
+                        and output_path.stat().st_mtime >= file_stat.st_mtime
+                    ):
                         folder_already_compressed += 1
                         continue
 
@@ -2133,11 +2285,13 @@ class Orchestrator:
 
             # Aggregate stats
             # files_found = only files that could be processed (exclude ignored_small, ignored_err)
-            total_stats['files_found'] += (folder_total_files - folder_ignored_small - folder_ignored_err)
-            total_stats['already_compressed'] += folder_already_compressed
-            total_stats['ignored_small'] += folder_ignored_small
-            total_stats['ignored_err'] += folder_ignored_err
-            total_stats['ignored_err_entries'].extend(folder_ignored_err_entries)
+            total_stats["files_found"] += (
+                folder_total_files - folder_ignored_small - folder_ignored_err
+            )
+            total_stats["already_compressed"] += folder_already_compressed
+            total_stats["ignored_small"] += folder_ignored_small
+            total_stats["ignored_err"] += folder_ignored_err
+            total_stats["ignored_err_entries"].extend(folder_ignored_err_entries)
 
             all_files.extend(folder_files_to_process)
 
@@ -2148,10 +2302,12 @@ class Orchestrator:
                 )
 
         # Sort all files by filename for deterministic processing order
-        all_files = sort_files(all_files, input_dirs, self.config.general, self.file_scanner.extensions)
+        all_files = sort_files(
+            all_files, input_dirs, self.config.general, self.file_scanner.extensions
+        )
 
         # Update final stats
-        total_stats['files_to_process'] = len(all_files)
+        total_stats["files_to_process"] = len(all_files)
 
         if self.config.general.debug:
             self.logger.info(
@@ -2173,12 +2329,13 @@ class Orchestrator:
             self._thread_lock.notify_all()
         self._shutdown_event.set()
         from vbc.domain.events import ActionMessage
+
         self.event_bus.publish(ActionMessage(message=f"CRITICAL ERROR: {reason}"))
 
     def _move_completed_file(self, video_file: VideoFile, output_dir: Path) -> bool:
         """Move already encoded file to output directory safely."""
         source_path = video_file.path
-        
+
         def _hash_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
             hasher = hashlib.sha256()
             with open(path, "rb") as f:
@@ -2187,7 +2344,7 @@ class Orchestrator:
             return hasher.hexdigest()
 
         try:
-            rel_path = video_file.path.name # Simple name for now, or relative logic
+            rel_path = video_file.path.name  # Simple name for now, or relative logic
             # Try to get relative path if possible
             try:
                 # Find which input dir it belongs to
@@ -2196,7 +2353,7 @@ class Orchestrator:
                     rel_path = source_path.relative_to(input_dir)
             except ValueError:
                 pass
-                
+
             dest_path = output_dir / rel_path
             dest_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -2204,7 +2361,7 @@ class Orchestrator:
             if dest_path.exists():
                 src_size = source_path.stat().st_size
                 dest_size = dest_path.stat().st_size
-                
+
                 if src_size == dest_size:
                     try:
                         src_hash = _hash_file(source_path)
@@ -2235,18 +2392,26 @@ class Orchestrator:
                     stem = dest_path.stem
                     suffix = dest_path.suffix
                     dest_path = dest_path.with_name(f"{stem}_vbc_dup{suffix}")
-                    self.logger.warning(f"Destination exists with different size. Renaming move to: {dest_path.name}")
+                    self.logger.warning(
+                        f"Destination exists with different size. Renaming move to: {dest_path.name}"
+                    )
 
             # Perform Move
-            self.logger.info(f"Moving already encoded file: {source_path.name} -> {dest_path}")
+            self.logger.info(
+                f"Moving already encoded file: {source_path.name} -> {dest_path}"
+            )
             shutil.move(str(source_path), str(dest_path))
-            
+
             # Verify Move
             if not dest_path.exists():
-                raise RuntimeError(f"Move failed: Destination {dest_path} not found after move")
-            
+                raise RuntimeError(
+                    f"Move failed: Destination {dest_path} not found after move"
+                )
+
             if dest_path.stat().st_size != video_file.size_bytes:
-                 raise RuntimeError(f"Move failed: Size mismatch (src={video_file.size_bytes}, dest={dest_path.stat().st_size})")
+                raise RuntimeError(
+                    f"Move failed: Size mismatch (src={video_file.size_bytes}, dest={dest_path.stat().st_size})"
+                )
 
             return True
 
@@ -2272,10 +2437,16 @@ class Orchestrator:
         )
         failed_job.status = JobStatus.FAILED
         failed_job.error_message = message
+        manifest_routed = False
         try:
-            self._route_manifest_error(request.manifest_path, request.error_dir, message)
+            self._route_manifest_error(
+                request.manifest_path, request.error_dir, message
+            )
+            manifest_routed = True
         except Exception as exc:
             self.logger.exception("Failed to route manifest after job error: %s", exc)
+        if manifest_routed:
+            self._apply_manifest_source_policy(request, succeeded=False)
         if publish:
             self.event_bus.publish(JobFailed(job=failed_job, error_message=message))
 
@@ -2327,7 +2498,9 @@ class Orchestrator:
 
             groups = self._partition_manifest_parts(request.parts)
             if not groups:
-                self._fail_metadata_request(video_file, "Manifest has no usable video groups")
+                self._fail_metadata_request(
+                    video_file, "Manifest has no usable video groups"
+                )
                 return
             base_output_path = Path(request.manifest.output_path)
             base_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2538,7 +2711,9 @@ class Orchestrator:
 
                 if job.status == JobStatus.INTERRUPTED:
                     self.event_bus.publish(
-                        JobFailed(job=job, error_message=job.error_message or "Interrupted")
+                        JobFailed(
+                            job=job, error_message=job.error_message or "Interrupted"
+                        )
                     )
                     return
                 if job.status != JobStatus.COMPLETED or job.output_path is None:
@@ -2582,7 +2757,9 @@ class Orchestrator:
                 encoder_args = select_encoder_args(job_config, use_gpu)
                 encoder_label = infer_encoder_label(encoder_args, use_gpu)
                 finished_at = datetime.now().astimezone().isoformat(timespec="seconds")
-                original_bitrate_label = self._original_bitrate_label_for_tags(group_video)
+                original_bitrate_label = self._original_bitrate_label_for_tags(
+                    group_video
+                )
                 tag_err_path = (
                     request.error_dir / request.manifest_path.with_suffix(".err").name
                 )
@@ -2714,7 +2891,9 @@ class Orchestrator:
             if input_dir is None:
                 input_dir = self._find_input_folder(video_file.path)
             if not input_dir:
-                self.logger.error(f"Cannot determine input folder for {video_file.path}")
+                self.logger.error(
+                    f"Cannot determine input folder for {video_file.path}"
+                )
                 return
             output_dir = self._folder_mapping.get(input_dir)
             if output_dir is None:
@@ -2731,13 +2910,20 @@ class Orchestrator:
             output_path = output_dir / rel_path.with_suffix(output_suffix)
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            err_path = output_path.with_suffix('.err')
+            err_path = output_path.with_suffix(".err")
 
             if err_path.exists():
                 if self.config.general.clean_errors:
                     err_path.unlink()
                 else:
-                    self.event_bus.publish(JobFailed(job=CompressionJob(source_file=video_file, status=JobStatus.SKIPPED), error_message="Existing error marker found"))
+                    self.event_bus.publish(
+                        JobFailed(
+                            job=CompressionJob(
+                                source_file=video_file, status=JobStatus.SKIPPED
+                            ),
+                            error_message="Existing error marker found",
+                        )
+                    )
                     return
 
             if video_file.metadata is not None:
@@ -2762,8 +2948,15 @@ class Orchestrator:
                         self._write_job_error_marker(video_file, err_path, err_msg)
                     except Exception:
                         pass
-                    self.logger.error(f"Corrupted file detected (ffprobe failed): {filename} - {e}")
-                    job = CompressionJob(source_file=video_file, status=JobStatus.FAILED, output_path=output_path, error_message=err_msg)
+                    self.logger.error(
+                        f"Corrupted file detected (ffprobe failed): {filename} - {e}"
+                    )
+                    job = CompressionJob(
+                        source_file=video_file,
+                        status=JobStatus.FAILED,
+                        output_path=output_path,
+                        error_message=err_msg,
+                    )
                     self.event_bus.publish(JobFailed(job=job, error_message=err_msg))
                     return
 
@@ -2783,7 +2976,9 @@ class Orchestrator:
                     self._write_job_error_marker(video_file, err_path, err_msg)
                 except Exception:
                     pass
-                self.logger.error(f"Corrupted file detected (invalid dimensions): {filename} - {err_msg}")
+                self.logger.error(
+                    f"Corrupted file detected (invalid dimensions): {filename} - {err_msg}"
+                )
                 job = CompressionJob(
                     source_file=video_file,
                     status=JobStatus.FAILED,
@@ -2793,10 +2988,14 @@ class Orchestrator:
                 self.event_bus.publish(JobFailed(job=job, error_message=err_msg))
                 return
 
-            input_path, temp_fixed_file = self._check_and_fix_color_space(video_file.path, output_path, stream_info)
+            input_path, temp_fixed_file = self._check_and_fix_color_space(
+                video_file.path, output_path, stream_info
+            )
 
             # 1. Metadata & Decision (using thread-safe cache)
-            video_file.metadata = self._get_metadata(video_file, base_metadata=stream_info)
+            video_file.metadata = self._get_metadata(
+                video_file, base_metadata=stream_info
+            )
 
             if video_file.metadata and video_file.metadata.vbc_encoded:
                 # File is already encoded by VBC but is in input folder.
@@ -2806,35 +3005,64 @@ class Orchestrator:
                         self.skipped_vbc_count += 1
                     # Publish as Completed (Done) since it's effectively finished work
                     # We fake the job object for the event
-                    job = CompressionJob(source_file=video_file, status=JobStatus.COMPLETED, output_path=output_path, output_size_bytes=video_file.size_bytes, duration_seconds=0.1)
+                    job = CompressionJob(
+                        source_file=video_file,
+                        status=JobStatus.COMPLETED,
+                        output_path=output_path,
+                        output_size_bytes=video_file.size_bytes,
+                        duration_seconds=0.1,
+                    )
                     # Note: output_path might differ if renamed, but for event log it's fine
                     self.event_bus.publish(JobCompleted(job=job))
                     return
 
-            if self.config.general.skip_av1 and video_file.metadata and "av1" in video_file.metadata.codec.lower():
-                self.event_bus.publish(JobFailed(job=CompressionJob(source_file=video_file, status=JobStatus.SKIPPED), error_message="Already encoded in AV1"))
+            if (
+                self.config.general.skip_av1
+                and video_file.metadata
+                and "av1" in video_file.metadata.codec.lower()
+            ):
+                self.event_bus.publish(
+                    JobFailed(
+                        job=CompressionJob(
+                            source_file=video_file, status=JobStatus.SKIPPED
+                        ),
+                        error_message="Already encoded in AV1",
+                    )
+                )
                 return
 
             if self.config.general.filter_cameras:
                 cam_model = ""
                 if video_file.metadata:
-                    cam_model = video_file.metadata.camera_model or video_file.metadata.camera_raw or ""
+                    cam_model = (
+                        video_file.metadata.camera_model
+                        or video_file.metadata.camera_raw
+                        or ""
+                    )
                 matched = False
                 for filter_pattern in self.config.general.filter_cameras:
                     if filter_pattern.lower() in cam_model.lower():
                         matched = True
                         break
                 if not matched:
-                    self.event_bus.publish(JobFailed(job=CompressionJob(source_file=video_file, status=JobStatus.SKIPPED), error_message=f'Camera model "{cam_model}" not in filter'))
+                    self.event_bus.publish(
+                        JobFailed(
+                            job=CompressionJob(
+                                source_file=video_file, status=JobStatus.SKIPPED
+                            ),
+                            error_message=f'Camera model "{cam_model}" not in filter',
+                        )
+                    )
                     return
 
             # Determine job-specific config and source
             from vbc.config.overrides import build_job_config
+
             job_config, config_source = build_job_config(
-                self.config,           # base global config
-                self.local_registry,   # local VBC.YAML registry
-                video_file.path,       # file being processed
-                self.cli_overrides     # CLI overrides
+                self.config,  # base global config
+                self.local_registry,  # local VBC.YAML registry
+                video_file.path,  # file being processed
+                self.cli_overrides,  # CLI overrides
             )
 
             rotation = self._determine_rotation(video_file, config=job_config)
@@ -2859,7 +3087,9 @@ class Orchestrator:
                     )
                     vbc_json_notes = self._rate_json_notes_for_tags(rate_control)
                 else:
-                    quality_value = self._determine_cq(video_file, use_gpu=use_gpu, config=job_config)
+                    quality_value = self._determine_cq(
+                        video_file, use_gpu=use_gpu, config=job_config
+                    )
                     quality_display = self._quality_display_for_cq(
                         quality_value,
                         use_gpu=use_gpu,
@@ -2885,7 +3115,7 @@ class Orchestrator:
                 rotation_angle=rotation or 0,
                 quality_value=quality_value,
                 quality_display=quality_display,
-                config_source=config_source
+                config_source=config_source,
             )
 
             # 2. Compress
@@ -2922,7 +3152,9 @@ class Orchestrator:
                     )
                     vbc_json_notes = self._rate_json_notes_for_tags(rate_control)
                 else:
-                    quality_value = self._determine_cq(video_file, use_gpu=False, config=job_config)
+                    quality_value = self._determine_cq(
+                        video_file, use_gpu=False, config=job_config
+                    )
                     quality_display = self._quality_display_for_cq(
                         quality_value,
                         use_gpu=False,
@@ -2934,7 +3166,7 @@ class Orchestrator:
                 output_path_cpu.parent.mkdir(parents=True, exist_ok=True)
                 if output_path_cpu != job.output_path:
                     job.output_path = output_path_cpu
-                    err_path = output_path_cpu.with_suffix('.err')
+                    err_path = output_path_cpu.with_suffix(".err")
                 job.status = JobStatus.PROCESSING
                 job.error_message = None
                 job.quality_value = quality_value
@@ -2958,7 +3190,9 @@ class Orchestrator:
                     out_size = job.output_path.stat().st_size
                     in_size = video_file.size_bytes
                     ratio = out_size / in_size
-                    kept_original = ratio > (1.0 - job_config.general.min_compression_ratio)
+                    kept_original = ratio > (
+                        1.0 - job_config.general.min_compression_ratio
+                    )
                     if kept_original:
                         shutil.copy2(video_file.path, job.output_path)
                         job.error_message = f"Ratio {ratio:.2f} above threshold, kept original: {filename}"
@@ -2969,7 +3203,9 @@ class Orchestrator:
                     else:
                         encoder_args = select_encoder_args(job_config, use_gpu)
                         encoder_label = infer_encoder_label(encoder_args, use_gpu)
-                        finished_at = datetime.now().astimezone().isoformat(timespec="seconds")
+                        finished_at = (
+                            datetime.now().astimezone().isoformat(timespec="seconds")
+                        )
                         quality_label = quality_tag_label
                         if job_config.general.copy_metadata:
                             self._copy_deep_metadata(
@@ -3036,10 +3272,14 @@ class Orchestrator:
                         job.error_message = f"Verification failed: {details}"
                         self.logger.error(f"VERIFY_FAIL: {filename} ({details})")
                         try:
-                            self._write_job_error_marker(video_file, err_path, job.error_message)
+                            self._write_job_error_marker(
+                                video_file, err_path, job.error_message
+                            )
                         except Exception:
                             pass
-                        self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
+                        self.event_bus.publish(
+                            JobFailed(job=job, error_message=job.error_message)
+                        )
                         self._handle_verification_failure(
                             job.error_message,
                             job_config.general.verify_fail_action,
@@ -3054,28 +3294,42 @@ class Orchestrator:
                 self.event_bus.publish(JobCompleted(job=job))
                 if self.config.general.debug and start_time:
                     elapsed = time.monotonic() - start_time
-                    self.logger.info(f"PROCESS_END: {filename} status=completed elapsed={elapsed:.2f}s")
+                    self.logger.info(
+                        f"PROCESS_END: {filename} status=completed elapsed={elapsed:.2f}s"
+                    )
             elif job.status == JobStatus.INTERRUPTED:
                 # User pressed Ctrl+C - don't create .err, already cleaned up by FFmpegAdapter
-                self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
+                self.event_bus.publish(
+                    JobFailed(job=job, error_message=job.error_message)
+                )
                 if self.config.general.debug and start_time:
                     elapsed = time.monotonic() - start_time
-                    self.logger.info(f"PROCESS_END: {filename} status=interrupted elapsed={elapsed:.2f}s")
+                    self.logger.info(
+                        f"PROCESS_END: {filename} status=interrupted elapsed={elapsed:.2f}s"
+                    )
             elif job.status in (JobStatus.HW_CAP_LIMIT, JobStatus.FAILED):
                 # Event already published by FFmpeg adapter, just write error marker
-                self._write_job_error_marker(video_file, err_path, job.error_message or "Unknown error")
+                self._write_job_error_marker(
+                    video_file, err_path, job.error_message or "Unknown error"
+                )
                 if self.config.general.debug and start_time:
                     elapsed = time.monotonic() - start_time
-                    self.logger.info(f"PROCESS_END: {filename} status={job.status.value} elapsed={elapsed:.2f}s")
+                    self.logger.info(
+                        f"PROCESS_END: {filename} status={job.status.value} elapsed={elapsed:.2f}s"
+                    )
             elif job.status == JobStatus.PROCESSING:
                 # Status not updated - treat as unknown error
                 job.status = JobStatus.FAILED
                 job.error_message = "Compression finished but status not updated"
                 self._write_job_error_marker(video_file, err_path, job.error_message)
-                self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
+                self.event_bus.publish(
+                    JobFailed(job=job, error_message=job.error_message)
+                )
                 if self.config.general.debug and start_time:
                     elapsed = time.monotonic() - start_time
-                    self.logger.info(f"PROCESS_END: {filename} status=failed reason=status_not_updated elapsed={elapsed:.2f}s")
+                    self.logger.info(
+                        f"PROCESS_END: {filename} status=failed reason=status_not_updated elapsed={elapsed:.2f}s"
+                    )
 
         except KeyboardInterrupt:
             # Ctrl+C during processing - already handled by FFmpegAdapter if during ffmpeg
@@ -3084,10 +3338,14 @@ class Orchestrator:
                 job.status = JobStatus.INTERRUPTED
                 job.error_message = "Interrupted by user (Ctrl+C)"
             if job:
-                self.event_bus.publish(JobFailed(job=job, error_message=job.error_message or "Interrupted"))
+                self.event_bus.publish(
+                    JobFailed(job=job, error_message=job.error_message or "Interrupted")
+                )
             if self.config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
-                self.logger.info(f"PROCESS_END: {filename} status=interrupted elapsed={elapsed:.2f}s")
+                self.logger.info(
+                    f"PROCESS_END: {filename} status=interrupted elapsed={elapsed:.2f}s"
+                )
             # Re-raise to propagate to main loop
             raise
         except Exception as e:
@@ -3097,17 +3355,25 @@ class Orchestrator:
                 job.status = JobStatus.FAILED
                 job.error_message = f"Exception: {str(e)}"
                 if err_path:
-                    self._write_job_error_marker(video_file, err_path, job.error_message)
-                self.event_bus.publish(JobFailed(job=job, error_message=job.error_message))
+                    self._write_job_error_marker(
+                        video_file, err_path, job.error_message
+                    )
+                self.event_bus.publish(
+                    JobFailed(job=job, error_message=job.error_message)
+                )
             if self.config.general.debug and start_time:
                 elapsed = time.monotonic() - start_time
-                self.logger.info(f"PROCESS_END: {filename} status=exception elapsed={elapsed:.2f}s")
+                self.logger.info(
+                    f"PROCESS_END: {filename} status=exception elapsed={elapsed:.2f}s"
+                )
         finally:
             if temp_fixed_file and temp_fixed_file.exists():
                 try:
                     temp_fixed_file.unlink()
                 except Exception as e:
-                    self.logger.warning(f"Failed to cleanup temp file {temp_fixed_file}: {e}")
+                    self.logger.warning(
+                        f"Failed to cleanup temp file {temp_fixed_file}: {e}"
+                    )
             with self._thread_lock:
                 self._active_threads -= 1
                 self._thread_lock.notify_all()
@@ -3141,8 +3407,11 @@ class Orchestrator:
 
             if self._pause_requested:
                 from vbc.domain.events import ProcessingPausedOnError
+
                 self.event_bus.publish(
-                    ProcessingPausedOnError(message=self._pause_message or "Verification failed")
+                    ProcessingPausedOnError(
+                        message=self._pause_message or "Verification failed"
+                    )
                 )
                 self._wait_event.clear()
                 self._restart_after_wait = False
@@ -3181,6 +3450,7 @@ class Orchestrator:
 
             # Publish WAITING state for UI
             from vbc.domain.events import WaitingForInput
+
             self.event_bus.publish(WaitingForInput())
 
             # Block until R (restart) or S/Ctrl+C (exit)
@@ -3230,7 +3500,9 @@ class Orchestrator:
                 self._refresh_requested = False
             self._wait_event.clear()
 
-    def _run_once(self, input_dirs: List[Path], forced_files: Optional[List[Path]] = None):
+    def _run_once(
+        self, input_dirs: List[Path], forced_files: Optional[List[Path]] = None
+    ):
         self.logger.info(f"Discovery started: {len(input_dirs)} folders")
         for input_dir in input_dirs:
             self.event_bus.publish(DiscoveryStarted(directory=input_dir))
@@ -3264,27 +3536,33 @@ class Orchestrator:
             f"ignored_err={discovery_stats['ignored_err']}"
         )
 
-        self.event_bus.publish(DiscoveryFinished(
-            files_found=discovery_stats['files_found'],
-            files_to_process=discovery_stats['files_to_process'],
-            already_compressed=discovery_stats['already_compressed'],
-            ignored_small=discovery_stats['ignored_small'],
-            ignored_err=discovery_stats['ignored_err'],
-            ignored_err_entries=discovery_stats['ignored_err_entries'],
-            ignored_av1=0,  # AV1 check done during processing
-            source_folders_count=len(input_dirs)
-        ))
+        self.event_bus.publish(
+            DiscoveryFinished(
+                files_found=discovery_stats["files_found"],
+                files_to_process=discovery_stats["files_to_process"],
+                already_compressed=discovery_stats["already_compressed"],
+                ignored_small=discovery_stats["ignored_small"],
+                ignored_err=discovery_stats["ignored_err"],
+                ignored_err_entries=discovery_stats["ignored_err_entries"],
+                ignored_av1=0,  # AV1 check done during processing
+                source_folders_count=len(input_dirs),
+            )
+        )
 
         # If no files to process, exit early
         if len(files_to_process) == 0:
             self.logger.info("No files to process, exiting")
             self.event_bus.publish(ProcessingFinished())
-            if self.config.general.bell_on_finish and not self.config.general.wait_on_finish:
+            if (
+                self.config.general.bell_on_finish
+                and not self.config.general.wait_on_finish
+            ):
                 _emit_bell()
             return False
 
         # Submit-on-demand pattern (like original vbc.py)
         from collections import deque
+
         pending = deque(files_to_process)
         in_flight = {}  # future -> VideoFile
 
@@ -3302,9 +3580,12 @@ class Orchestrator:
         self.event_bus.publish(QueueUpdated(pending_files=[vf for vf in pending]))
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+
             def submit_batch():
                 """Submit files up to max_inflight limit"""
-                max_inflight = self.config.general.prefetch_factor * self._current_max_threads
+                max_inflight = (
+                    self.config.general.prefetch_factor * self._current_max_threads
+                )
                 while (
                     len(in_flight) < max_inflight
                     and pending
@@ -3324,7 +3605,9 @@ class Orchestrator:
                 self._prune_failed_pending(pending)
 
                 # Update UI with current pending files (store VideoFile objects, not just paths)
-                self.event_bus.publish(QueueUpdated(pending_files=[vf for vf in pending]))
+                self.event_bus.publish(
+                    QueueUpdated(pending_files=[vf for vf in pending])
+                )
 
             try:
                 # Initial batch submission
@@ -3336,7 +3619,7 @@ class Orchestrator:
                     done, _ = concurrent.futures.wait(
                         current_futures,
                         timeout=1.0,
-                        return_when=concurrent.futures.FIRST_COMPLETED
+                        return_when=concurrent.futures.FIRST_COMPLETED,
                     )
 
                     for future in done:
@@ -3344,6 +3627,7 @@ class Orchestrator:
                             future.result()
                         except Exception as e:
                             import logging
+
                             logging.error(f"Future failed with exception: {e}")
                         del in_flight[future]
 
@@ -3364,62 +3648,103 @@ class Orchestrator:
                                 refresh_dirs = list(self._folder_mapping.keys())
                             # Perform new discovery on active folders
                             new_files, new_stats = self._perform_discovery(refresh_dirs)
-                            
+
                             # Identify currently processing files to exclude them from queue
-                            in_flight_paths = {vf.identity_path for vf in in_flight.values()}
+                            in_flight_paths = {
+                                vf.identity_path for vf in in_flight.values()
+                            }
                             old_pending_paths = {vf.identity_path for vf in pending}
-                            
+
                             # Rebuild pending queue from sorted new_files, excluding in-flight ones
                             # This ensures the queue is fully re-sorted according to config
                             new_pending_list = [
-                                vf for vf in new_files if vf.identity_path not in in_flight_paths
+                                vf
+                                for vf in new_files
+                                if vf.identity_path not in in_flight_paths
                             ]
-                            new_pending_paths = {vf.identity_path for vf in new_pending_list}
-                            
+                            new_pending_paths = {
+                                vf.identity_path for vf in new_pending_list
+                            }
+
                             # Calculate stats
                             added = len(new_pending_paths - old_pending_paths)
                             removed = len(old_pending_paths - new_pending_paths)
-                            
+
                             # Replace queue
                             pending = deque(new_pending_list)
                             self._prune_failed_pending(pending)
-                            
-                            self.event_bus.publish(RefreshFinished(added=added, removed=removed))
+
+                            self.event_bus.publish(
+                                RefreshFinished(added=added, removed=removed)
+                            )
                             # Update discovery stats (include ignored_small like old code)
-                            self.event_bus.publish(DiscoveryFinished(
-                                files_found=new_stats['files_found'],
-                                files_to_process=new_stats['files_to_process'],
-                                already_compressed=new_stats['already_compressed'],
-                                ignored_small=new_stats['ignored_small'],  # FIX: update this counter
-                                ignored_err=new_stats['ignored_err'],
-                                ignored_err_entries=new_stats['ignored_err_entries'],
-                                ignored_av1=0,  # AV1 check done during processing
-                                source_folders_count=len(self._folder_mapping)
-                            ))
+                            self.event_bus.publish(
+                                DiscoveryFinished(
+                                    files_found=new_stats["files_found"],
+                                    files_to_process=new_stats["files_to_process"],
+                                    already_compressed=new_stats["already_compressed"],
+                                    ignored_small=new_stats[
+                                        "ignored_small"
+                                    ],  # FIX: update this counter
+                                    ignored_err=new_stats["ignored_err"],
+                                    ignored_err_entries=new_stats[
+                                        "ignored_err_entries"
+                                    ],
+                                    ignored_av1=0,  # AV1 check done during processing
+                                    source_folders_count=len(self._folder_mapping),
+                                )
+                            )
                             # Publish feedback message (like old vbc.py lines 1852-1860)
                             from vbc.domain.events import ActionMessage
+
                             if added > 0 and removed > 0:
-                                self.event_bus.publish(ActionMessage(message=f"Refreshed: +{added} new, -{removed} removed"))
-                                self.logger.info(f"Refresh: +{added} new, -{removed} removed")
+                                self.event_bus.publish(
+                                    ActionMessage(
+                                        message=f"Refreshed: +{added} new, -{removed} removed"
+                                    )
+                                )
+                                self.logger.info(
+                                    f"Refresh: +{added} new, -{removed} removed"
+                                )
                             elif added > 0:
-                                self.event_bus.publish(ActionMessage(message=f"Refreshed: +{added} new files"))
-                                self.logger.info(f"Refresh: added {added} new files to queue")
+                                self.event_bus.publish(
+                                    ActionMessage(
+                                        message=f"Refreshed: +{added} new files"
+                                    )
+                                )
+                                self.logger.info(
+                                    f"Refresh: added {added} new files to queue"
+                                )
                             elif removed > 0:
-                                self.event_bus.publish(ActionMessage(message=f"Refreshed: -{removed} removed"))
-                                self.logger.info(f"Refresh: removed {removed} files from queue")
+                                self.event_bus.publish(
+                                    ActionMessage(
+                                        message=f"Refreshed: -{removed} removed"
+                                    )
+                                )
+                                self.logger.info(
+                                    f"Refresh: removed {removed} files from queue"
+                                )
                             else:
-                                self.event_bus.publish(ActionMessage(message="Refreshed: no changes"))
+                                self.event_bus.publish(
+                                    ActionMessage(message="Refreshed: no changes")
+                                )
                                 self.logger.info("Refresh: no changes detected")
 
                     # Submit more files to maintain queue
                     submit_batch()
 
                     # Exit if shutdown requested and no more in flight
-                    if (self._shutdown_requested or self._pause_requested) and not in_flight:
+                    if (
+                        self._shutdown_requested or self._pause_requested
+                    ) and not in_flight:
                         if self._pause_requested:
-                            self.logger.info("Pause requested after verification failure, exiting processing loop")
+                            self.logger.info(
+                                "Pause requested after verification failure, exiting processing loop"
+                            )
                         else:
-                            self.logger.info("Shutdown requested, exiting processing loop")
+                            self.logger.info(
+                                "Shutdown requested, exiting processing loop"
+                            )
                         break
 
                 # After all futures done, give UI one more refresh cycle
@@ -3428,16 +3753,26 @@ class Orchestrator:
                     raise VerificationAbortError(self._verification_abort_message)
                 if not self._shutdown_requested and not self._pause_requested:
                     self.event_bus.publish(ProcessingFinished())
-                    if self.config.general.bell_on_finish and not self.config.general.wait_on_finish:
+                    if (
+                        self.config.general.bell_on_finish
+                        and not self.config.general.wait_on_finish
+                    ):
                         _emit_bell()
                 self.logger.info("All files processed, exiting")
 
             except KeyboardInterrupt:
                 # User pressed Ctrl+C - graceful shutdown like old vbc.py (lines 1980-1997)
-                self.logger.info("Ctrl+C detected - stopping new tasks and interrupting active jobs...")
+                self.logger.info(
+                    "Ctrl+C detected - stopping new tasks and interrupting active jobs..."
+                )
                 from vbc.domain.events import ActionMessage
+
                 self.event_bus.publish(InterruptRequested())
-                self.event_bus.publish(ActionMessage(message="Ctrl+C - interrupting active compressions..."))
+                self.event_bus.publish(
+                    ActionMessage(
+                        message="Ctrl+C - interrupting active compressions..."
+                    )
+                )
 
                 # Signal all workers to stop immediately
                 self._shutdown_event.set()
@@ -3451,7 +3786,9 @@ class Orchestrator:
                         future.cancel()
 
                 # Wait for currently running tasks to see shutdown_event (max 10 seconds)
-                self.logger.info("Waiting for active ffmpeg processes to terminate (max 10s)...")
+                self.logger.info(
+                    "Waiting for active ffmpeg processes to terminate (max 10s)..."
+                )
                 deadline = time.monotonic() + 10.0
                 while True:
                     running = [future for future in in_flight if not future.done()]
@@ -3463,7 +3800,7 @@ class Orchestrator:
                     concurrent.futures.wait(
                         running,
                         timeout=min(0.2, remaining),
-                        return_when=concurrent.futures.FIRST_COMPLETED
+                        return_when=concurrent.futures.FIRST_COMPLETED,
                     )
 
                 # Force shutdown after timeout

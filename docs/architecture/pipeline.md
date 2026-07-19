@@ -355,7 +355,8 @@ This keeps the UI populated while ffprobe resolves the visible and near-future q
 entries. One cached probe per unchanged part returns stream facts, packet counts, and
 packet-timeline duration, so queue refreshes and output validation do not rescan source
 video. A request below `min_size_bytes` is a terminal ignored task: VBC creates no output,
-keeps all source parts, and moves the unchanged manifest to `_out`.
+keeps all source parts unless `move_all` archives them, and moves the unchanged manifest
+to `_out`.
 Packet timelines unwrap the 32-bit millisecond timestamp rollover before calculating
 duration. A part whose packet timeline exceeds `metadata.max_duration_seconds` receives
 an exceptional decoded-frame count. If `frames / fps` is within the limit, VBC logs the
@@ -374,12 +375,13 @@ or interruption; intermediate files never receive an `.mp4` name. Multipart vide
 timestamp passthrough so FFmpeg does not silently drop closely spaced source frames.
 Frame-count verification runs from FFmpeg's encoded-frame statistics and one cached
 output packet probe before VBC tags are written, ensuring a tagged output has passed the
-frame check. After every group passes verification, `move_after_success` preflights the
-configured archive root, capacity, permissions, and every destination before moving
-inputs below the producer username directory; a failed preflight behaves as `keep`.
-The manifest moves to `_out` only after source policy completion, or to `_err` with a sibling `.err` for any non-interruption
-failure. An interrupted request keeps its JSON and reuses already verified group outputs
-when it resumes.
+frame check. After every group passes verification, `move_after_success` and `move_all`
+preflight the configured archive root, capacity, permissions, and every destination before
+moving inputs below the producer username directory; a failed preflight behaves as `keep`.
+On terminal failure, `move_all` first routes the manifest and sibling `.err` to `_err`, then
+archives every input that still exists using the same safeguards. Invalid JSON has no
+trusted input list and cannot move sources. An interrupted request keeps its JSON and
+sources in place and reuses already verified group outputs when it resumes.
 
 ### Graceful Shutdown
 

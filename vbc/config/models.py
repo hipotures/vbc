@@ -186,7 +186,9 @@ class DynamicRateConfig(BaseModel):
             allow_values_when_non_rate=False,
         )
         if self.rate_target_max_bps is not None:
-            parse_rate_cap_bps(self.rate_target_max_bps, field_name="rate_target_max_bps")
+            parse_rate_cap_bps(
+                self.rate_target_max_bps, field_name="rate_target_max_bps"
+            )
         return self
 
 
@@ -251,7 +253,9 @@ class GeneralConfig(BaseModel):
     minrate: Optional[str] = None
     maxrate: Optional[str] = None
     rate_target_max_bps: Optional[str] = None
-    extensions: List[str] = Field(default_factory=lambda: [".mp4", ".mov", ".avi", ".flv", ".webm"])
+    extensions: List[str] = Field(
+        default_factory=lambda: [".mp4", ".mov", ".avi", ".flv", ".webm"]
+    )
     min_size_bytes: int = Field(default=1048576)
     clean_errors: bool = False
     verify_fail_action: Literal["false", "log", "pause", "exit"] = "false"
@@ -298,7 +302,9 @@ class GeneralConfig(BaseModel):
         try:
             angle = int(v)
         except (TypeError, ValueError):
-            raise ValueError("manual_rotation must be one of: null, 0, 90, 180, 270.") from None
+            raise ValueError(
+                "manual_rotation must be one of: null, 0, 90, 180, 270."
+            ) from None
         if angle not in {0, 90, 180, 270}:
             raise ValueError("manual_rotation must be one of: null, 0, 90, 180, 270.")
         return angle
@@ -317,7 +323,9 @@ class GeneralConfig(BaseModel):
         if v is None:
             return {}
         if not isinstance(v, dict):
-            raise ValueError("dynamic_quality must be a mapping of camera pattern -> rule.")
+            raise ValueError(
+                "dynamic_quality must be a mapping of camera pattern -> rule."
+            )
 
         for pattern, rule in v.items():
             if isinstance(rule, DynamicQualityRule):
@@ -325,7 +333,7 @@ class GeneralConfig(BaseModel):
             if isinstance(rule, int):
                 raise ValueError(
                     f"Legacy dynamic_quality format is not supported for '{pattern}'. "
-                    "Use object format: {\"pattern\": {\"cq\": 35}}."
+                    'Use object format: {"pattern": {"cq": 35}}.'
                 )
             if not isinstance(rule, dict):
                 raise ValueError(
@@ -346,8 +354,11 @@ class GeneralConfig(BaseModel):
             allow_values_when_non_rate=True,
         )
         if self.rate_target_max_bps is not None:
-            parse_rate_cap_bps(self.rate_target_max_bps, field_name="rate_target_max_bps")
+            parse_rate_cap_bps(
+                self.rate_target_max_bps, field_name="rate_target_max_bps"
+            )
         return self
+
 
 class AutoRotateConfig(BaseModel):
     """Filename pattern-based automatic rotation configuration.
@@ -362,13 +373,15 @@ class AutoRotateConfig(BaseModel):
 
     patterns: Dict[str, int] = Field(default_factory=dict)
 
-    @field_validator('patterns')
+    @field_validator("patterns")
     @classmethod
     def validate_angles(cls, v: Dict[str, int]) -> Dict[str, int]:
         """Validate that all rotation angles are 0, 90, 180, or 270 degrees."""
         for pattern, angle in v.items():
             if angle not in {0, 90, 180, 270}:
-                raise ValueError(f"Invalid rotation angle {angle} for pattern {pattern}. Must be 0, 90, 180, or 270.")
+                raise ValueError(
+                    f"Invalid rotation angle {angle} for pattern {pattern}. Must be 0, 90, 180, or 270."
+                )
         return v
 
 
@@ -420,7 +433,7 @@ class MetadataConfig(BaseModel):
     max_dropped_frames: int = Field(default=0, ge=0)
     max_duration_seconds: int = Field(default=86400, gt=0)
     source_policy: Optional[
-        Literal["keep", "delete_after_success", "move_after_success"]
+        Literal["keep", "delete_after_success", "move_after_success", "move_all"]
     ] = None
     move_after_success_dir: Optional[str] = None
     compression_profile: Optional[str] = None
@@ -514,7 +527,9 @@ class AppConfig(BaseModel):
 
     @field_validator("input_dirs")
     @classmethod
-    def validate_unique_input_dir_paths(cls, v: List[InputDirEntry]) -> List[InputDirEntry]:
+    def validate_unique_input_dir_paths(
+        cls, v: List[InputDirEntry]
+    ) -> List[InputDirEntry]:
         seen = set()
         for entry in v:
             if entry.path in seen:
@@ -527,16 +542,22 @@ class AppConfig(BaseModel):
         if self.output_dirs and self.suffix_output_dirs:
             raise ValueError("output_dirs cannot be used with suffix_output_dirs.")
         if not self.output_dirs and not self.suffix_output_dirs:
-            raise ValueError("suffix_output_dirs must be set when output_dirs is empty.")
+            raise ValueError(
+                "suffix_output_dirs must be set when output_dirs is empty."
+            )
         if self.errors_dirs and self.suffix_errors_dirs:
             raise ValueError("errors_dirs cannot be used with suffix_errors_dirs.")
         if not self.errors_dirs and not self.suffix_errors_dirs:
-            raise ValueError("suffix_errors_dirs must be set when errors_dirs is empty.")
+            raise ValueError(
+                "suffix_errors_dirs must be set when errors_dirs is empty."
+            )
         return self
+
 
 class DemoExtension(BaseModel):
     ext: str
     weight: float = Field(default=1.0, gt=0)
+
 
 class DemoFilesConfig(BaseModel):
     count: Optional[int] = Field(default=None, ge=0)
@@ -551,6 +572,7 @@ class DemoFilesConfig(BaseModel):
             raise ValueError("max_words must be >= min_words")
         return self
 
+
 class DemoSizeConfig(BaseModel):
     distribution: str = Field(default="triangular")
     min_mb: float = Field(default=20.0, gt=0)
@@ -562,16 +584,21 @@ class DemoSizeConfig(BaseModel):
     def validate_distribution(cls, v: str) -> str:
         allowed = {"triangular", "uniform"}
         if v not in allowed:
-            raise ValueError(f"Unsupported distribution: {v}. Use one of {sorted(allowed)}")
+            raise ValueError(
+                f"Unsupported distribution: {v}. Use one of {sorted(allowed)}"
+            )
         return v
 
     @model_validator(mode="after")
     def validate_bounds(self):
         if self.min_mb > self.max_mb:
             raise ValueError("min_mb must be <= max_mb")
-        if self.distribution == "triangular" and not (self.min_mb <= self.mode_mb <= self.max_mb):
+        if self.distribution == "triangular" and not (
+            self.min_mb <= self.mode_mb <= self.max_mb
+        ):
             raise ValueError("mode_mb must be between min_mb and max_mb")
         return self
+
 
 class DemoBitrateConfig(BaseModel):
     min_mbps: float = Field(default=10.0, gt=0)
@@ -586,23 +613,28 @@ class DemoBitrateConfig(BaseModel):
             raise ValueError("mode_mbps must be between min_mbps and max_mbps")
         return self
 
+
 class DemoResolution(BaseModel):
     width: int = Field(gt=0)
     height: int = Field(gt=0)
     weight: float = Field(default=1.0, gt=0)
 
+
 class DemoFps(BaseModel):
     value: float = Field(gt=0)
     weight: float = Field(default=1.0, gt=0)
+
 
 class DemoCodec(BaseModel):
     name: str
     weight: float = Field(default=1.0, gt=0)
 
+
 class DemoProcessingConfig(BaseModel):
     throughput_mb_s: float = Field(default=35.0, gt=0)
     progress_interval_s: float = Field(default=0.2, gt=0)
     jitter_pct: float = Field(default=0.25, ge=0.0, le=1.0)
+
 
 class DemoOutputRatioConfig(BaseModel):
     min: float = Field(default=0.22, ge=0.0, le=1.0)
@@ -614,6 +646,7 @@ class DemoOutputRatioConfig(BaseModel):
             raise ValueError("output_ratio.min must be <= output_ratio.max")
         return self
 
+
 class DemoErrorType(BaseModel):
     type: str
     weight: float = Field(default=1.0, gt=0)
@@ -621,22 +654,34 @@ class DemoErrorType(BaseModel):
     @field_validator("type")
     @classmethod
     def validate_type(cls, v: str) -> str:
-        allowed = {"ffprobe_failed", "ffmpeg_error", "hw_cap", "av1_skip", "camera_skip"}
+        allowed = {
+            "ffprobe_failed",
+            "ffmpeg_error",
+            "hw_cap",
+            "av1_skip",
+            "camera_skip",
+        }
         if v not in allowed:
-            raise ValueError(f"Unsupported error type: {v}. Use one of {sorted(allowed)}")
+            raise ValueError(
+                f"Unsupported error type: {v}. Use one of {sorted(allowed)}"
+            )
         return v
+
 
 class DemoErrorsConfig(BaseModel):
     total: int = Field(default=6, ge=0)
     types: List[DemoErrorType] = Field(default_factory=list)
 
+
 class DemoKeptOriginalConfig(BaseModel):
     count: int = Field(default=3, ge=0)
+
 
 class DemoDiscoveryConfig(BaseModel):
     already_compressed: int = Field(default=8, ge=0)
     ignored_small: int = Field(default=4, ge=0)
     ignored_err: int = Field(default=2, ge=0)
+
 
 def _demo_default_extensions() -> List[DemoExtension]:
     return [
@@ -645,12 +690,14 @@ def _demo_default_extensions() -> List[DemoExtension]:
         DemoExtension(ext=".mkv", weight=0.20),
     ]
 
+
 def _demo_default_resolutions() -> List[DemoResolution]:
     return [
         DemoResolution(width=3840, height=2160, weight=0.30),
         DemoResolution(width=1920, height=1080, weight=0.55),
         DemoResolution(width=1280, height=720, weight=0.15),
     ]
+
 
 def _demo_default_fps() -> List[DemoFps]:
     return [
@@ -660,12 +707,14 @@ def _demo_default_fps() -> List[DemoFps]:
         DemoFps(value=59.94, weight=0.20),
     ]
 
+
 def _demo_default_codecs() -> List[DemoCodec]:
     return [
         DemoCodec(name="h264", weight=0.45),
         DemoCodec(name="hevc", weight=0.35),
         DemoCodec(name="av1", weight=0.20),
     ]
+
 
 def _demo_default_camera_models() -> List[str]:
     return [
@@ -678,12 +727,14 @@ def _demo_default_camera_models() -> List[str]:
         "GoPro HERO11",
     ]
 
+
 def _demo_default_error_types() -> List[DemoErrorType]:
     return [
         DemoErrorType(type="ffprobe_failed", weight=0.20),
         DemoErrorType(type="ffmpeg_error", weight=0.50),
         DemoErrorType(type="hw_cap", weight=0.30),
     ]
+
 
 class DemoInputFolder(BaseModel):
     """Demo input folder with mockup status and stats.
@@ -694,6 +745,7 @@ class DemoInputFolder(BaseModel):
         files: Number of files in folder (mockup data for demo display).
         size: Folder size as string (e.g., "10MB", "1.5GB") for demo display.
     """
+
     name: str
     status: Optional[str] = None
     files: Optional[int] = None
@@ -706,12 +758,17 @@ class DemoInputFolder(BaseModel):
             return None
         allowed = {"ok", "nonexist", "norw"}
         if v not in allowed:
-            raise ValueError(f"Invalid folder status '{v}'. Use one of: {', '.join(sorted(allowed))}")
+            raise ValueError(
+                f"Invalid folder status '{v}'. Use one of: {', '.join(sorted(allowed))}"
+            )
         return v
+
 
 class DemoConfig(BaseModel):
     seed: Optional[int] = None
-    input_folders: List[Union[str, DemoInputFolder]] = Field(default_factory=lambda: ["DEMO/Studio_A", "DEMO/Studio_B"])
+    input_folders: List[Union[str, DemoInputFolder]] = Field(
+        default_factory=lambda: ["DEMO/Studio_A", "DEMO/Studio_B"]
+    )
     files: DemoFilesConfig = Field(default_factory=DemoFilesConfig)
     sizes: DemoSizeConfig = Field(default_factory=DemoSizeConfig)
     bitrate_mbps: DemoBitrateConfig = Field(default_factory=DemoBitrateConfig)
@@ -722,7 +779,9 @@ class DemoConfig(BaseModel):
     processing: DemoProcessingConfig = Field(default_factory=DemoProcessingConfig)
     output_ratio: DemoOutputRatioConfig = Field(default_factory=DemoOutputRatioConfig)
     errors: DemoErrorsConfig = Field(default_factory=DemoErrorsConfig)
-    kept_original: DemoKeptOriginalConfig = Field(default_factory=DemoKeptOriginalConfig)
+    kept_original: DemoKeptOriginalConfig = Field(
+        default_factory=DemoKeptOriginalConfig
+    )
     discovery: DemoDiscoveryConfig = Field(default_factory=DemoDiscoveryConfig)
 
     @model_validator(mode="after")

@@ -356,7 +356,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--source-policy",
-        choices=("keep", "delete_after_success", "move_after_success"),
+        choices=("keep", "delete_after_success", "move_after_success", "move_all"),
         default="keep",
     )
     parser.add_argument(

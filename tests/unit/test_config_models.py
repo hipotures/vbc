@@ -3,6 +3,7 @@ import yaml
 from pydantic import ValidationError
 from vbc.config.models import AppConfig, GeneralConfig
 
+
 def test_valid_config():
     data = {
         "general": {
@@ -13,19 +14,26 @@ def test_valid_config():
             "filter_cameras": ["Sony"],
             "dynamic_quality": {"Sony": {"cq": 35}},
             "extensions": [".mp4"],
-            "min_size_bytes": 1024
+            "min_size_bytes": 1024,
         },
-        "autorotate": {
-            "patterns": {"QVR.*": 180}
-        }
+        "autorotate": {"patterns": {"QVR.*": 180}},
     }
     config = AppConfig(**data)
     assert config.general.threads == 4
     assert config.autorotate.patterns["QVR.*"] == 180
 
+
 def test_invalid_threads():
     with pytest.raises(ValidationError):
-        GeneralConfig(threads=0, gpu=True, copy_metadata=True, use_exif=True, extensions=[".mp4"], min_size_bytes=0)
+        GeneralConfig(
+            threads=0,
+            gpu=True,
+            copy_metadata=True,
+            use_exif=True,
+            extensions=[".mp4"],
+            min_size_bytes=0,
+        )
+
 
 def test_config_defaults():
     gen = GeneralConfig(threads=1, extensions=[".mp4"])
@@ -48,7 +56,12 @@ def test_input_dirs_accepts_object_format():
     config = AppConfig(
         general=GeneralConfig(threads=1, extensions=[".mp4"]),
         input_dirs=[
-            {"path": "/tmp/in_a", "enabled": True, "metadata": True, "idle_interval": 60},
+            {
+                "path": "/tmp/in_a",
+                "enabled": True,
+                "metadata": True,
+                "idle_interval": 60,
+            },
             {"path": "/tmp/in_b", "enabled": False},
         ],
     )
@@ -76,7 +89,7 @@ def test_metadata_policy_defaults_and_overrides():
             "audio_only": "ignore",
             "max_dropped_frames": 2,
             "max_duration_seconds": 21600,
-            "source_policy": "move_after_success",
+            "source_policy": "move_all",
             "move_after_success_dir": "/archive/sources",
             "compression_profile": "tiktok",
             "error_policy": {"missing_input": "fail"},
@@ -85,7 +98,7 @@ def test_metadata_policy_defaults_and_overrides():
     assert config.metadata.audio_only == "ignore"
     assert config.metadata.max_dropped_frames == 2
     assert config.metadata.max_duration_seconds == 21600
-    assert config.metadata.source_policy == "move_after_success"
+    assert config.metadata.source_policy == "move_all"
     assert config.metadata.move_after_success_dir == "/archive/sources"
     assert config.metadata.compression_profile == "tiktok"
     assert config.metadata.error_policy.missing_input == "fail"
@@ -262,6 +275,7 @@ def test_dynamic_quality_accepts_rate_rule():
     assert config.dynamic_quality["Sony"].rate is not None
     assert config.dynamic_quality["Sony"].rate.bps == "0.8"
 
+
 def test_load_config(tmp_path):
     d = tmp_path / "conf"
     d.mkdir()
@@ -286,6 +300,7 @@ autorotate:
     "test.*": 90
 """)
     from vbc.config.loader import load_config
+
     config = load_config(f)
     assert config.general.threads == 8
     assert "-cq 30" in config.gpu_encoder.common_args
@@ -304,6 +319,7 @@ input_dirs:
 """
     )
     from vbc.config.loader import load_config
+
     with pytest.raises(ValueError, match="Legacy input_dirs list\\[str\\] format"):
         load_config(f)
 
@@ -323,6 +339,7 @@ disabled_input_dirs:
 """
     )
     from vbc.config.loader import load_config
+
     with pytest.raises(ValueError, match="disabled_input_dirs"):
         load_config(f)
 

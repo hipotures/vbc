@@ -424,8 +424,9 @@ metadata:
   # Maximum missing output video frames accepted for one logical manifest job.
   # Default: 0 (strict).
   max_dropped_frames: 0
-  # keep, delete_after_success, or move_after_success
-  # source_policy: move_after_success
+  # keep, delete_after_success, move_after_success, or move_all
+  # move_all also archives inputs after terminal manifest failures.
+  # source_policy: move_all
   # move_after_success_dir: /path/to/source-archive
 
 # --- General Settings ---

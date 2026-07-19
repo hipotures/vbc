@@ -22,7 +22,9 @@ from vbc.infrastructure.file_scanner import FileScanner
 from vbc.pipeline.orchestrator import Orchestrator
 
 
-def _manifest(inputs: list[Path], output_path: Path, source_policy: str = "keep") -> dict:
+def _manifest(
+    inputs: list[Path], output_path: Path, source_policy: str = "keep"
+) -> dict:
     return {
         "schema_version": 1,
         "request_id": "ttracker-user_20260718_120000",
@@ -118,8 +120,8 @@ def test_manifest_schema_is_strict_and_requires_unique_absolute_inputs(tmp_path)
         CompressionManifest.model_validate(payload)
 
     payload["inputs"] = [str(part)]
-    payload["source_policy"] = "move_after_success"
-    assert CompressionManifest.model_validate(payload).source_policy == "move_after_success"
+    payload["source_policy"] = "move_all"
+    assert CompressionManifest.model_validate(payload).source_policy == "move_all"
 
 
 def test_metadata_hot_reload_keeps_last_valid_policy(tmp_path):
@@ -204,9 +206,7 @@ def test_metadata_preflight_partitions_consecutive_orientation_groups(tmp_path):
     for index, part in enumerate(parts, start=1):
         part.write_bytes(bytes([index]))
     manifest_path = metadata_dir / "request.json"
-    manifest_path.write_text(
-        json.dumps(_manifest(parts, tmp_path / "recording.mp4"))
-    )
+    manifest_path.write_text(json.dumps(_manifest(parts, tmp_path / "recording.mp4")))
     ffprobe.get_part_info.side_effect = [
         _part_info(640, 1280),
         _part_info(720, 1280),
@@ -270,9 +270,7 @@ def test_metadata_preflight_rejects_duration_above_safety_limit(tmp_path):
     part = tmp_path / "part001.mp4"
     part.write_bytes(b"video")
     manifest_path = metadata_dir / "request.json"
-    manifest_path.write_text(
-        json.dumps(_manifest([part], tmp_path / "recording.mp4"))
-    )
+    manifest_path.write_text(json.dumps(_manifest([part], tmp_path / "recording.mp4")))
     ffprobe.get_part_info.return_value = _part_info()
     ffprobe.get_part_info.return_value["duration"] = 61
     ffprobe.count_video_frames.return_value = 1526
@@ -282,10 +280,71 @@ def test_metadata_preflight_rejects_duration_above_safety_limit(tmp_path):
     assert orchestrator._get_metadata(files[0]) is None
     assert not manifest_path.exists()
     assert (error_dir / "request.json").exists()
-    assert "duration exceeds safety limit" in (
-        error_dir / "request.err"
-    ).read_text()
+    assert "duration exceeds safety limit" in (error_dir / "request.err").read_text()
     ffprobe.count_video_frames.assert_called_once_with(part)
+
+
+def test_move_all_archives_existing_sources_after_preflight_failure(tmp_path):
+    ffprobe = MagicMock()
+    move_root = tmp_path / "sources_compressed"
+    move_root.mkdir()
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={
+            "source_policy": "move_all",
+            "move_after_success_dir": str(move_root),
+        },
+    )
+    source_dir = tmp_path / "recordings" / "user"
+    source_dir.mkdir(parents=True)
+    part = source_dir / "part001.mp4"
+    part.write_bytes(b"broken video")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(json.dumps(_manifest([part], tmp_path / "recording.mp4")))
+    ffprobe.get_part_info.side_effect = RuntimeError("ffprobe failed")
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+
+    assert orchestrator._get_metadata(files[0]) is None
+    assert not part.exists()
+    assert (move_root / "user" / part.name).read_bytes() == b"broken video"
+    assert not manifest_path.exists()
+    assert (error_dir / "request.json").exists()
+    assert "ffprobe failed" in (error_dir / "request.err").read_text()
+
+
+def test_move_all_archives_remaining_sources_when_one_input_is_missing(tmp_path):
+    ffprobe = MagicMock()
+    move_root = tmp_path / "sources_compressed"
+    move_root.mkdir()
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={
+            "source_policy": "move_all",
+            "move_after_success_dir": str(move_root),
+        },
+    )
+    source_dir = tmp_path / "recordings" / "user"
+    source_dir.mkdir(parents=True)
+    existing = source_dir / "part001.mp4"
+    missing = source_dir / "part002.mp4"
+    existing.write_bytes(b"existing video")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(_manifest([existing, missing], tmp_path / "recording.mp4"))
+    )
+
+    files, stats = orchestrator._perform_discovery(metadata_dir)
+
+    assert files == []
+    assert stats["ignored_err"] == 1
+    assert not existing.exists()
+    assert (move_root / "user" / existing.name).read_bytes() == b"existing video"
+    assert not manifest_path.exists()
+    assert (error_dir / "request.json").exists()
+    assert "Missing manifest input" in (error_dir / "request.err").read_text()
 
 
 def test_metadata_preflight_rebuilds_timestamps_after_exceptional_frame_check(
@@ -300,9 +359,7 @@ def test_metadata_preflight_rebuilds_timestamps_after_exceptional_frame_check(
     part = tmp_path / "part001.mp4"
     part.write_bytes(b"video")
     manifest_path = metadata_dir / "request.json"
-    manifest_path.write_text(
-        json.dumps(_manifest([part], tmp_path / "recording.mp4"))
-    )
+    manifest_path.write_text(json.dumps(_manifest([part], tmp_path / "recording.mp4")))
     ffprobe.get_part_info.return_value = {
         **_part_info(video_packets=467),
         "duration": 4_294_686.242,
@@ -390,9 +447,7 @@ def test_metadata_preflight_completes_manifest_when_every_part_has_no_video(
     empty = tmp_path / "part001.mp4"
     empty.write_bytes(b"empty")
     manifest_path = metadata_dir / "request.json"
-    manifest_path.write_text(
-        json.dumps(_manifest([empty], tmp_path / "recording.mp4"))
-    )
+    manifest_path.write_text(json.dumps(_manifest([empty], tmp_path / "recording.mp4")))
     ffprobe.get_part_info.return_value = {
         **_part_info(video_packets=0, audio_packets=0),
         "has_video_stream": True,
@@ -1031,7 +1086,11 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
     assert (output_dir / "request.json").exists()
 
 
-def test_metadata_source_policy_moves_all_inputs_under_username(tmp_path):
+@pytest.mark.parametrize("source_policy", ["move_after_success", "move_all"])
+def test_metadata_source_policy_moves_all_inputs_under_username(
+    tmp_path,
+    source_policy,
+):
     ffprobe = MagicMock()
     orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
     source_dir = tmp_path / "recordings" / "user"
@@ -1052,7 +1111,7 @@ def test_metadata_source_policy_moves_all_inputs_under_username(tmp_path):
         error_dir=tmp_path / "metadata_err",
         manifest=payload,
         parts=[],
-        source_policy="move_after_success",
+        source_policy=source_policy,
         move_after_success_dir=move_root,
         compression_profile="tiktok",
         audio_only="ignore",
@@ -1158,7 +1217,9 @@ def test_metadata_source_move_without_space_behaves_as_keep(tmp_path, monkeypatc
     )
     disk_usage = MagicMock()
     disk_usage.free = part.stat().st_size - 1
-    monkeypatch.setattr("vbc.pipeline.orchestrator.shutil.disk_usage", lambda *_: disk_usage)
+    monkeypatch.setattr(
+        "vbc.pipeline.orchestrator.shutil.disk_usage", lambda *_: disk_usage
+    )
 
     orchestrator._apply_manifest_source_policy(request)
 
@@ -1264,24 +1325,54 @@ def test_metadata_process_writes_consecutive_orientation_groups(tmp_path):
     payload = CompressionManifest.model_validate(_manifest(source_paths, output))
     parts = [
         MultipartPart(
-            path=source_paths[0], width=320, height=640, codec="h264", fps=25,
-            duration=1, video_packets=25, audio_packets=10,
+            path=source_paths[0],
+            width=320,
+            height=640,
+            codec="h264",
+            fps=25,
+            duration=1,
+            video_packets=25,
+            audio_packets=10,
         ),
         MultipartPart(
-            path=source_paths[1], width=640, height=1280, codec="h264", fps=25,
-            duration=1, video_packets=25, audio_packets=10,
+            path=source_paths[1],
+            width=640,
+            height=1280,
+            codec="h264",
+            fps=25,
+            duration=1,
+            video_packets=25,
+            audio_packets=10,
         ),
         MultipartPart(
-            path=source_paths[2], width=1280, height=720, codec="h264", fps=25,
-            duration=1, video_packets=25, audio_packets=10,
+            path=source_paths[2],
+            width=1280,
+            height=720,
+            codec="h264",
+            fps=25,
+            duration=1,
+            video_packets=25,
+            audio_packets=10,
         ),
         MultipartPart(
-            path=source_paths[3], width=1920, height=1080, codec="h264", fps=25,
-            duration=1, video_packets=25, audio_packets=10,
+            path=source_paths[3],
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=25,
+            duration=1,
+            video_packets=25,
+            audio_packets=10,
         ),
         MultipartPart(
-            path=source_paths[4], width=720, height=1280, codec="h264", fps=25,
-            duration=1, video_packets=25, audio_packets=10,
+            path=source_paths[4],
+            width=720,
+            height=1280,
+            codec="h264",
+            fps=25,
+            duration=1,
+            video_packets=25,
+            audio_packets=10,
         ),
     ]
     request = MetadataRequest(
@@ -1379,7 +1470,9 @@ def test_metadata_process_resumes_missing_orientation_group(tmp_path):
     output = tmp_path / "recording.mp4"
     output.write_bytes(b"completed portrait")
     manifest_path = metadata_dir / "request.json"
-    payload = CompressionManifest.model_validate(_manifest([portrait, landscape], output))
+    payload = CompressionManifest.model_validate(
+        _manifest([portrait, landscape], output)
+    )
     request = MetadataRequest(
         manifest_path=manifest_path,
         metadata_dir=metadata_dir,
@@ -1388,12 +1481,24 @@ def test_metadata_process_resumes_missing_orientation_group(tmp_path):
         manifest=payload,
         parts=[
             MultipartPart(
-                path=portrait, width=640, height=1280, codec="h264", fps=25,
-                duration=1, video_packets=25, audio_packets=10,
+                path=portrait,
+                width=640,
+                height=1280,
+                codec="h264",
+                fps=25,
+                duration=1,
+                video_packets=25,
+                audio_packets=10,
             ),
             MultipartPart(
-                path=landscape, width=1280, height=640, codec="h264", fps=25,
-                duration=1, video_packets=25, audio_packets=10,
+                path=landscape,
+                width=1280,
+                height=640,
+                codec="h264",
+                fps=25,
+                duration=1,
+                video_packets=25,
+                audio_packets=10,
             ),
         ],
         source_policy="keep",
@@ -1532,11 +1637,17 @@ def test_metadata_process_hydrates_proxy_added_during_refresh(tmp_path):
 def test_metadata_process_interruption_leaves_manifest_and_sources(tmp_path):
     ffprobe = MagicMock()
     orchestrator, metadata_dir, _, error_dir = _orchestrator(tmp_path, ffprobe)
-    part = tmp_path / "part001.mp4"
+    source_dir = tmp_path / "recordings" / "user"
+    source_dir.mkdir(parents=True)
+    part = source_dir / "part001.mp4"
     part.write_bytes(b"video")
+    move_root = tmp_path / "sources_compressed"
+    move_root.mkdir()
     output = tmp_path / "recording.mp4"
     manifest_path = metadata_dir / "request.json"
-    payload = CompressionManifest.model_validate(_manifest([part], output))
+    payload = CompressionManifest.model_validate(
+        _manifest([part], output, source_policy="move_all")
+    )
     request = MetadataRequest(
         manifest_path=manifest_path,
         metadata_dir=metadata_dir,
@@ -1555,7 +1666,8 @@ def test_metadata_process_interruption_leaves_manifest_and_sources(tmp_path):
                 audio_packets=0,
             )
         ],
-        source_policy="keep",
+        source_policy="move_all",
+        move_after_success_dir=move_root,
         compression_profile="tiktok",
         audio_only="fail",
         target_width=640,
@@ -1579,6 +1691,7 @@ def test_metadata_process_interruption_leaves_manifest_and_sources(tmp_path):
 
     assert manifest_path.exists()
     assert part.exists()
+    assert not (move_root / "user" / part.name).exists()
     assert not error_dir.exists()
 
 
@@ -1591,7 +1704,9 @@ def test_metadata_split_interruption_keeps_completed_group_and_manifest(tmp_path
     landscape.write_bytes(b"landscape")
     output = tmp_path / "recording.mp4"
     manifest_path = metadata_dir / "request.json"
-    payload = CompressionManifest.model_validate(_manifest([portrait, landscape], output))
+    payload = CompressionManifest.model_validate(
+        _manifest([portrait, landscape], output)
+    )
     request = MetadataRequest(
         manifest_path=manifest_path,
         metadata_dir=metadata_dir,
@@ -1600,12 +1715,24 @@ def test_metadata_split_interruption_keeps_completed_group_and_manifest(tmp_path
         manifest=payload,
         parts=[
             MultipartPart(
-                path=portrait, width=640, height=1280, codec="h264", fps=25,
-                duration=1, video_packets=25, audio_packets=10,
+                path=portrait,
+                width=640,
+                height=1280,
+                codec="h264",
+                fps=25,
+                duration=1,
+                video_packets=25,
+                audio_packets=10,
             ),
             MultipartPart(
-                path=landscape, width=1280, height=640, codec="h264", fps=25,
-                duration=1, video_packets=25, audio_packets=10,
+                path=landscape,
+                width=1280,
+                height=640,
+                codec="h264",
+                fps=25,
+                duration=1,
+                video_packets=25,
+                audio_packets=10,
             ),
         ],
         source_policy="keep",
