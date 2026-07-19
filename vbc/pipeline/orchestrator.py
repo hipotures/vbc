@@ -337,6 +337,22 @@ class Orchestrator:
     def _get_metadata(self, video_file: VideoFile, base_metadata: Optional[Dict[str, Any]] = None) -> Optional[VideoMetadata]:
         """Get metadata with thread-safe caching (ffprobe + ExifTool like legacy)."""
         file_path = video_file.path
+        if video_file.metadata_request is not None:
+            if video_file.metadata is not None:
+                return video_file.metadata
+            if file_path in self._metadata_failed_paths:
+                return None
+            try:
+                return self._hydrate_metadata_request(video_file)
+            except Exception as exc:
+                self._metadata_failed_paths.add(file_path)
+                self._metadata_failure_reasons[file_path] = str(exc)
+                self._fail_metadata_request(
+                    video_file,
+                    f"Manifest preflight failed: {exc}",
+                )
+                return None
+
         # Check if already cached
         with self._metadata_lock:
             cached = self._metadata_cache.get(file_path)
@@ -1381,6 +1397,139 @@ class Orchestrator:
                 source_path.unlink()
                 self.logger.info("MANIFEST_SOURCE_DELETED: %s", source_path)
 
+    def _hydrate_metadata_request(
+        self,
+        video_file: VideoFile,
+    ) -> Optional[VideoMetadata]:
+        """Probe a queued manifest proxy immediately before it enters the UI window."""
+        request = video_file.metadata_request
+        if request is None:
+            raise ValueError("Manifest metadata request is missing")
+
+        metadata_config = self._load_current_metadata_config()
+        source_policy, compression_profile, audio_only = self._resolve_manifest_policies(
+            request.manifest,
+            metadata_config,
+        )
+        self.logger.info(
+            "MANIFEST_PREFLIGHT_START: json=%s inputs=%s",
+            request.manifest_path,
+            len(request.manifest.inputs),
+        )
+        parts: List[MultipartPart] = []
+        ignored_inputs: List[Path] = []
+
+        for source_value in request.manifest.inputs:
+            source_path = Path(source_value)
+            if not source_path.is_file():
+                raise FileNotFoundError(f"Missing manifest input: {source_path}")
+            part_info = self.ffprobe_adapter.get_part_info(source_path)
+            video_packets = int(part_info.get("video_packets") or 0)
+            audio_packets = int(part_info.get("audio_packets") or 0)
+            has_usable_video = bool(part_info.get("has_video_stream")) and video_packets > 0
+            if not has_usable_video:
+                is_audio_only = bool(part_info.get("has_audio_stream")) and audio_packets > 0
+                if is_audio_only and audio_only == "ignore":
+                    ignored_inputs.append(source_path)
+                    self.logger.info(
+                        "MANIFEST_AUDIO_ONLY_IGNORED: json=%s input=%s",
+                        request.manifest_path,
+                        source_path,
+                    )
+                    continue
+                reason = "audio-only input" if is_audio_only else "input has no video packets"
+                raise ValueError(f"Invalid manifest input ({reason}): {source_path}")
+
+            width = int(part_info.get("width") or 0)
+            height = int(part_info.get("height") or 0)
+            if width <= 0 or height <= 0:
+                raise ValueError(
+                    f"Invalid video dimensions for {source_path}: {width}x{height}"
+                )
+            duration = float(part_info.get("duration") or 0.0)
+            if audio_packets == 0:
+                packet_duration = self.ffprobe_adapter.get_video_packet_duration(source_path)
+                duration = packet_duration or duration
+                if duration <= 0:
+                    fps = float(part_info.get("fps") or 0.0)
+                    duration = (1.0 / fps) if fps > 0 else 0.04
+            parts.append(
+                MultipartPart(
+                    path=source_path,
+                    width=width,
+                    height=height,
+                    codec=str(part_info.get("codec") or "unknown"),
+                    audio_codec=part_info.get("audio_codec"),
+                    fps=float(part_info.get("fps") or 0.0),
+                    duration=max(0.0, duration),
+                    bitrate_kbps=part_info.get("bitrate_kbps"),
+                    color_space=part_info.get("color_space"),
+                    pix_fmt=part_info.get("pix_fmt"),
+                    video_packets=video_packets,
+                    audio_packets=audio_packets,
+                )
+            )
+
+        if not parts:
+            raise ValueError("Manifest has no usable video parts")
+        orientations = {part.orientation for part in parts}
+        if len(orientations) != 1:
+            raise ValueError(
+                "Manifest mixes incompatible video orientations: "
+                + ", ".join(sorted(orientations))
+            )
+
+        target_part = max(parts, key=lambda part: part.width * part.height)
+        target_width = target_part.width + (target_part.width % 2)
+        target_height = target_part.height + (target_part.height % 2)
+        total_size = sum(part.path.stat().st_size for part in parts)
+        if total_size < self.file_scanner.min_size_bytes:
+            self._metadata_failed_paths.add(video_file.path)
+            self.logger.info(
+                "MANIFEST_IGNORED_SMALL: json=%s effective_size_bytes=%s minimum=%s",
+                request.manifest_path,
+                total_size,
+                self.file_scanner.min_size_bytes,
+            )
+            return None
+
+        first_part = parts[0]
+        metadata = VideoMetadata(
+            width=target_width,
+            height=target_height,
+            codec=first_part.codec,
+            audio_codec=first_part.audio_codec or "no-audio",
+            fps=first_part.fps,
+            bitrate_kbps=first_part.bitrate_kbps,
+            megapixels=round(target_width * target_height / 1_000_000),
+            color_space=first_part.color_space,
+            pix_fmt=first_part.pix_fmt,
+            duration=sum(part.duration for part in parts),
+        )
+        request.parts = parts
+        request.ignored_inputs = ignored_inputs
+        request.source_policy = source_policy
+        request.compression_profile = compression_profile
+        request.audio_only = audio_only
+        request.target_width = target_width
+        request.target_height = target_height
+        video_file.size_bytes = total_size
+        video_file.metadata = metadata
+        self.logger.info(
+            "MANIFEST_READY: json=%s output=%s parts=%s/%s size_bytes=%s "
+            "target=%sx%s source_policy=%s compression_profile=%s",
+            request.manifest_path,
+            request.manifest.output_path,
+            len(parts),
+            len(request.manifest.inputs),
+            total_size,
+            target_width,
+            target_height,
+            source_policy,
+            compression_profile,
+        )
+        return metadata
+
     def _discover_metadata_dir(
         self,
         input_dir: Path,
@@ -1452,123 +1601,42 @@ class Orchestrator:
                         stats["already_compressed"] += 1
                         continue
 
-                parts: List[MultipartPart] = []
-                ignored_inputs: List[Path] = []
+                total_size = 0
                 for source_value in manifest.inputs:
                     source_path = Path(source_value)
                     if not source_path.is_file():
                         raise FileNotFoundError(f"Missing manifest input: {source_path}")
-                    part_info = self.ffprobe_adapter.get_part_info(source_path)
-                    video_packets = int(part_info.get("video_packets") or 0)
-                    audio_packets = int(part_info.get("audio_packets") or 0)
-                    has_usable_video = bool(part_info.get("has_video_stream")) and video_packets > 0
-                    if not has_usable_video:
-                        is_audio_only = bool(part_info.get("has_audio_stream")) and audio_packets > 0
-                        if is_audio_only and audio_only == "ignore":
-                            ignored_inputs.append(source_path)
-                            self.logger.info(
-                                "MANIFEST_AUDIO_ONLY_IGNORED: json=%s input=%s",
-                                manifest_path,
-                                source_path,
-                            )
-                            continue
-                        reason = "audio-only input" if is_audio_only else "input has no video packets"
-                        raise ValueError(f"Invalid manifest input ({reason}): {source_path}")
-
-                    width = int(part_info.get("width") or 0)
-                    height = int(part_info.get("height") or 0)
-                    if width <= 0 or height <= 0:
-                        raise ValueError(
-                            f"Invalid video dimensions for {source_path}: {width}x{height}"
-                        )
-                    duration = float(part_info.get("duration") or 0.0)
-                    if audio_packets == 0:
-                        packet_duration = self.ffprobe_adapter.get_video_packet_duration(source_path)
-                        duration = packet_duration or duration
-                        if duration <= 0:
-                            fps = float(part_info.get("fps") or 0.0)
-                            duration = (1.0 / fps) if fps > 0 else 0.04
-                    parts.append(
-                        MultipartPart(
-                            path=source_path,
-                            width=width,
-                            height=height,
-                            codec=str(part_info.get("codec") or "unknown"),
-                            audio_codec=part_info.get("audio_codec"),
-                            fps=float(part_info.get("fps") or 0.0),
-                            duration=max(0.0, duration),
-                            bitrate_kbps=part_info.get("bitrate_kbps"),
-                            color_space=part_info.get("color_space"),
-                            pix_fmt=part_info.get("pix_fmt"),
-                            video_packets=video_packets,
-                            audio_packets=audio_packets,
-                        )
-                    )
-
-                if not parts:
-                    raise ValueError("Manifest has no usable video parts")
-                orientations = {part.orientation for part in parts}
-                if len(orientations) != 1:
-                    raise ValueError(
-                        "Manifest mixes incompatible video orientations: "
-                        + ", ".join(sorted(orientations))
-                    )
-
-                target_part = max(parts, key=lambda part: part.width * part.height)
-                target_width = target_part.width + (target_part.width % 2)
-                target_height = target_part.height + (target_part.height % 2)
-                total_size = sum(part.path.stat().st_size for part in parts)
+                    total_size += source_path.stat().st_size
                 if total_size < self.file_scanner.min_size_bytes:
                     stats["ignored_small"] += 1
                     stats["files_found"] -= 1
                     continue
-
-                first_part = parts[0]
-                duration = sum(part.duration for part in parts)
-                video_metadata = VideoMetadata(
-                    width=target_width,
-                    height=target_height,
-                    codec=first_part.codec,
-                    audio_codec=first_part.audio_codec or "no-audio",
-                    fps=first_part.fps,
-                    bitrate_kbps=first_part.bitrate_kbps,
-                    megapixels=round(target_width * target_height / 1_000_000),
-                    color_space=first_part.color_space,
-                    pix_fmt=first_part.pix_fmt,
-                    duration=duration,
-                )
                 request = MetadataRequest(
                     manifest_path=manifest_path,
                     metadata_dir=input_dir,
                     success_dir=success_dir,
                     error_dir=error_dir,
                     manifest=manifest,
-                    parts=parts,
-                    ignored_inputs=ignored_inputs,
+                    parts=[],
+                    ignored_inputs=[],
                     source_policy=source_policy,
                     compression_profile=compression_profile,
                     audio_only=audio_only,
-                    target_width=target_width,
-                    target_height=target_height,
+                    target_width=1,
+                    target_height=1,
                 )
                 self.logger.info(
-                    "MANIFEST_READY: json=%s output=%s parts=%s/%s size_bytes=%s "
-                    "target=%sx%s source_policy=%s compression_profile=%s",
+                    "MANIFEST_QUEUED: json=%s output=%s parts=%s size_bytes=%s",
                     manifest_path,
                     output_path,
-                    len(parts),
                     len(manifest.inputs),
                     total_size,
-                    target_width,
-                    target_height,
-                    source_policy,
-                    compression_profile,
                 )
                 candidates.append(
                     VideoFile(
                         path=output_path,
                         size_bytes=total_size,
-                        metadata=video_metadata,
+                        metadata=None,
                         metadata_request=request,
                     )
                 )
@@ -2776,13 +2844,17 @@ class Orchestrator:
         pending = deque(files_to_process)
         in_flight = {}  # future -> VideoFile
 
+        # Show lightweight queue proxies immediately. FPS/duration are filled in
+        # by the bounded metadata window below instead of blocking an empty UI.
+        self.event_bus.publish(QueueUpdated(pending_files=[vf for vf in pending]))
+
         # Pre-load metadata for first 25 files (for queue display)
         for vf in list(pending)[:25]:
             if not vf.metadata:
                 vf.metadata = self._get_metadata(vf)
         self._prune_failed_pending(pending)
 
-        # Update UI with initial pending files (store VideoFile objects, not just paths)
+        # Refresh the first page after its metadata has been resolved.
         self.event_bus.publish(QueueUpdated(pending_files=[vf for vf in pending]))
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:

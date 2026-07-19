@@ -90,15 +90,18 @@ def submit_batch():
 ### Initial Submission
 
 ```python
-# Pre-load metadata for first 5 files (for UI queue display)
-for vf in list(pending)[:5]:
+# Publish lightweight entries before ffprobe fills the first page
+bus.publish(QueueUpdated(pending_files=list(pending)))
+
+# Pre-load metadata for first 25 files (for UI queue display)
+for vf in list(pending)[:25]:
     vf.metadata = _get_metadata(vf)
+
+# Publish the resolved first page
+bus.publish(QueueUpdated(pending_files=list(pending)))
 
 # Submit initial batch
 submit_batch()
-
-# Publish queue update
-bus.publish(QueueUpdated(pending_files=list(pending)))
 ```
 
 ### Main Loop
@@ -342,8 +345,11 @@ if not in_flight and not pending:
 
 An input directory marked `metadata: true` yields one logical `VideoFile` per strict JSON
 manifest. Its display path is the requested output, while its identity and directory
-ownership remain the manifest path. Discovery probes every physical part, filters
-configured audio-only inputs, and calculates aggregate size and target resolution.
+ownership remain the manifest path. Discovery reads and validates all JSON files, checks
+their input paths, and immediately publishes lightweight queue proxies. The rolling
+25-item metadata window then probes every physical part, filters configured audio-only
+inputs, and calculates effective aggregate size and target resolution. This keeps the UI
+populated while ffprobe resolves the visible and near-future queue entries.
 FFmpeg transcodes effective parts sequentially into complete MP4 containers whose
 filenames remain `*.tmp`, then uses the concat demuxer to stream-copy them into the
 final MP4. This bounds filter-graph memory while avoiding a second video encode. Only
@@ -510,8 +516,8 @@ max_inflight = 1 × 4 = 4 jobs
 ### Prefetch Metadata for Queue
 
 ```python
-# Pre-load metadata for next 5 files in queue
-for vf in list(pending)[:5]:
+# Pre-load metadata for next 25 files in queue
+for vf in list(pending)[:25]:
     if not vf.metadata:
         vf.metadata = _get_metadata(vf)
 

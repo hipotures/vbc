@@ -136,7 +136,7 @@ def test_metadata_hot_reload_keeps_last_valid_policy(tmp_path):
     assert orchestrator._load_current_metadata_config().audio_only == "ignore"
 
 
-def test_metadata_discovery_builds_one_logical_job_and_ignores_audio_only(tmp_path):
+def test_metadata_discovery_queues_proxy_then_hydrates_visible_job(tmp_path):
     ffprobe = MagicMock()
     orchestrator, metadata_dir, _, _ = _orchestrator(
         tmp_path,
@@ -171,15 +171,24 @@ def test_metadata_discovery_builds_one_logical_job_and_ignores_audio_only(tmp_pa
     video = files[0]
     assert video.path == output
     assert video.identity_path == manifest_path
+    assert video.size_bytes == 350
+    assert video.part_count == 3
+    assert video.metadata is None
+    assert video.metadata_request.parts == []
+    ffprobe.get_part_info.assert_not_called()
+
+    metadata = orchestrator._get_metadata(video)
+
+    assert metadata is not None
     assert video.size_bytes == 300
-    assert video.part_count == 2
     assert video.metadata.width == 640
     assert video.metadata.height == 1280
     assert video.metadata_request.ignored_inputs == [audio]
     assert video.metadata_request.effective_input_paths == [part1, part2]
+    assert ffprobe.get_part_info.call_count == 3
 
 
-def test_metadata_discovery_routes_mixed_orientation_to_error(tmp_path):
+def test_metadata_preflight_routes_mixed_orientation_to_error(tmp_path):
     ffprobe = MagicMock()
     orchestrator, metadata_dir, _, error_dir = _orchestrator(tmp_path, ffprobe)
     part1 = tmp_path / "part001.mp4"
@@ -197,8 +206,9 @@ def test_metadata_discovery_routes_mixed_orientation_to_error(tmp_path):
 
     files, stats = orchestrator._perform_discovery(metadata_dir)
 
-    assert files == []
-    assert stats["ignored_err"] == 1
+    assert len(files) == 1
+    assert stats["ignored_err"] == 0
+    assert orchestrator._get_metadata(files[0]) is None
     assert not manifest_path.exists()
     assert (error_dir / "request.json").exists()
     assert "orientations" in (error_dir / "request.err").read_text()

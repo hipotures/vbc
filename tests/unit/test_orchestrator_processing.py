@@ -4,7 +4,16 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from vbc.config.models import AppConfig, GeneralConfig, AutoRotateConfig
-from vbc.domain.events import ActionMessage, JobCompleted, JobFailed, JobStarted, ProcessingFinished, RepairFinished, RepairStarted
+from vbc.domain.events import (
+    ActionMessage,
+    JobCompleted,
+    JobFailed,
+    JobStarted,
+    ProcessingFinished,
+    QueueUpdated,
+    RepairFinished,
+    RepairStarted,
+)
 from vbc.domain.models import JobStatus, VideoFile, VideoMetadata
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
@@ -794,6 +803,52 @@ def test_run_refresh_adds_new_files(monkeypatch, tmp_path):
     assert "Refreshed: +1 new files" in messages
     assert "finished" in messages
     assert orchestrator._process_file.call_count == 2
+
+
+def test_run_once_publishes_lightweight_queue_before_metadata_preload(
+    monkeypatch,
+    tmp_path,
+):
+    config = _make_config(use_exif=False, copy_metadata=False, prefetch_factor=1)
+    bus = EventBus()
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=MagicMock(),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+    video = VideoFile(path=tmp_path / "queued.mp4", size_bytes=10)
+    stats = {
+        "files_found": 1,
+        "files_to_process": 1,
+        "already_compressed": 0,
+        "ignored_small": 0,
+        "ignored_err": 0,
+        "ignored_err_entries": [],
+    }
+    orchestrator._perform_discovery = MagicMock(return_value=([video], stats))
+    queue_states = []
+    bus.subscribe(
+        QueueUpdated,
+        lambda event: queue_states.append(
+            [item.metadata is not None for item in event.pending_files]
+        ),
+    )
+
+    def load_metadata(_video):
+        assert queue_states == [[False]]
+        return VideoMetadata(width=1, height=1, codec="h264", fps=1.0)
+
+    orchestrator._get_metadata = MagicMock(side_effect=load_metadata)
+    orchestrator._process_file = MagicMock()
+    monkeypatch.setattr("vbc.pipeline.orchestrator.time.sleep", lambda *_: None)
+
+    orchestrator._run_once([tmp_path])
+
+    assert queue_states[0] == [False]
+    assert [True] in queue_states
 
 
 def test_run_auto_repair_requeues_restored_mkv(monkeypatch, tmp_path):

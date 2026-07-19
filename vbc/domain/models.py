@@ -212,7 +212,7 @@ class VideoFile(BaseModel):
     @property
     def part_count(self) -> int:
         if self.metadata_request is not None:
-            return len(self.metadata_request.parts)
+            return len(self.metadata_request.manifest.inputs)
         return 1
 
 class CompressionJob(BaseModel):

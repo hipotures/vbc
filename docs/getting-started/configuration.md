@@ -396,11 +396,12 @@ metadata:
   #   missing_input: fail
 ```
 
-Each final `*.json` file represents one logical queue item. VBC probes every path in
-`inputs`, preserves the listed order, normalizes compatible resolutions, transcodes
-parts sequentially, and stream-copies the encoded segments into the final MP4. The
-exact `output_path` from the manifest is used for the video; the directory suffixes
-route the JSON itself:
+Each final `*.json` file represents one logical queue item. Initial discovery validates
+the JSON and input paths, then publishes a lightweight queue proxy immediately. VBC
+probes every path in `inputs` through the rolling 25-item metadata window, preserves the
+listed order, normalizes compatible resolutions, transcodes parts sequentially, and
+stream-copies the encoded segments into the final MP4. The exact `output_path` from the
+manifest is used for the video; the directory suffixes route the JSON itself:
 
 - success: `/metadata_out/request.json`
 - any manifest, probe, compression, verification, or cleanup error:
