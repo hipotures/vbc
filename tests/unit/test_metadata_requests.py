@@ -240,6 +240,7 @@ def test_metadata_preflight_rejects_duration_above_safety_limit(tmp_path):
     )
     ffprobe.get_part_info.return_value = _part_info()
     ffprobe.get_part_info.return_value["duration"] = 61
+    ffprobe.count_video_frames.return_value = 1526
 
     files, _ = orchestrator._perform_discovery(metadata_dir)
 
@@ -249,6 +250,129 @@ def test_metadata_preflight_rejects_duration_above_safety_limit(tmp_path):
     assert "duration exceeds safety limit" in (
         error_dir / "request.err"
     ).read_text()
+    ffprobe.count_video_frames.assert_called_once_with(part)
+
+
+def test_metadata_preflight_rebuilds_timestamps_after_exceptional_frame_check(
+    tmp_path,
+):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={"max_duration_seconds": 60},
+    )
+    part = tmp_path / "part001.mp4"
+    part.write_bytes(b"video")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(_manifest([part], tmp_path / "recording.mp4"))
+    )
+    ffprobe.get_part_info.return_value = {
+        **_part_info(video_packets=467),
+        "duration": 4_294_686.242,
+    }
+    ffprobe.count_video_frames.return_value = 467
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+    metadata = orchestrator._get_metadata(files[0])
+
+    assert metadata is not None
+    assert files[0].metadata_request.parts[0].duration == pytest.approx(18.68)
+    assert files[0].metadata_request.parts[0].rebuild_timestamps is True
+    assert manifest_path.exists()
+    assert not error_dir.exists()
+
+    refreshed_files, _ = orchestrator._perform_discovery(metadata_dir)
+    assert orchestrator._get_metadata(refreshed_files[0]) is not None
+    ffprobe.count_video_frames.assert_called_once_with(part)
+
+
+def test_metadata_preflight_does_not_count_frames_for_normal_duration(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, _ = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={"max_duration_seconds": 60},
+    )
+    part = tmp_path / "part001.mp4"
+    part.write_bytes(b"video")
+    (metadata_dir / "request.json").write_text(
+        json.dumps(_manifest([part], tmp_path / "recording.mp4"))
+    )
+    ffprobe.get_part_info.return_value = _part_info()
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+
+    assert orchestrator._get_metadata(files[0]) is not None
+    ffprobe.count_video_frames.assert_not_called()
+
+
+def test_metadata_preflight_ignores_empty_part_with_ignore_policy(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={"audio_only": "ignore"},
+    )
+    video = tmp_path / "part001.mp4"
+    empty = tmp_path / "part002.mp4"
+    video.write_bytes(b"video")
+    empty.write_bytes(b"empty")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(_manifest([video, empty], tmp_path / "recording.mp4"))
+    )
+    ffprobe.get_part_info.side_effect = [
+        _part_info(),
+        {
+            **_part_info(video_packets=0, audio_packets=0),
+            "has_video_stream": True,
+            "has_audio_stream": True,
+            "width": 0,
+            "height": 0,
+        },
+    ]
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+
+    assert orchestrator._get_metadata(files[0]) is not None
+    assert files[0].metadata_request.effective_input_paths == [video]
+    assert files[0].metadata_request.ignored_inputs == [empty]
+    assert manifest_path.exists()
+    assert not error_dir.exists()
+
+
+def test_metadata_preflight_completes_manifest_when_every_part_has_no_video(
+    tmp_path,
+):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, error_dir = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={"audio_only": "ignore"},
+    )
+    empty = tmp_path / "part001.mp4"
+    empty.write_bytes(b"empty")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(_manifest([empty], tmp_path / "recording.mp4"))
+    )
+    ffprobe.get_part_info.return_value = {
+        **_part_info(video_packets=0, audio_packets=0),
+        "has_video_stream": True,
+        "has_audio_stream": True,
+        "width": 0,
+        "height": 0,
+    }
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+
+    assert orchestrator._get_metadata(files[0]) is None
+    assert not manifest_path.exists()
+    assert (output_dir / "request.json").exists()
+    assert empty.exists()
+    assert not error_dir.exists()
 
 
 def test_metadata_min_size_completes_manifest_without_deleting_sources(tmp_path):
@@ -406,6 +530,7 @@ def test_multipart_ffmpeg_command_normalizes_video_and_synthesizes_silence(tmp_p
         duration=10,
         video_packets=10,
         audio_packets=10,
+        rebuild_timestamps=True,
     )
     part2 = MultipartPart(
         path=tmp_path / "part002.mp4",
@@ -461,6 +586,9 @@ def test_multipart_ffmpeg_command_normalizes_video_and_synthesizes_silence(tmp_p
     assert "scale=640:1280:force_original_aspect_ratio=decrease" in filter_graph
     assert "pad=640:1280" in filter_graph
     assert "apad,atrim=duration=10.000000" in filter_graph
+    assert "setpts=N/(25.000000*TB)" in filter_graph
+    assert "asetpts=N/SR/TB" in filter_graph
+    assert "[1:v:0]setpts=PTS-STARTPTS" in filter_graph
     assert "anullsrc=r=48000:cl=stereo" in filter_graph
     assert "concat=n=2:v=1:a=1" in filter_graph
     assert command[command.index("-fps_mode") + 1] == "passthrough"
@@ -1107,6 +1235,41 @@ def test_metadata_process_backs_up_untagged_output_before_compression(tmp_path):
 
     assert output.read_bytes() == b"new"
     assert (tmp_path / "recording_1.mp4").read_bytes() == b"old"
+    assert (output_dir / "request.json").exists()
+
+
+def test_metadata_process_hydrates_proxy_added_during_refresh(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
+    part = tmp_path / "part001.mp4"
+    part.write_bytes(b"video")
+    output = tmp_path / "recording.mp4"
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(json.dumps(_manifest([part], output)))
+    ffprobe.get_part_info.return_value = _part_info()
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+    video = files[0]
+    assert video.metadata is None
+    assert video.metadata_request.parts == []
+
+    def compress(job, *_args, **_kwargs):
+        job.output_path.write_bytes(b"encoded")
+        job.status = JobStatus.COMPLETED
+        job.expected_video_frames = 10
+
+    orchestrator.ffmpeg_adapter.compress.side_effect = compress
+    orchestrator.config.general.copy_metadata = False
+    orchestrator._write_vbc_tags = MagicMock()
+    orchestrator._verify_output_file = MagicMock(return_value=(True, None))
+    orchestrator._verify_output_tags = MagicMock(return_value=(True, None))
+
+    orchestrator._process_metadata_request(video)
+
+    ffprobe.get_part_info.assert_called_once_with(part)
+    orchestrator.ffmpeg_adapter.compress.assert_called_once()
+    assert output.exists()
+    assert not manifest_path.exists()
     assert (output_dir / "request.json").exists()
 
 

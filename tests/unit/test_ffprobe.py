@@ -283,3 +283,17 @@ def test_ffprobe_part_info_can_skip_packet_timeline_for_output_verification():
     assert info["duration"] == pytest.approx(4.0)
     mock_run.assert_called_once()
     assert "-show_packets" not in mock_run.call_args.args[0]
+
+
+def test_ffprobe_counts_decoded_video_frames_only_on_explicit_fallback():
+    mock_output = {"streams": [{"nb_read_frames": "467"}]}
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value.stdout = json.dumps(mock_output)
+        mock_run.return_value.returncode = 0
+
+        frames = FFprobeAdapter().count_video_frames(Path("part.mp4"))
+
+    assert frames == 467
+    command = mock_run.call_args.args[0]
+    assert "-count_frames" in command
+    assert command[command.index("-select_streams") + 1] == "v:0"

@@ -383,7 +383,10 @@ class FFmpegAdapter:
         audio_filters: List[str] = []
         concat_inputs: List[str] = []
         for index, part in enumerate(request.parts):
-            video_chain = ["setpts=PTS-STARTPTS"]
+            if part.rebuild_timestamps:
+                video_chain = [f"setpts=N/({part.fps:.6f}*TB)"]
+            else:
+                video_chain = ["setpts=PTS-STARTPTS"]
             if rotate == 180:
                 video_chain.extend(["transpose=2", "transpose=2"])
             elif rotate == 90:
@@ -410,8 +413,13 @@ class FFmpegAdapter:
                 audio_tail = ""
                 if part.duration > 0:
                     audio_tail = f",apad,atrim=duration={part.duration:.6f}"
+                audio_setpts = (
+                    "asetpts=N/SR/TB"
+                    if part.rebuild_timestamps
+                    else "asetpts=PTS-STARTPTS"
+                )
                 audio_filters.append(
-                    f"[{index}:a:0]asetpts=PTS-STARTPTS,"
+                    f"[{index}:a:0]{audio_setpts},"
                     "aresample=48000:async=1:first_pts=0,"
                     "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
                     f"{audio_tail}"

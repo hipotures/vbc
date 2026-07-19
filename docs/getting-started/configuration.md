@@ -420,16 +420,19 @@ cached, while the post-write VBC-tag check uses ExifTool without probing the vid
 - any manifest, probe, compression, verification, or cleanup error:
   `/metadata_err/request.json` and `/metadata_err/request.err`
 
-`metadata.audio_only` is `fail` by default. `ignore` removes audio-only parts from the
-effective concat list while retaining them for `source_policy` handling. Optional policy
+`metadata.audio_only` is `fail` by default. `ignore` removes parts without usable video
+packets from the effective concat list while retaining them for `source_policy` handling.
+If no usable video remains, VBC creates no output and moves the unchanged manifest to
+`_out` as an ignored task. Optional policy
 overrides are reloaded before each manifest job; an invalid edit keeps the last valid
 metadata policy. `metadata.max_dropped_frames` defaults to strict `0`; each generated
 output accepts only that many missing frames, logs a warning, and never accepts extra
-frames. `metadata.max_duration_seconds` defaults to 24 hours and aborts preflight before
-FFmpeg when either one effective part or their aggregate exceeds the limit. The failure
-is shown in the activity feed and routes the JSON to `_err`. `copy_metadata` remains a
-video-to-video setting and uses the first effective video part from each generated
-orientation group.
+frames. `metadata.max_duration_seconds` defaults to 24 hours. A packet duration above the
+limit triggers a decoded-frame count only for that anomalous part. VBC accepts it and
+rebuilds its timestamps when `frames / fps` is within the limit; otherwise preflight
+fails. An aggregate duration above the limit also fails. The failure is shown in the
+activity feed and routes the JSON to `_err`. `copy_metadata` remains a video-to-video
+setting and uses the first effective video part from each generated orientation group.
 
 Every generated output must pass frame, ffprobe, and VBC-tag verification before the JSON
 moves to `_out` or `delete_after_success` removes any source. Ctrl+C leaves the manifest

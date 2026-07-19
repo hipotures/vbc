@@ -153,6 +153,7 @@ class MultipartPart(BaseModel):
     pix_fmt: Optional[str] = None
     video_packets: int = Field(ge=1)
     audio_packets: int = Field(ge=0)
+    rebuild_timestamps: bool = False
 
     @property
     def orientation(self) -> str:

@@ -1531,6 +1531,28 @@ class Orchestrator:
                 )
             return part_info
 
+    def _get_manifest_decoded_frame_count(
+        self,
+        source_path: Path,
+        part_info: Dict[str, Any],
+    ) -> int:
+        """Cache the exceptional decoded-frame fallback with the primary probe."""
+        cache_key = "_decoded_video_frames"
+        with self._manifest_part_info_lock:
+            cached = part_info.get(cache_key)
+        if cached is not None:
+            return int(cached)
+
+        with self._probe_path_lock(source_path):
+            with self._manifest_part_info_lock:
+                cached = part_info.get(cache_key)
+            if cached is not None:
+                return int(cached)
+            decoded_frames = self.ffprobe_adapter.count_video_frames(source_path)
+            with self._manifest_part_info_lock:
+                part_info[cache_key] = decoded_frames
+            return decoded_frames
+
     def _hydrate_metadata_request(
         self,
         video_file: VideoFile,
@@ -1563,13 +1585,20 @@ class Orchestrator:
             has_usable_video = bool(part_info.get("has_video_stream")) and video_packets > 0
             if not has_usable_video:
                 is_audio_only = bool(part_info.get("has_audio_stream")) and audio_packets > 0
-                if is_audio_only and audio_only == "ignore":
+                if audio_only == "ignore":
                     ignored_inputs.append(source_path)
-                    self.logger.info(
-                        "MANIFEST_AUDIO_ONLY_IGNORED: json=%s input=%s",
-                        request.manifest_path,
-                        source_path,
-                    )
+                    if is_audio_only:
+                        self.logger.info(
+                            "MANIFEST_AUDIO_ONLY_IGNORED: json=%s input=%s",
+                            request.manifest_path,
+                            source_path,
+                        )
+                    else:
+                        self.logger.info(
+                            "MANIFEST_NO_VIDEO_IGNORED: json=%s input=%s",
+                            request.manifest_path,
+                            source_path,
+                        )
                     continue
                 reason = "audio-only input" if is_audio_only else "input has no video packets"
                 raise ValueError(f"Invalid manifest input ({reason}): {source_path}")
@@ -1584,11 +1613,38 @@ class Orchestrator:
             if duration <= 0:
                 fps = float(part_info.get("fps") or 0.0)
                 duration = (1.0 / fps) if fps > 0 else 0.04
+            rebuild_timestamps = False
             if duration > metadata_config.max_duration_seconds:
-                raise ValueError(
-                    f"Manifest input duration exceeds safety limit: {source_path} "
-                    f"({duration:.3f}s > {metadata_config.max_duration_seconds}s)"
+                fps = float(part_info.get("fps") or 0.0)
+                decoded_frames = self._get_manifest_decoded_frame_count(
+                    source_path,
+                    part_info,
                 )
+                if decoded_frames <= 0 or fps <= 0:
+                    raise ValueError(
+                        f"Manifest input duration exceeds safety limit and frame fallback "
+                        f"could not verify it: {source_path} "
+                        f"({duration:.3f}s > {metadata_config.max_duration_seconds}s)"
+                    )
+                frame_duration = decoded_frames / fps
+                if frame_duration > metadata_config.max_duration_seconds:
+                    raise ValueError(
+                        f"Manifest input duration exceeds safety limit: {source_path} "
+                        f"({frame_duration:.3f}s from {decoded_frames} decoded frames > "
+                        f"{metadata_config.max_duration_seconds}s)"
+                    )
+                self.logger.warning(
+                    "MANIFEST_TIMESTAMP_REBUILD: json=%s input=%s "
+                    "packet_duration=%.3fs decoded_frames=%s fps=%.3f corrected_duration=%.3fs",
+                    request.manifest_path,
+                    source_path,
+                    duration,
+                    decoded_frames,
+                    fps,
+                    frame_duration,
+                )
+                duration = frame_duration
+                rebuild_timestamps = True
             parts.append(
                 MultipartPart(
                     path=source_path,
@@ -1603,11 +1659,19 @@ class Orchestrator:
                     pix_fmt=part_info.get("pix_fmt"),
                     video_packets=video_packets,
                     audio_packets=audio_packets,
+                    rebuild_timestamps=rebuild_timestamps,
                 )
             )
 
         if not parts:
-            raise ValueError("Manifest has no usable video parts")
+            self._metadata_failed_paths.add(video_file.path)
+            self.logger.info(
+                "MANIFEST_IGNORED_NO_VIDEO: json=%s ignored_inputs=%s",
+                request.manifest_path,
+                len(ignored_inputs),
+            )
+            self._route_manifest_success(request)
+            return None
         total_duration = sum(part.duration for part in parts)
         if total_duration > metadata_config.max_duration_seconds:
             raise ValueError(
@@ -2108,6 +2172,13 @@ class Orchestrator:
         job: Optional[CompressionJob] = None
 
         try:
+            if video_file.metadata is None or not request.parts:
+                video_file.metadata = self._get_metadata(video_file)
+                if video_file.metadata is None:
+                    return
+                request = video_file.metadata_request
+                if request is None:
+                    return
             metadata_config = self._load_current_metadata_config()
             source_policy, compression_profile, audio_only = self._resolve_manifest_policies(
                 request.manifest,

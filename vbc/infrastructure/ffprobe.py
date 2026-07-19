@@ -323,3 +323,34 @@ class FFprobeAdapter:
             "video_packets": self._packet_count(video_stream),
             "audio_packets": self._packet_count(audio_stream),
         }
+
+    def count_video_frames(self, file_path: Path) -> int:
+        """Decode-count primary video frames for exceptional duration validation."""
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-print_format", "json",
+            "-select_streams", "v:0",
+            "-count_frames",
+            "-show_entries", "stream=nb_read_frames",
+            str(file_path),
+        ]
+        timeout_s = max(30, self._estimate_timeout(file_path) * 4)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"ffprobe frame count timed out after {timeout_s}s for {file_path}"
+            ) from exc
+        if result.returncode != 0:
+            detail = (result.stderr or "").strip() or "unknown error (no stderr)"
+            raise RuntimeError(f"ffprobe frame count failed for {file_path}: {detail}")
+
+        data = json.loads(result.stdout)
+        streams = data.get("streams", [])
+        if not streams:
+            return 0
+        try:
+            return max(0, int(streams[0].get("nb_read_frames") or 0))
+        except (TypeError, ValueError):
+            return 0

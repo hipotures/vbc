@@ -357,8 +357,12 @@ packet-timeline duration, so queue refreshes and output validation do not rescan
 video. A request below `min_size_bytes` is a terminal ignored task: VBC creates no output,
 keeps all source parts, and moves the unchanged manifest to `_out`.
 Packet timelines unwrap the 32-bit millisecond timestamp rollover before calculating
-duration. Preflight rejects a part or aggregate duration above
-`metadata.max_duration_seconds` before FFmpeg starts.
+duration. A part whose packet timeline exceeds `metadata.max_duration_seconds` receives
+an exceptional decoded-frame count. If `frames / fps` is within the limit, VBC logs the
+timestamp anomaly and rebuilds that part's video and audio clocks during compression;
+normal parts do not receive this second probe. Preflight rejects the part only when the
+decoded-frame duration also exceeds the limit, and still rejects an aggregate effective
+duration above the limit before FFmpeg starts.
 
 FFmpeg transcodes each group's effective parts sequentially into complete MP4 containers
 whose filenames remain `*.tmp`, then uses the concat demuxer to stream-copy them into the
