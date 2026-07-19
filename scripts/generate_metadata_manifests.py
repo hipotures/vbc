@@ -40,6 +40,7 @@ class GenerationResult:
     shadowed_singles: int = 0
     tagged_sources: int = 0
     recovered_legacy_first_parts: int = 0
+    excluded_by_modified_before: int = 0
     issues: list[str] = field(default_factory=list)
 
 
@@ -56,6 +57,18 @@ def _username_for(relative_path: Path, recording_id: str) -> str | None:
         return relative_path.parts[0]
     match = ROOT_RECORDING_RE.match(recording_id)
     return match.group("username") if match else None
+
+
+def _parse_modified_before(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "must be an ISO 8601 date-time, for example 2026-07-19T00:00:00+02:00"
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise argparse.ArgumentTypeError("must include a timezone offset")
+    return parsed
 
 
 def find_vbc_encoded_sources(recordings_dir: Path) -> set[Path]:
@@ -243,6 +256,7 @@ def generate_manifests(
     metadata_dir: Path,
     compressed_dir: Path,
     *,
+    modified_before: datetime,
     source_policy: str = "keep",
     dry_run: bool = False,
     vbc_encoded_sources: set[Path] | None = None,
@@ -250,6 +264,8 @@ def generate_manifests(
     recordings_dir = recordings_dir.resolve(strict=True)
     if not recordings_dir.is_dir():
         raise ValueError(f"recordings path is not a directory: {recordings_dir}")
+    if modified_before.tzinfo is None or modified_before.utcoffset() is None:
+        raise ValueError("modified_before must include a timezone offset")
     metadata_dir = metadata_dir.resolve(strict=False)
     compressed_dir = compressed_dir.resolve(strict=False)
     if metadata_dir == recordings_dir or _is_within(metadata_dir, recordings_dir):
@@ -271,6 +287,7 @@ def generate_manifests(
         vbc_encoded_sources,
     )
     created_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    cutoff_timestamp = modified_before.timestamp()
     manifest_names: set[str] = set()
     if not dry_run:
         metadata_dir.mkdir(parents=True, exist_ok=True)
@@ -286,6 +303,14 @@ def generate_manifests(
         manifest_path = metadata_dir / manifest_name
         if manifest_path.exists():
             result.existing_manifests += 1
+            continue
+        latest_mtime = max(path.stat().st_mtime for path in task.inputs)
+        if latest_mtime >= cutoff_timestamp:
+            result.excluded_by_modified_before += 1
+            result.issues.append(
+                "task not older than --modified-before and was ignored: "
+                f"{task.output_path}"
+            )
             continue
         if sum(path.stat().st_size for path in task.inputs) <= 0:
             result.issues.append(f"zero-size task ignored: {task.output_path}")
@@ -316,6 +341,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("recordings_dir", type=Path)
     parser.add_argument("metadata_dir", type=Path)
     parser.add_argument(
+        "--modified-before",
+        type=_parse_modified_before,
+        required=True,
+        help=(
+            "Generate a manifest only when every input is older than this timezone-aware "
+            "ISO 8601 date-time."
+        ),
+    )
+    parser.add_argument(
         "--compressed-dir",
         type=Path,
         help="Output root stored in manifests (default: sibling directory 'compressed').",
@@ -341,6 +375,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         recordings_dir,
         args.metadata_dir,
         compressed_dir,
+        modified_before=args.modified_before,
         source_policy=args.source_policy,
         dry_run=args.dry_run,
     )
@@ -348,7 +383,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "discovered={discovered} generated={generated} singles={singles} "
         "multipart={multipart} existing_outputs={outputs} "
         "existing_manifests={manifests} shadowed_singles={shadowed} "
-        "tagged_sources={tagged} recovered_legacy_first_parts={recovered}".format(
+        "tagged_sources={tagged} recovered_legacy_first_parts={recovered} "
+        "excluded_by_modified_before={excluded}".format(
             discovered=result.discovered,
             generated=result.generated,
             singles=result.single_tasks,
@@ -358,6 +394,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             shadowed=result.shadowed_singles,
             tagged=result.tagged_sources,
             recovered=result.recovered_legacy_first_parts,
+            excluded=result.excluded_by_modified_before,
         )
     )
     for issue in result.issues:

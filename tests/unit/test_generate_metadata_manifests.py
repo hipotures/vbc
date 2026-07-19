@@ -1,10 +1,15 @@
 import json
+import os
+from datetime import datetime, timezone
 
 import pytest
 
 from scripts import generate_metadata_manifests as generator
 from scripts.generate_metadata_manifests import generate_manifests
 from vbc.domain.models import CompressionManifest
+
+
+SAFE_CUTOFF = datetime(2100, 1, 1, tzinfo=timezone.utc)
 
 
 def test_generates_single_and_ordered_multipart_manifests_without_touching_sources(
@@ -35,6 +40,7 @@ def test_generates_single_and_ordered_multipart_manifests_without_touching_sourc
         recordings,
         metadata,
         compressed,
+        modified_before=SAFE_CUTOFF,
         vbc_encoded_sources=set(),
     )
 
@@ -75,6 +81,7 @@ def test_multipart_group_with_gap_is_not_generated(tmp_path):
         recordings,
         metadata,
         tmp_path / "compressed",
+        modified_before=SAFE_CUTOFF,
         vbc_encoded_sources=set(),
     )
 
@@ -98,6 +105,7 @@ def test_existing_manifest_is_never_overwritten(tmp_path):
         recordings,
         metadata,
         tmp_path / "compressed",
+        modified_before=SAFE_CUTOFF,
         vbc_encoded_sources=set(),
     )
 
@@ -117,6 +125,7 @@ def test_dry_run_does_not_create_metadata_directory(tmp_path):
         recordings,
         metadata,
         tmp_path / "compressed",
+        modified_before=SAFE_CUTOFF,
         dry_run=True,
         vbc_encoded_sources=set(),
     )
@@ -134,6 +143,7 @@ def test_refuses_to_write_metadata_inside_recordings_tree(tmp_path):
             recordings,
             recordings / "metadata",
             tmp_path / "compressed",
+            modified_before=SAFE_CUTOFF,
             vbc_encoded_sources=set(),
         )
 
@@ -156,6 +166,7 @@ def test_uses_legacy_plain_file_as_first_part_when_numbering_starts_at_two(
         recordings,
         metadata,
         tmp_path / "compressed",
+        modified_before=SAFE_CUTOFF,
         vbc_encoded_sources=set(),
     )
 
@@ -177,6 +188,7 @@ def test_vbc_tagged_file_is_not_used_as_a_source(tmp_path):
         recordings,
         metadata,
         tmp_path / "compressed",
+        modified_before=SAFE_CUTOFF,
         vbc_encoded_sources={encoded},
     )
 
@@ -214,3 +226,47 @@ def test_vbc_tag_scan_uses_exiftool_without_writing_sources(tmp_path, monkeypatc
         encoded.resolve()
     }
     assert encoded.read_bytes() == source_snapshot
+
+
+def test_modified_before_excludes_complete_task_when_any_input_is_too_new(tmp_path):
+    recordings = tmp_path / "recordings"
+    user_dir = recordings / "user"
+    user_dir.mkdir(parents=True)
+    old = user_dir / "user_20260701_120000.mp4"
+    part1 = user_dir / "user_20260702_120000_part001.mp4"
+    part2 = user_dir / "user_20260702_120000_part002.mp4"
+    old.write_bytes(b"old")
+    part1.write_bytes(b"part one")
+    part2.write_bytes(b"part two still being written")
+    os.utime(old, (100, 100))
+    os.utime(part1, (100, 100))
+    os.utime(part2, (200, 200))
+    cutoff = datetime.fromtimestamp(200, tz=timezone.utc)
+    metadata = tmp_path / "metadata"
+
+    result = generate_manifests(
+        recordings,
+        metadata,
+        tmp_path / "compressed",
+        modified_before=cutoff,
+        vbc_encoded_sources=set(),
+    )
+
+    assert result.generated == 1
+    assert result.excluded_by_modified_before == 1
+    assert (metadata / "ttracker-user_20260701_120000.json").is_file()
+    assert not (metadata / "ttracker-user_20260702_120000.json").exists()
+
+
+def test_modified_before_requires_timezone(tmp_path):
+    recordings = tmp_path / "recordings"
+    recordings.mkdir()
+
+    with pytest.raises(ValueError, match="timezone offset"):
+        generate_manifests(
+            recordings,
+            tmp_path / "metadata",
+            tmp_path / "compressed",
+            modified_before=datetime(2026, 7, 19),
+            vbc_encoded_sources=set(),
+        )

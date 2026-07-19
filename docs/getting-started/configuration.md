@@ -467,15 +467,19 @@ uv run python scripts/generate_metadata_manifests.py \
   /mnt/1/TT/recordings \
   /path/to/generated_metadata \
   --compressed-dir /mnt/1/TT/compressed \
+  --modified-before 2026-07-19T00:00:00+02:00 \
   --dry-run
 ```
 
-Remove `--dry-run` to create the JSON files. `--compressed-dir` defaults to a sibling
-directory named `compressed`; `--source-policy` defaults to `keep`. A configured
-`metadata.source_policy` still overrides the value generated in each manifest. An existing
-output is still represented by a manifest. VBC validates ffprobe readability and required
-VBC tags: a valid tagged output is reused, while an untagged or invalid primary output is
-preserved under the next `_N.mp4` name before VBC creates a verified replacement.
+Remove `--dry-run` to create the JSON files. The required `--modified-before` value must
+include a timezone offset. A task is generated only when every input has an mtime strictly
+older than the boundary, which prevents currently written parts from entering the migration.
+`--compressed-dir` defaults to a sibling directory named `compressed`; `--source-policy`
+defaults to `keep`. A configured `metadata.source_policy` still overrides the value generated
+in each manifest. An existing output is still represented by a manifest. VBC validates
+ffprobe readability and required VBC tags: a valid tagged output is reused, while an untagged
+or invalid primary output is preserved under the next `_N.mp4` name before VBC creates a
+verified replacement.
 
 #### `output_dirs`
 - **Type**: List of strings
