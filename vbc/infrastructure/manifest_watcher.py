@@ -13,7 +13,7 @@ from vbc.infrastructure.event_bus import EventBus
 
 
 class ManifestWatcher:
-    """Turn completed JSON filesystem events into debounced queue refreshes."""
+    """Turn completed JSON filesystem events into incremental queue updates."""
 
     _READ_TIMEOUT_MS = 100
     _DEBOUNCE_SECONDS = 1.0
@@ -45,6 +45,7 @@ class ManifestWatcher:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._refresh_deadline: float | None = None
+        self._ready_paths: set[Path] = set()
         self.event_bus.subscribe(InputDirsChanged, self._on_input_dirs_changed)
 
     def start(self) -> None:
@@ -145,11 +146,17 @@ class ManifestWatcher:
                 and time.monotonic() >= self._refresh_deadline
             ):
                 self._refresh_deadline = None
-                self.event_bus.publish(RefreshRequested())
+                ready_paths = sorted(self._ready_paths, key=str)
+                self._ready_paths.clear()
+                if ready_paths:
+                    self.event_bus.publish(
+                        RefreshRequested(manifest_paths=ready_paths)
+                    )
 
     def _handle_event(self, wd: int, mask: int, name: str) -> None:
         if mask & flags.Q_OVERFLOW:
             self._refresh_deadline = None
+            self._ready_paths.clear()
             self._alert("Manifest watcher queue overflow; forcing full refresh")
             self.event_bus.publish(RefreshRequested())
             return
@@ -170,7 +177,9 @@ class ManifestWatcher:
         if not name or not name.endswith(".json"):
             return
 
-        self.logger.info("Manifest ready event: %s", directory / name)
+        manifest_path = directory / name
+        self.logger.info("Manifest ready event: %s", manifest_path)
+        self._ready_paths.add(manifest_path)
         self._refresh_deadline = time.monotonic() + self._DEBOUNCE_SECONDS
 
     def _alert(self, message: str) -> None:

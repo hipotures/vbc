@@ -11,7 +11,7 @@ input_dirs:
     enabled: true
     # false = scan video files (default).
     metadata: false
-    # inotify watching is available only for metadata directories.
+    # Incremental inotify watching is available only for metadata directories.
     watch: false
     # null = do not refresh this directory while idle (default).
     idle_interval: null

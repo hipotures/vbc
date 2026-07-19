@@ -20,21 +20,21 @@ pytestmark = pytest.mark.skipif(
 def _watcher(tmp_path):
     bus = EventBus()
     refreshed = threading.Event()
-    refresh_count = []
+    refresh_events = []
 
-    def on_refresh(_event):
-        refresh_count.append(1)
+    def on_refresh(event):
+        refresh_events.append(event)
         refreshed.set()
 
     bus.subscribe(RefreshRequested, on_refresh)
     watcher = ManifestWatcher(bus, [tmp_path], [tmp_path])
     watcher._DEBOUNCE_SECONDS = 0.05
     watcher._READ_TIMEOUT_MS = 10
-    return watcher, refreshed, refresh_count
+    return watcher, refreshed, refresh_events
 
 
-def test_atomic_manifest_move_triggers_one_debounced_refresh(tmp_path):
-    watcher, refreshed, refresh_count = _watcher(tmp_path)
+def test_atomic_manifest_move_publishes_debounced_paths(tmp_path):
+    watcher, refreshed, refresh_events = _watcher(tmp_path)
     watcher.start()
     try:
         first_tmp = tmp_path / ".first.tmp"
@@ -46,13 +46,17 @@ def test_atomic_manifest_move_triggers_one_debounced_refresh(tmp_path):
 
         assert refreshed.wait(1.0)
         time.sleep(0.1)
-        assert len(refresh_count) == 1
+        assert len(refresh_events) == 1
+        assert refresh_events[0].manifest_paths == [
+            tmp_path / "first.json",
+            tmp_path / "second.json",
+        ]
     finally:
         watcher.stop()
 
 
 def test_tmp_close_is_ignored_but_direct_json_close_is_ready(tmp_path):
-    watcher, refreshed, refresh_count = _watcher(tmp_path)
+    watcher, refreshed, refresh_events = _watcher(tmp_path)
     watcher.start()
     try:
         (tmp_path / ".request.tmp").write_text("partial")
@@ -60,18 +64,23 @@ def test_tmp_close_is_ignored_but_direct_json_close_is_ready(tmp_path):
 
         (tmp_path / "request.json").write_text("{}")
         assert refreshed.wait(1.0)
-        assert len(refresh_count) == 1
+        assert len(refresh_events) == 1
+        assert refresh_events[0].manifest_paths == [tmp_path / "request.json"]
     finally:
         watcher.stop()
 
 
 def test_queue_overflow_forces_immediate_refresh(tmp_path):
-    watcher, refreshed, refresh_count = _watcher(tmp_path)
+    watcher, refreshed, refresh_events = _watcher(tmp_path)
+
+    watcher._ready_paths.add(tmp_path / "stale.json")
 
     watcher._handle_event(-1, flags.Q_OVERFLOW, "")
 
     assert refreshed.is_set()
-    assert len(refresh_count) == 1
+    assert len(refresh_events) == 1
+    assert refresh_events[0].manifest_paths == []
+    assert watcher._ready_paths == set()
 
 
 def test_start_fails_for_missing_watched_directory(tmp_path):

@@ -210,6 +210,7 @@ class Orchestrator:
         self._active_threads = 0
         self._thread_lock = threading.Condition()
         self._refresh_requested = False
+        self._manifest_paths_requested: set[Path] = set()
         self._refresh_lock = threading.Lock()
         self._shutdown_event = threading.Event()  # Signal workers to stop
         self._wait_event = threading.Event()  # Signals wait loop to unblock
@@ -299,10 +300,27 @@ class Orchestrator:
 
     def _on_refresh_request(self, event):
         with self._refresh_lock:
-            self._refresh_requested = True
+            if event.manifest_paths:
+                self._manifest_paths_requested.update(event.manifest_paths)
+            else:
+                self._refresh_requested = True
+                self._manifest_paths_requested.clear()
         # Also wake the wait loop (if active) with restart intent
         self._restart_after_wait = True
         self._wait_event.set()
+
+    def _take_refresh_request(self) -> tuple[bool, List[Path]]:
+        """Atomically consume one full refresh or a batch of manifest paths."""
+        with self._refresh_lock:
+            full_refresh = self._refresh_requested
+            manifest_paths = (
+                []
+                if full_refresh
+                else sorted(self._manifest_paths_requested, key=str)
+            )
+            self._refresh_requested = False
+            self._manifest_paths_requested.clear()
+        return full_refresh, manifest_paths
 
     def _on_interrupt_requested(self, event: InterruptRequested):
         """Handle Ctrl+C interrupt from keyboard listener."""
@@ -2025,6 +2043,7 @@ class Orchestrator:
         input_dir: Path,
         success_dir: Path,
         error_dir: Path,
+        manifest_paths: Optional[List[Path]] = None,
     ) -> tuple[List[VideoFile], Dict[str, Any]]:
         stats: Dict[str, Any] = {
             "files_found": 0,
@@ -2037,7 +2056,12 @@ class Orchestrator:
         candidates: List[VideoFile] = []
         metadata_config = self._load_current_metadata_config()
 
-        for manifest_path in sorted(input_dir.rglob("*.json")):
+        paths = (
+            sorted(input_dir.rglob("*.json"))
+            if manifest_paths is None
+            else sorted(manifest_paths)
+        )
+        for manifest_path in paths:
             request: Optional[MetadataRequest] = None
             with self._manifest_inflight_lock:
                 if manifest_path in self._manifest_inflight:
@@ -2149,6 +2173,12 @@ class Orchestrator:
             except InterruptedError:
                 raise
             except Exception as exc:
+                if not manifest_path.exists():
+                    self.logger.info(
+                        "MANIFEST_DISCOVERY_DISAPPEARED: %s", manifest_path
+                    )
+                    stats["files_found"] -= 1
+                    continue
                 message = str(exc) or exc.__class__.__name__
                 manifest_routed = False
                 try:
@@ -2181,11 +2211,23 @@ class Orchestrator:
         stats["files_to_process"] = len(candidates)
         return candidates, stats
 
-    def _perform_discovery(self, input_dirs: Union[Path, List[Path]]) -> tuple:
+    def _perform_discovery(
+        self,
+        input_dirs: Union[Path, List[Path]],
+        manifest_paths: Optional[List[Path]] = None,
+    ) -> tuple:
         """Performs file discovery across multiple directories and returns (files_to_process, discovery_stats)."""
         import os
 
         input_dirs = self._normalize_input_dirs(input_dirs)
+        exact_paths_by_dir: Optional[Dict[Path, List[Path]]] = None
+        if manifest_paths is not None:
+            exact_paths_by_dir = {}
+            active_dirs = set(input_dirs)
+            for manifest_path in set(manifest_paths):
+                parent = manifest_path.parent
+                if parent in active_dirs and self._is_metadata_input_dir(parent):
+                    exact_paths_by_dir.setdefault(parent, []).append(manifest_path)
         all_files = []
         total_stats = {
             "files_found": 0,
@@ -2197,6 +2239,13 @@ class Orchestrator:
         }
 
         for idx, input_dir in enumerate(input_dirs):
+            selected_manifest_paths = (
+                None
+                if exact_paths_by_dir is None
+                else exact_paths_by_dir.get(input_dir, [])
+            )
+            if exact_paths_by_dir is not None and not selected_manifest_paths:
+                continue
             output_dir = self._folder_mapping.get(input_dir)
             if output_dir is None:
                 if self._use_output_dir_map_override:
@@ -2223,6 +2272,7 @@ class Orchestrator:
                     input_dir,
                     output_dir,
                     errors_dir,
+                    manifest_paths=selected_manifest_paths,
                 )
                 all_files.extend(metadata_files)
                 for key in (
@@ -3479,6 +3529,7 @@ class Orchestrator:
         input_dirs = self._normalize_input_dirs(input_dirs)
         forced_files: List[Path] = []
         scheduled_input_dirs: Optional[List[Path]] = None
+        scheduled_manifest_paths: Optional[List[Path]] = None
         timed_refresh = False
         next_idle_scan: Dict[Path, float] = {}
         while True:
@@ -3488,7 +3539,11 @@ class Orchestrator:
                 self._pending_input_dirs = None
                 next_idle_scan.clear()
             cycle_input_dirs = scheduled_input_dirs or input_dirs
-            processed_any = self._run_once(cycle_input_dirs, forced_files=forced_files)
+            processed_any = self._run_once(
+                cycle_input_dirs,
+                forced_files=forced_files,
+                manifest_paths=scheduled_manifest_paths,
+            )
             if timed_refresh and processed_any:
                 timed_refresh = False
             now = time.monotonic()
@@ -3498,6 +3553,7 @@ class Orchestrator:
                     next_idle_scan[input_dir] = now + entry.idle_interval
             forced_files = []
             scheduled_input_dirs = None
+            scheduled_manifest_paths = None
 
             if self._verification_abort_message:
                 raise VerificationAbortError(self._verification_abort_message)
@@ -3523,6 +3579,7 @@ class Orchestrator:
                 self._restart_after_wait = False
                 with self._refresh_lock:
                     self._refresh_requested = False
+                    self._manifest_paths_requested.clear()
                 self._wait_event.clear()
                 continue
 
@@ -3533,14 +3590,15 @@ class Orchestrator:
                 forced_files = repaired_paths
                 with self._refresh_lock:
                     self._refresh_requested = False
+                    self._manifest_paths_requested.clear()
                 self._wait_event.clear()
                 continue
 
-            with self._refresh_lock:
-                refresh_before_wait = self._refresh_requested
-                if refresh_before_wait:
-                    self._refresh_requested = False
+            refresh_before_wait, ready_before_wait = self._take_refresh_request()
             if refresh_before_wait:
+                continue
+            if ready_before_wait:
+                scheduled_manifest_paths = ready_before_wait
                 continue
 
             if not self.config.general.wait_on_finish:
@@ -3560,11 +3618,13 @@ class Orchestrator:
             # Block until R (restart) or S/Ctrl+C (exit)
             self._wait_event.clear()
             self._restart_after_wait = False
-            with self._refresh_lock:
-                refresh_already_pending = self._refresh_requested
-                if refresh_already_pending:
-                    self._refresh_requested = False
+            refresh_already_pending, ready_already_pending = (
+                self._take_refresh_request()
+            )
             if refresh_already_pending:
+                continue
+            if ready_already_pending:
+                scheduled_manifest_paths = ready_already_pending
                 continue
             now = time.monotonic()
             active_paths = set(input_dirs)
@@ -3606,17 +3666,30 @@ class Orchestrator:
             timed_refresh = False
             self._restart_after_wait = False
             self._shutdown_requested = False
-            with self._refresh_lock:
-                self._refresh_requested = False
+            refresh_after_wait, ready_after_wait = self._take_refresh_request()
+            if ready_after_wait and not refresh_after_wait:
+                scheduled_manifest_paths = ready_after_wait
             self._wait_event.clear()
 
     def _run_once(
-        self, input_dirs: List[Path], forced_files: Optional[List[Path]] = None
+        self,
+        input_dirs: List[Path],
+        forced_files: Optional[List[Path]] = None,
+        manifest_paths: Optional[List[Path]] = None,
     ):
-        self.logger.info(f"Discovery started: {len(input_dirs)} folders")
-        for input_dir in input_dirs:
-            self.event_bus.publish(DiscoveryStarted(directory=input_dir))
-        files_to_process, discovery_stats = self._perform_discovery(input_dirs)
+        if manifest_paths is None:
+            self.logger.info(f"Discovery started: {len(input_dirs)} folders")
+            for input_dir in input_dirs:
+                self.event_bus.publish(DiscoveryStarted(directory=input_dir))
+        else:
+            self.logger.info(
+                "Incremental manifest discovery started: %s paths",
+                len(manifest_paths),
+            )
+        files_to_process, discovery_stats = self._perform_discovery(
+            input_dirs,
+            manifest_paths=manifest_paths,
+        )
 
         forced_video_files: List[VideoFile] = []
         if forced_files:
@@ -3745,32 +3818,34 @@ class Orchestrator:
                             logging.error(f"Future failed with exception: {e}")
                         del in_flight[future]
 
-                    # Check for refresh request
-                    with self._refresh_lock:
-                        if self._refresh_requested:
-                            self._refresh_requested = False
-                            # Use updated dirs if changed via Dirs tab
-                            if self._pending_input_dirs is not None:
-                                refresh_dirs = self._pending_input_dirs
-                                self._pending_input_dirs = None
-                                # Remove stale entries from folder mapping
-                                refresh_set = set(refresh_dirs)
-                                for old_dir in list(self._folder_mapping.keys()):
-                                    if old_dir not in refresh_set:
-                                        del self._folder_mapping[old_dir]
-                            else:
-                                refresh_dirs = list(self._folder_mapping.keys())
-                            # Perform new discovery on active folders
-                            new_files, new_stats = self._perform_discovery(refresh_dirs)
+                    full_refresh, ready_manifest_paths = (
+                        self._take_refresh_request()
+                    )
+                    if full_refresh or ready_manifest_paths:
+                        if full_refresh and self._pending_input_dirs is not None:
+                            refresh_dirs = self._pending_input_dirs
+                            self._pending_input_dirs = None
+                            refresh_set = set(refresh_dirs)
+                            for old_dir in list(self._folder_mapping.keys()):
+                                if old_dir not in refresh_set:
+                                    del self._folder_mapping[old_dir]
+                        else:
+                            refresh_dirs = list(self._folder_mapping.keys())
 
-                            # Identify currently processing files to exclude them from queue
-                            in_flight_paths = {
-                                vf.identity_path for vf in in_flight.values()
-                            }
-                            old_pending_paths = {vf.identity_path for vf in pending}
+                        new_files, new_stats = self._perform_discovery(
+                            refresh_dirs,
+                            manifest_paths=(
+                                None if full_refresh else ready_manifest_paths
+                            ),
+                        )
+                        in_flight_paths = {
+                            vf.identity_path for vf in in_flight.values()
+                        }
+                        old_pending_paths = {
+                            vf.identity_path for vf in pending
+                        }
 
-                            # Rebuild pending queue from sorted new_files, excluding in-flight ones
-                            # This ensures the queue is fully re-sorted according to config
+                        if full_refresh:
                             new_pending_list = [
                                 vf
                                 for vf in new_files
@@ -3779,70 +3854,77 @@ class Orchestrator:
                             new_pending_paths = {
                                 vf.identity_path for vf in new_pending_list
                             }
-
-                            # Calculate stats
                             added = len(new_pending_paths - old_pending_paths)
                             removed = len(old_pending_paths - new_pending_paths)
-
-                            # Replace queue
-                            pending = deque(new_pending_list)
-                            self._prune_failed_pending(pending)
-
-                            self.event_bus.publish(
-                                RefreshFinished(added=added, removed=removed)
+                        else:
+                            known_paths = in_flight_paths | old_pending_paths
+                            additions = [
+                                vf
+                                for vf in new_files
+                                if vf.identity_path not in known_paths
+                            ]
+                            added = len(additions)
+                            removed = 0
+                            new_pending_list = sort_files(
+                                [*pending, *additions],
+                                refresh_dirs,
+                                self.config.general,
+                                self.file_scanner.extensions,
                             )
-                            # Update discovery stats (include ignored_small like old code)
+
+                        pending = deque(new_pending_list)
+                        self._prune_failed_pending(pending)
+                        self.event_bus.publish(
+                            RefreshFinished(added=added, removed=removed)
+                        )
+
+                        if full_refresh:
                             self.event_bus.publish(
                                 DiscoveryFinished(
                                     files_found=new_stats["files_found"],
                                     files_to_process=new_stats["files_to_process"],
-                                    already_compressed=new_stats["already_compressed"],
-                                    ignored_small=new_stats[
-                                        "ignored_small"
-                                    ],  # FIX: update this counter
+                                    already_compressed=new_stats[
+                                        "already_compressed"
+                                    ],
+                                    ignored_small=new_stats["ignored_small"],
                                     ignored_err=new_stats["ignored_err"],
                                     ignored_err_entries=new_stats[
                                         "ignored_err_entries"
                                     ],
-                                    ignored_av1=0,  # AV1 check done during processing
-                                    source_folders_count=len(self._folder_mapping),
+                                    ignored_av1=0,
+                                    source_folders_count=len(
+                                        self._folder_mapping
+                                    ),
                                 )
                             )
-                            # Publish feedback message (like old vbc.py lines 1852-1860)
-                            from vbc.domain.events import ActionMessage
 
-                            if added > 0 and removed > 0:
-                                self.event_bus.publish(
-                                    ActionMessage(
-                                        message=f"Refreshed: +{added} new, -{removed} removed"
-                                    )
-                                )
-                                self.logger.info(
-                                    f"Refresh: +{added} new, -{removed} removed"
-                                )
-                            elif added > 0:
-                                self.event_bus.publish(
-                                    ActionMessage(
-                                        message=f"Refreshed: +{added} new files"
-                                    )
-                                )
-                                self.logger.info(
-                                    f"Refresh: added {added} new files to queue"
-                                )
-                            elif removed > 0:
-                                self.event_bus.publish(
-                                    ActionMessage(
-                                        message=f"Refreshed: -{removed} removed"
-                                    )
-                                )
-                                self.logger.info(
-                                    f"Refresh: removed {removed} files from queue"
-                                )
-                            else:
-                                self.event_bus.publish(
-                                    ActionMessage(message="Refreshed: no changes")
-                                )
-                                self.logger.info("Refresh: no changes detected")
+                        from vbc.domain.events import ActionMessage
+
+                        if added > 0 and removed > 0:
+                            message = (
+                                f"Refreshed: +{added} new, -{removed} removed"
+                            )
+                            self.event_bus.publish(ActionMessage(message=message))
+                            self.logger.info(message)
+                        elif added > 0:
+                            prefix = "Refreshed" if full_refresh else "Manifest watch"
+                            message = f"{prefix}: +{added} new files"
+                            self.event_bus.publish(ActionMessage(message=message))
+                            self.logger.info(message)
+                        elif removed > 0:
+                            message = f"Refreshed: -{removed} removed"
+                            self.event_bus.publish(ActionMessage(message=message))
+                            self.logger.info(message)
+                        elif full_refresh:
+                            self.event_bus.publish(
+                                ActionMessage(message="Refreshed: no changes")
+                            )
+                            self.logger.info("Refresh: no changes detected")
+                        else:
+                            self.logger.info(
+                                "Manifest watch: no new tasks in %s paths",
+                                len(ready_manifest_paths),
+                            )
 
                     # Submit more files to maintain queue
                     submit_batch()

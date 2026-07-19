@@ -433,12 +433,14 @@ timestamps; refreshes reuse the cached result. Output stream verification is lik
 cached, while the post-write VBC-tag check uses ExifTool without probing the video again.
 
 With `watch: true`, completed JSON events are coalesced during a one-second quiet
-period and then sent through the normal full-refresh path. This works both while jobs
-are active and in **WAITING** mode; it does not preempt jobs already running. Hidden
-temporary files and all non-JSON names are ignored. If inotify reports an event-queue
-overflow, VBC shows a warning and immediately performs a full refresh. A manually copied
-JSON that is observed before its final write has settled is retried after a one-second
-stability check before it can be routed to `_err`.
+period and then only the reported JSON paths are added to discovery. This works both
+while jobs are active and in **WAITING** mode; it does not preempt jobs already running
+or rescan an existing metadata backlog. Hidden temporary files and all non-JSON names
+are ignored. If inotify reports an event-queue overflow, VBC shows a warning and falls
+back to a full refresh. A manually copied JSON that is observed before its final write
+has settled is retried after a one-second stability check before it can be routed to
+`_err`. A path that disappears before incremental discovery reaches it is treated as an
+already-routed task and is ignored without creating or overwriting an error marker.
 
 - success: `/metadata_out/request.json`
 - any manifest, probe, compression, verification, or cleanup error:

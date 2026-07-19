@@ -98,8 +98,9 @@ class QueueUpdated(Event):
     pending_files: List  # List[VideoFile] but avoid circular import
 
 class RefreshRequested(Event):
-    """Event to trigger re-scanning for new files."""
-    pass
+    """Request a full refresh or incremental discovery of ready manifests."""
+
+    manifest_paths: List[Path] = Field(default_factory=list)
 
 class InputDirsChanged(Event):
     """Event emitted when active input_dirs list changes (Dirs tab apply)."""

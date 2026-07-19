@@ -1015,7 +1015,9 @@ def test_run_auto_repair_requeues_restored_mkv(monkeypatch, tmp_path):
 
     calls = []
 
-    def fake_run_once(run_input_dirs, forced_files=None):
+    def fake_run_once(
+        run_input_dirs, forced_files=None, manifest_paths=None
+    ):
         calls.append(list(forced_files or []))
         if forced_files:
             orchestrator._shutdown_requested = True
@@ -1074,7 +1076,9 @@ def test_run_auto_repair_on_shutdown_exits_without_requeue(monkeypatch, tmp_path
 
     calls = []
 
-    def fake_run_once(run_input_dirs, forced_files=None):
+    def fake_run_once(
+        run_input_dirs, forced_files=None, manifest_paths=None
+    ):
         calls.append(list(forced_files or []))
         orchestrator._shutdown_requested = True
 

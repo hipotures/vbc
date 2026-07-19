@@ -405,6 +405,53 @@ def test_move_all_archives_remaining_sources_when_one_input_is_missing(tmp_path)
     assert "Missing manifest input" in (error_dir / "request.err").read_text()
 
 
+def test_incremental_discovery_ignores_manifest_that_already_disappeared(tmp_path):
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(
+        tmp_path,
+        MagicMock(),
+    )
+    error_dir.mkdir()
+    stale_manifest = metadata_dir / "request.json"
+    existing_error = error_dir / "request.err"
+    existing_error.write_text("original compression error")
+
+    files, stats = orchestrator._perform_discovery(
+        [metadata_dir],
+        manifest_paths=[stale_manifest],
+    )
+
+    assert files == []
+    assert stats["files_found"] == 0
+    assert stats["ignored_err"] == 0
+    assert existing_error.read_text() == "original compression error"
+
+
+def test_incremental_discovery_reads_only_reported_manifest_paths(tmp_path):
+    orchestrator, metadata_dir, _, _ = _orchestrator(tmp_path, MagicMock())
+    first_part = tmp_path / "first_part001.mp4"
+    second_part = tmp_path / "second_part001.mp4"
+    first_part.write_bytes(b"first")
+    second_part.write_bytes(b"second")
+    first_manifest = metadata_dir / "first.json"
+    second_manifest = metadata_dir / "second.json"
+    first_manifest.write_text(
+        json.dumps(_manifest([first_part], tmp_path / "first.mp4"))
+    )
+    second_manifest.write_text(
+        json.dumps(_manifest([second_part], tmp_path / "second.mp4"))
+    )
+
+    files, stats = orchestrator._perform_discovery(
+        [metadata_dir],
+        manifest_paths=[second_manifest],
+    )
+
+    assert [video.path for video in files] == [tmp_path / "second.mp4"]
+    assert stats["files_found"] == 1
+    assert stats["files_to_process"] == 1
+    assert first_manifest.exists()
+
+
 def test_metadata_preflight_rebuilds_timestamps_after_exceptional_frame_check(
     tmp_path,
 ):
