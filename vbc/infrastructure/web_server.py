@@ -506,9 +506,8 @@ def _vm_queue(s: dict, max_items: int = _WEB_DEFAULT_QUEUE_ITEMS) -> dict:
     items = []
     for f in files[:max_display]:
         size = _fmt_size(getattr(f, "size_bytes", None))
-        fps = _fmt_fps(getattr(f, "metadata", None))
         part_count = getattr(f, "part_count", 1)
-        meta_parts = [p for p in [size, fps, str(part_count)] if p]
+        meta_parts = [p for p in [size, str(part_count)] if p]
         items.append({
             "fname": f.path.name,
             "meta":  " \u2022 ".join(meta_parts),

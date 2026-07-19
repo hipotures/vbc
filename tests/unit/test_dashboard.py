@@ -65,6 +65,24 @@ def test_dashboard_format_helpers():
     assert dashboard._active_quality_meta_suffix(rate_job) == " → 95Mbps"
 
 
+def test_dashboard_queue_item_does_not_render_fps():
+    state = UIState()
+    dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
+    video = VideoFile(
+        path=Path("queued.mp4"),
+        size_bytes=10 * 1024 * 1024,
+        metadata=VideoMetadata(width=640, height=1280, codec="h264", fps=25.0),
+    )
+    console = Console(record=True, width=100)
+
+    console.print(dashboard._render_queue_item(video, "normal"))
+    rendered = console.export_text()
+
+    assert "queued.mp4" in rendered
+    assert "10.0MB" in rendered
+    assert "25fps" not in rendered
+
+
 def test_dashboard_panels_with_state(tmp_path):
     state = UIState()
     state.completed_count = 2

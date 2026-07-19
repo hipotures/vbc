@@ -64,6 +64,7 @@ def test_vm_queue_respects_dynamic_max_items_and_more_counter():
     assert vm["title"] == "QUEUE (8 files)"
     assert len(vm["items"]) == 4
     assert vm["more"] == 4
+    assert all("fps" not in item["meta"] for item in vm["items"])
 
 
 def test_parse_max_items_param_uses_default_and_clamps():
