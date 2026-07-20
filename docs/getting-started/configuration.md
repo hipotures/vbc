@@ -534,6 +534,36 @@ missing. Sources that have already been manually restored are accepted when no d
 archive copy exists. The existing `.err` marker remains in the error directory as failure
 history.
 
+### Repairing supported failed manifests
+
+`scripts/repair_failed_manifests.py` performs a controlled recompression for known failure
+classes while leaving the original `.err` marker in place. It accepts one `.json`/`.err`
+file or scans all direct `*.err` children of a metadata error directory. Unsupported
+errors are reported and left unchanged. Repairs run sequentially and reuse the normal VBC
+preflight, output verification, VBC tagging, manifest routing, and source policy.
+
+The first supported handler is FFmpeg exit code `244` / error `-12`. It restores archived
+sources when needed and recompresses video without its problematic audio stream. This is a
+runtime-only override: the manifest JSON is not modified. Every FFmpeg child started by
+the repair tool has a fixed 50 GiB address-space limit.
+
+```bash
+# Inspect one task without changing files
+uv run python scripts/repair_failed_manifests.py \
+  /path/to/metadata_err/request.err \
+  --dry-run
+
+# Repair every supported task in one configured error directory
+uv run python scripts/repair_failed_manifests.py \
+  /path/to/metadata_err
+```
+
+The default configuration is `conf/vbc.yaml`; use `--config /path/to/vbc.yaml` when
+needed. For a successful repair, the JSON moves to its configured metadata output
+directory, source files follow the effective `source_policy`, and the old `.err` remains
+in the error directory. A failed or interrupted repair does not publish the JSON back into
+the watched input queue.
+
 #### `output_dirs`
 - **Type**: List of strings
 - **Default**: `[]` (empty)

@@ -822,6 +822,72 @@ def test_multipart_ffmpeg_command_normalizes_video_and_synthesizes_silence(tmp_p
     assert command[-1].endswith("recording.tmp")
 
 
+def test_repair_multipart_command_drops_audio_without_changing_manifest(tmp_path):
+    part = MultipartPart(
+        path=tmp_path / "part001.mp4",
+        width=640,
+        height=1280,
+        codec="h264",
+        audio_codec="aac",
+        fps=25,
+        duration=10,
+        video_packets=250,
+        audio_packets=10,
+    )
+    payload = CompressionManifest.model_validate(
+        _manifest([part.path], tmp_path / "recording.mp4")
+    )
+    request = MetadataRequest(
+        manifest_path=tmp_path / "request.json",
+        metadata_dir=tmp_path,
+        success_dir=tmp_path / "out",
+        error_dir=tmp_path / "err",
+        manifest=payload,
+        parts=[part],
+        source_policy="keep",
+        compression_profile="tiktok",
+        audio_only="ignore",
+        target_width=640,
+        target_height=1280,
+        drop_audio=True,
+    )
+    video = VideoFile(
+        path=Path(payload.output_path),
+        size_bytes=300,
+        metadata=VideoMetadata(width=640, height=1280, codec="h264", fps=25),
+        metadata_request=request,
+    )
+    job = CompressionJob(source_file=video, output_path=video.path)
+    config = AppConfig(general=GeneralConfig(threads=1, gpu=False))
+    adapter = FFmpegAdapter(event_bus=MagicMock())
+
+    command = adapter._build_command(
+        job,
+        config,
+        select_encoder_args(config, use_gpu=False),
+        use_gpu=False,
+    )
+    filter_graph = command[command.index("-filter_complex") + 1]
+
+    assert "concat=n=1:v=1:a=0[vout]" in filter_graph
+    assert "[aout]" not in filter_graph
+    assert "[0:a:0]" not in filter_graph
+    assert "-c:a" not in command
+    assert "audio" not in payload.model_dump()
+
+
+def test_repair_staged_concat_does_not_map_audio(tmp_path):
+    command, _ = FFmpegAdapter._build_concat_copy_command(
+        [tmp_path / "part001.tmp", tmp_path / "part002.tmp"],
+        tmp_path / "output.tmp",
+        copy_metadata=False,
+        include_audio=False,
+    )
+
+    assert "0:v:0" in command
+    assert "0:a:0" not in command
+
+
 def test_multipart_compress_dispatches_to_sequential_staging(tmp_path):
     parts = [
         MultipartPart(

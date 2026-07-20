@@ -2211,6 +2211,44 @@ class Orchestrator:
         stats["files_to_process"] = len(candidates)
         return candidates, stats
 
+    def prepare_metadata_repair(
+        self,
+        manifest_path: Path,
+        success_dir: Path,
+        error_dir: Path,
+    ) -> Optional[VideoFile]:
+        """Build one metadata job directly from a failed-manifest directory."""
+        candidates, stats = self._discover_metadata_dir(
+            manifest_path.parent,
+            success_dir,
+            error_dir,
+            manifest_paths=[manifest_path],
+        )
+        if len(candidates) > 1:
+            raise RuntimeError(
+                f"repair discovery returned multiple jobs for {manifest_path}"
+            )
+        if candidates:
+            return candidates[0]
+        if stats["already_compressed"] or stats["ignored_small"]:
+            return None
+        errors = stats["ignored_err_entries"]
+        detail = errors[0].error_message if errors else "manifest was not queued"
+        raise RuntimeError(f"repair preflight failed: {detail}")
+
+    def process_metadata_repair(
+        self,
+        video_file: VideoFile,
+        *,
+        drop_audio: bool = False,
+    ) -> None:
+        """Run one prepared metadata job with runtime-only repair overrides."""
+        request = video_file.metadata_request
+        if request is None:
+            raise ValueError("metadata repair requires a manifest-backed video")
+        request.drop_audio = drop_audio
+        self._process_metadata_request(video_file)
+
     def _perform_discovery(
         self,
         input_dirs: Union[Path, List[Path]],

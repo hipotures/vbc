@@ -45,6 +45,42 @@ def test_ffmpeg_command_generation_cpu():
     assert "libsvtav1" in cmd
 
 
+def test_ffmpeg_memory_limit_is_applied_only_to_child_process():
+    adapter = FFmpegAdapter(
+        event_bus=MagicMock(),
+        memory_limit_bytes=50 * 1024**3,
+    )
+
+    with patch("subprocess.Popen") as popen:
+        adapter._popen(["ffmpeg", "-version"])
+
+    preexec_fn = popen.call_args.kwargs["preexec_fn"]
+    assert callable(preexec_fn)
+    assert preexec_fn.__self__ is adapter
+
+
+def test_ffmpeg_default_has_no_child_memory_override():
+    adapter = FFmpegAdapter(event_bus=MagicMock())
+
+    with patch("subprocess.Popen") as popen:
+        adapter._popen(["ffmpeg", "-version"])
+
+    assert "preexec_fn" not in popen.call_args.kwargs
+
+
+def test_concat_copy_terminates_child_on_keyboard_interrupt():
+    adapter = FFmpegAdapter(event_bus=MagicMock())
+    process = MagicMock()
+    process.poll.side_effect = KeyboardInterrupt
+
+    with patch.object(adapter, "_popen", return_value=process):
+        with pytest.raises(KeyboardInterrupt):
+            adapter._run_concat_copy(["ffmpeg"], "", None)
+
+    process.terminate.assert_called_once()
+    process.wait.assert_called_once_with(timeout=3)
+
+
 def test_ffmpeg_command_generation_cpu_threads_limit():
     config = AppConfig(general=GeneralConfig(threads=4, gpu=False, ffmpeg_cpu_threads=4))
     vf = VideoFile(path=Path("input.mp4"), size_bytes=1000)

@@ -185,6 +185,7 @@ class MetadataRequest(BaseModel):
     audio_only: Literal["fail", "ignore"]
     target_width: int = Field(gt=0)
     target_height: int = Field(gt=0)
+    drop_audio: bool = False
 
     @property
     def all_input_paths(self) -> List[Path]:

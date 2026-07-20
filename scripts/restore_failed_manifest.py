@@ -38,6 +38,48 @@ class RestoreResult:
     dry_run: bool
 
 
+def rollback_restored_sources(restored: Sequence[SourceRestore]) -> None:
+    """Move sources restored for a retry back to their archive locations."""
+    errors: list[str] = []
+    for item in reversed(restored):
+        try:
+            if item.original_path.exists() and not item.archive_path.exists():
+                item.archive_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(item.original_path), str(item.archive_path))
+        except OSError as exc:
+            errors.append(str(exc))
+    if errors:
+        raise RestoreError(f"source rollback failed: {errors}")
+
+
+def restore_failed_sources(result: RestoreResult) -> tuple[SourceRestore, ...]:
+    """Restore only archived sources, leaving the failed JSON unpublished."""
+    moved: list[SourceRestore] = []
+    try:
+        for item in result.restored_sources:
+            item.original_path.parent.mkdir(parents=True, exist_ok=True)
+            if item.original_path.exists():
+                raise FileExistsError(
+                    f"source destination appeared during restore: {item.original_path}"
+                )
+            shutil.move(str(item.archive_path), str(item.original_path))
+            moved.append(item)
+            if item.archive_path.exists() or not item.original_path.is_file():
+                raise OSError(
+                    "source move verification failed: "
+                    f"{item.archive_path} -> {item.original_path}"
+                )
+    except (OSError, RestoreError) as exc:
+        try:
+            rollback_restored_sources(moved)
+        except RestoreError as rollback_exc:
+            raise RestoreError(
+                f"source restore failed: {exc}; {rollback_exc}"
+            ) from exc
+        raise RestoreError(f"source restore failed: {exc}") from exc
+    return tuple(moved)
+
+
 def _deduplicated_enabled_entries(
     config: AppConfig,
 ) -> tuple[list[InputDirEntry], list[int]]:
@@ -237,22 +279,10 @@ def restore_failed_manifest(
     if dry_run:
         return result
 
-    moved: list[SourceRestore] = []
+    moved: tuple[SourceRestore, ...] = ()
     manifest_moved = False
     try:
-        for item in restore_plan:
-            item.original_path.parent.mkdir(parents=True, exist_ok=True)
-            if item.original_path.exists():
-                raise FileExistsError(
-                    f"source destination appeared during restore: {item.original_path}"
-                )
-            shutil.move(str(item.archive_path), str(item.original_path))
-            moved.append(item)
-            if item.archive_path.exists() or not item.original_path.is_file():
-                raise OSError(
-                    f"source move verification failed: "
-                    f"{item.archive_path} -> {item.original_path}"
-                )
+        moved = restore_failed_sources(result)
 
         if manifest_destination.exists():
             raise FileExistsError(
@@ -265,7 +295,7 @@ def restore_failed_manifest(
                 f"manifest move verification failed: "
                 f"{failed_manifest} -> {manifest_destination}"
             )
-    except OSError as exc:
+    except (OSError, RestoreError) as exc:
         rollback_errors: list[str] = []
         if (
             manifest_moved
@@ -276,13 +306,10 @@ def restore_failed_manifest(
                 shutil.move(str(manifest_destination), str(failed_manifest))
             except OSError as rollback_exc:
                 rollback_errors.append(str(rollback_exc))
-        for item in reversed(moved):
-            try:
-                if item.original_path.exists() and not item.archive_path.exists():
-                    item.archive_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(item.original_path), str(item.archive_path))
-            except OSError as rollback_exc:
-                rollback_errors.append(str(rollback_exc))
+        try:
+            rollback_restored_sources(moved)
+        except RestoreError as rollback_exc:
+            rollback_errors.append(str(rollback_exc))
         detail = (
             f"; rollback errors: {rollback_errors}" if rollback_errors else ""
         )

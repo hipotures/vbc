@@ -5,6 +5,7 @@ Detects hardware capability errors and color space issues, publishing events on 
 """
 
 import subprocess
+import resource
 import re
 import logging
 import time
@@ -254,9 +255,31 @@ class FFmpegAdapter:
     in FFmpeg 7.x, triggering automatic recovery via remuxing + retry.
     """
 
-    def __init__(self, event_bus: EventBus):
+    def __init__(
+        self,
+        event_bus: EventBus,
+        memory_limit_bytes: Optional[int] = None,
+    ):
         self.event_bus = event_bus
         self.logger = logging.getLogger(__name__)
+        if memory_limit_bytes is not None and memory_limit_bytes <= 0:
+            raise ValueError("memory_limit_bytes must be positive")
+        self.memory_limit_bytes = memory_limit_bytes
+
+    def _limit_child_memory(self) -> None:
+        """Apply the optional address-space limit inside the FFmpeg child."""
+        if self.memory_limit_bytes is None:
+            return
+        _, hard_limit = resource.getrlimit(resource.RLIMIT_AS)
+        soft_limit = self.memory_limit_bytes
+        if hard_limit != resource.RLIM_INFINITY:
+            soft_limit = min(soft_limit, hard_limit)
+        resource.setrlimit(resource.RLIMIT_AS, (soft_limit, hard_limit))
+
+    def _popen(self, cmd: List[str], **kwargs) -> subprocess.Popen:
+        if self.memory_limit_bytes is not None:
+            kwargs["preexec_fn"] = self._limit_child_memory
+        return subprocess.Popen(cmd, **kwargs)
 
     def _select_audio_options(self, job: CompressionJob) -> tuple[List[str], str, str]:
         raw = ""
@@ -409,6 +432,10 @@ class FFmpegAdapter:
             )
             video_filters.append(f"[{index}:v:0]{','.join(video_chain)}[v{index}]")
 
+            concat_inputs.append(f"[v{index}]")
+            if request.drop_audio:
+                continue
+
             if part.audio_packets > 0:
                 audio_tail = ""
                 if part.duration > 0:
@@ -432,16 +459,25 @@ class FFmpegAdapter:
                     f"atrim=duration={silence_duration:.6f},"
                     f"asetpts=PTS-STARTPTS[a{index}]"
                 )
-            concat_inputs.extend([f"[v{index}]", f"[a{index}]"])
+            concat_inputs.append(f"[a{index}]")
 
-        concat_filter = (
-            "".join(concat_inputs)
-            + f"concat=n={len(request.parts)}:v=1:a=1[vout][aout]"
-        )
+        if request.drop_audio:
+            concat_filter = (
+                "".join(concat_inputs)
+                + f"concat=n={len(request.parts)}:v=1:a=0[vout]"
+            )
+        else:
+            concat_filter = (
+                "".join(concat_inputs)
+                + f"concat=n={len(request.parts)}:v=1:a=1[vout][aout]"
+            )
         filter_complex = ";".join(video_filters + audio_filters + [concat_filter])
-        cmd.extend(["-filter_complex", filter_complex, "-map", "[vout]", "-map", "[aout]"])
+        cmd.extend(["-filter_complex", filter_complex, "-map", "[vout]"])
+        if not request.drop_audio:
+            cmd.extend(["-map", "[aout]"])
         cmd.extend(_split_args(encoder_args))
-        cmd.extend(["-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2"])
+        if not request.drop_audio:
+            cmd.extend(["-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2"])
         if config.general.copy_metadata:
             cmd.extend(["-map_metadata", "0"])
             output_fmt = extract_output_format(encoder_args) or "mp4"
@@ -473,6 +509,7 @@ class FFmpegAdapter:
         segment_paths: List[Path],
         tmp_path: Path,
         copy_metadata: bool,
+        include_audio: bool = True,
     ) -> tuple[List[str], str]:
         """Build a stream-copy concat command fed by an ffconcat script on stdin."""
         lines = ["ffconcat version 1.0"]
@@ -500,11 +537,10 @@ class FFmpegAdapter:
             "pipe:0",
             "-map",
             "0:v:0",
-            "-map",
-            "0:a:0",
-            "-c",
-            "copy",
         ]
+        if include_audio:
+            cmd.extend(["-map", "0:a:0"])
+        cmd.extend(["-c", "copy"])
         if copy_metadata:
             cmd.extend(["-map_metadata", "0", "-movflags", "use_metadata_tags"])
         else:
@@ -519,7 +555,7 @@ class FFmpegAdapter:
         shutdown_event: Optional[threading.Event],
     ) -> tuple[int, bool, str]:
         """Run the short final stream-copy pass while honoring Ctrl+C."""
-        process = subprocess.Popen(
+        process = self._popen(
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -537,17 +573,26 @@ class FFmpegAdapter:
                 process.stdin.close()
 
         interrupted = False
-        while process.poll() is None:
-            if shutdown_event and shutdown_event.is_set():
-                interrupted = True
-                process.terminate()
-                try:
-                    process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-                break
-            time.sleep(0.05)
+        try:
+            while process.poll() is None:
+                if shutdown_event and shutdown_event.is_set():
+                    interrupted = True
+                    process.terminate()
+                    try:
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    break
+                time.sleep(0.05)
+        except KeyboardInterrupt:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            raise
 
         output = process.stdout.read() if process.stdout is not None else ""
         return process.returncode or 0, interrupted, output.strip()
@@ -640,6 +685,7 @@ class FFmpegAdapter:
                 segment_paths,
                 final_tmp_path,
                 config.general.copy_metadata,
+                include_audio=not request.drop_audio,
             )
             if config.general.debug:
                 self.logger.debug("FFMPEG_CONCAT_CMD: %s", " ".join(concat_cmd))
@@ -805,7 +851,7 @@ class FFmpegAdapter:
             else source_duration
         )
 
-        process = subprocess.Popen(
+        process = self._popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
