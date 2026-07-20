@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 from collections import deque
 from pathlib import Path
-from vbc.domain.events import RefreshRequested
+from vbc.domain.events import QueueUpdated, RefreshRequested, RequestShutdown
 from vbc.domain.models import VideoFile
 from vbc.pipeline.orchestrator import Orchestrator
 from vbc.config.models import AppConfig, GeneralConfig
@@ -221,6 +221,45 @@ def test_full_refresh_supersedes_pending_manifest_paths(mock_orchestrator):
     full_refresh, manifest_paths = mock_orchestrator._take_refresh_request()
     assert full_refresh is True
     assert manifest_paths == []
+
+
+def test_manifest_watch_refresh_waits_for_shutdown_cancellation(mock_orchestrator):
+    manifest = Path("/tmp/metadata/request.json")
+    mock_orchestrator._on_refresh_request(
+        RefreshRequested(manifest_paths=[manifest])
+    )
+
+    mock_orchestrator._on_shutdown_request(RequestShutdown())
+    assert mock_orchestrator._take_refresh_request() == (False, [])
+
+    mock_orchestrator._on_shutdown_request(RequestShutdown())
+    assert mock_orchestrator._take_refresh_request() == (False, [manifest])
+
+
+def test_incremental_discovery_result_is_deferred_if_shutdown_starts_mid_scan(
+    mock_orchestrator,
+):
+    manifest = Path("/tmp/metadata/request.json")
+    discovered = VideoFile(path=Path("/tmp/output.mp4"), size_bytes=100)
+
+    def finish_during_shutdown(*_args, **_kwargs):
+        mock_orchestrator._shutdown_requested = True
+        return [discovered], {}
+
+    mock_orchestrator._perform_discovery = finish_during_shutdown
+
+    processed = mock_orchestrator._run_once(
+        [Path("/tmp/metadata")],
+        manifest_paths=[manifest],
+    )
+
+    assert processed is False
+    published_events = [
+        call.args[0] for call in mock_orchestrator.event_bus.publish.call_args_list
+    ]
+    assert not any(isinstance(event, QueueUpdated) for event in published_events)
+    mock_orchestrator._shutdown_requested = False
+    assert mock_orchestrator._take_refresh_request() == (False, [manifest])
 
 
 def test_manifest_watch_paths_start_incremental_wait_cycle(tmp_path):

@@ -313,6 +313,8 @@ class Orchestrator:
     def _take_refresh_request(self) -> tuple[bool, List[Path]]:
         """Atomically consume one full refresh or a batch of manifest paths."""
         with self._refresh_lock:
+            if self._shutdown_requested:
+                return False, []
             full_refresh = self._refresh_requested
             manifest_paths = (
                 []
@@ -322,6 +324,19 @@ class Orchestrator:
             self._refresh_requested = False
             self._manifest_paths_requested.clear()
         return full_refresh, manifest_paths
+
+    def _defer_refresh_request(
+        self,
+        full_refresh: bool,
+        manifest_paths: List[Path],
+    ) -> None:
+        """Put an interrupted refresh back for a possible shutdown cancellation."""
+        with self._refresh_lock:
+            if full_refresh:
+                self._refresh_requested = True
+                self._manifest_paths_requested.clear()
+            elif not self._refresh_requested:
+                self._manifest_paths_requested.update(manifest_paths)
 
     def _on_interrupt_requested(self, event: InterruptRequested):
         """Handle Ctrl+C interrupt from keyboard listener."""
@@ -3799,6 +3814,15 @@ class Orchestrator:
             manifest_paths=manifest_paths,
         )
 
+        if self._shutdown_requested:
+            if manifest_paths is not None:
+                self._defer_refresh_request(False, manifest_paths)
+            self.logger.info(
+                "Discovery result ignored during shutdown: manifest_paths=%s",
+                len(manifest_paths) if manifest_paths is not None else "full",
+            )
+            return False
+
         forced_video_files: List[VideoFile] = []
         if forced_files:
             existing_paths = {vf.path for vf in files_to_process}
@@ -3946,6 +3970,18 @@ class Orchestrator:
                                 None if full_refresh else ready_manifest_paths
                             ),
                         )
+                        if self._shutdown_requested:
+                            self._defer_refresh_request(
+                                full_refresh,
+                                ready_manifest_paths,
+                            )
+                            self.logger.info(
+                                "Refresh result deferred during shutdown: full=%s "
+                                "manifest_paths=%s",
+                                full_refresh,
+                                len(ready_manifest_paths),
+                            )
+                            continue
                         in_flight_paths = {
                             vf.identity_path for vf in in_flight.values()
                         }
