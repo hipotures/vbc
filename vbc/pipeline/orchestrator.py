@@ -77,6 +77,7 @@ from vbc.domain.events import (
     InterruptRequested,
 )
 from vbc.pipeline.error_file_mover import collect_error_entries, move_failed_files
+from vbc.pipeline.output_timestamps import apply_output_timestamps
 from vbc.pipeline.queue_sorting import sort_files
 from vbc.pipeline.repair import process_repairs
 
@@ -2477,9 +2478,35 @@ class Orchestrator:
 
         self.event_bus.publish(ActionMessage(message=f"CRITICAL ERROR: {reason}"))
 
+    def _apply_output_timestamps(
+        self,
+        output_paths: List[Path],
+        source_mtime_ns: int,
+        *,
+        origin: Path,
+    ):
+        update = apply_output_timestamps(output_paths, source_mtime_ns)
+        for output_path in update.file_paths:
+            self.logger.info(
+                "OUTPUT_MTIME_CHANGED: type=file path=%s timestamp_ns=%s origin=%s",
+                output_path,
+                source_mtime_ns,
+                origin,
+            )
+        for output_dir in update.directory_paths:
+            self.logger.info(
+                "OUTPUT_MTIME_CHANGED: type=directory path=%s timestamp_ns=%s "
+                "origin=%s",
+                output_dir,
+                source_mtime_ns,
+                origin,
+            )
+        return update
+
     def _move_completed_file(self, video_file: VideoFile, output_dir: Path) -> bool:
         """Move already encoded file to output directory safely."""
         source_path = video_file.path
+        source_mtime_ns = video_file.source_mtime_ns or source_path.stat().st_mtime_ns
 
         def _hash_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
             hasher = hashlib.sha256()
@@ -2524,6 +2551,11 @@ class Orchestrator:
                             f"Duplicate found in output (hash match). Deleting source: {source_path}"
                         )
                         source_path.unlink()
+                        self._apply_output_timestamps(
+                            [dest_path],
+                            source_mtime_ns,
+                            origin=source_path,
+                        )
                         return True
                     # Same size but different hash or hashing failed - treat as different file.
                     stem = dest_path.stem
@@ -2558,6 +2590,11 @@ class Orchestrator:
                     f"Move failed: Size mismatch (src={video_file.size_bytes}, dest={dest_path.stat().st_size})"
                 )
 
+            self._apply_output_timestamps(
+                [dest_path],
+                source_mtime_ns,
+                origin=source_path,
+            )
             return True
 
         except Exception as e:
@@ -2993,6 +3030,19 @@ class Orchestrator:
             job.verification_passed = True
             job.output_size_bytes = total_output_size
             self._apply_manifest_source_policy(request)
+            timestamp_update = self._apply_output_timestamps(
+                completed_output_paths,
+                request.manifest.producer.source_latest_mtime_ns,
+                origin=request.manifest_path,
+            )
+            self.logger.info(
+                "MANIFEST_OUTPUT_MTIME: json=%s timestamp_ns=%s files_updated=%s "
+                "directories_updated=%s",
+                request.manifest_path,
+                request.manifest.producer.source_latest_mtime_ns,
+                timestamp_update.files,
+                timestamp_update.directories,
+            )
             self._route_manifest_success(request)
             self.event_bus.publish(JobCompleted(job=job))
         except InterruptedError:
@@ -3476,6 +3526,26 @@ class Orchestrator:
                             )
                         return
 
+                if job.output_path is None:
+                    raise RuntimeError("completed job has no output path")
+                source_mtime_ns = (
+                    video_file.source_mtime_ns
+                    or video_file.path.stat().st_mtime_ns
+                )
+                timestamp_update = self._apply_output_timestamps(
+                    [job.output_path],
+                    source_mtime_ns,
+                    origin=video_file.path,
+                )
+                self.logger.info(
+                    "OUTPUT_MTIME: source=%s output=%s timestamp_ns=%s "
+                    "file_updated=%s directory_updated=%s",
+                    video_file.path,
+                    job.output_path,
+                    source_mtime_ns,
+                    timestamp_update.files,
+                    timestamp_update.directories,
+                )
                 self.event_bus.publish(JobCompleted(job=job))
                 if self.config.general.debug and start_time:
                     elapsed = time.monotonic() - start_time

@@ -1283,6 +1283,7 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
     ]
     orchestrator._verify_output_tags.assert_called_once_with(output)
     assert output.exists()
+    assert output.stat().st_mtime_ns == 123
     assert not part.exists()
     assert not ignored.exists()
     assert not manifest_path.exists()

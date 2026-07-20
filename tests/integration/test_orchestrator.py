@@ -38,6 +38,7 @@ def test_orchestrator_sequential_flow(tmp_path):
 
     # Mock compression side effect to update job status
     def compress_side_effect(job, config, use_gpu=False, **kwargs):
+        job.output_path.write_text("compressed")
         job.status = JobStatus.COMPLETED
     mock_ffmpeg.compress.side_effect = compress_side_effect
 

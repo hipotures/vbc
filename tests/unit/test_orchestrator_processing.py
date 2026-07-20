@@ -279,6 +279,7 @@ def test_process_file_cpu_fallback_on_hw_cap(tmp_path):
                 job.status = JobStatus.HW_CAP_LIMIT
                 job.error_message = "Hardware is lacking required capabilities"
             else:
+                job.output_path.write_bytes(b"encoded")
                 job.status = JobStatus.COMPLETED
 
     ffmpeg = DummyFFmpeg()
@@ -521,11 +522,14 @@ def test_process_file_success_ratio_keeps_original_skips_metadata_copy(tmp_path)
     orchestrator._copy_deep_metadata.assert_not_called()
 
 
-def test_process_file_success_ratio_pass_writes_tags(tmp_path):
+def test_process_file_success_ratio_pass_writes_tags(tmp_path, caplog):
     input_dir = tmp_path / "input"
     input_dir.mkdir()
     source = input_dir / "video.mp4"
     source.write_bytes(b"a" * 1000)
+    source_mtime_ns = 2_000_000_000_123_456_789
+    os.utime(source, ns=(source.stat().st_atime_ns, source_mtime_ns))
+    caplog.set_level("INFO")
 
     config = _make_config(use_exif=False, copy_metadata=False, min_compression_ratio=0.1)
     bus = EventBus()
@@ -559,7 +563,11 @@ def test_process_file_success_ratio_pass_writes_tags(tmp_path):
     orchestrator._check_and_fix_color_space = MagicMock(return_value=(source, None))
     orchestrator._write_vbc_tags = MagicMock()
 
-    video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
+    video_file = VideoFile(
+        path=source,
+        size_bytes=source.stat().st_size,
+        source_mtime_ns=source_mtime_ns,
+    )
     orchestrator._process_file(video_file, input_dir)
 
     assert events
@@ -567,6 +575,13 @@ def test_process_file_success_ratio_pass_writes_tags(tmp_path):
     assert job.error_message is None
     output_path = input_dir.with_name("input_out") / "video.mp4"
     assert output_path.stat().st_size == 600
+    assert output_path.stat().st_mtime_ns == source_mtime_ns
+    assert output_path.parent.stat().st_mtime_ns == source_mtime_ns
+    assert f"OUTPUT_MTIME_CHANGED: type=file path={output_path}" in caplog.text
+    assert (
+        f"OUTPUT_MTIME_CHANGED: type=directory path={output_path.parent}"
+        in caplog.text
+    )
     orchestrator._write_vbc_tags.assert_called_once()
 
 

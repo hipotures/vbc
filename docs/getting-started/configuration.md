@@ -465,6 +465,13 @@ moves to `_out` or a delete/move source policy runs. Ctrl+C leaves the manifest 
 sources in place. On restart, VBC reuses verified VBC outputs in numbered order,
 skips occupied untagged numbers, and continues with the first missing group.
 
+After successful finalization, every generated output receives the manifest's exact
+`producer.source_latest_mtime_ns`. The immediate output directory is advanced to that
+timestamp only when its existing mtime is older; a newer directory timestamp is never
+moved backwards. The same rule applies to regular video jobs using the source video's
+filesystem mtime. Actual file and directory changes are recorded in the application log
+as `OUTPUT_MTIME_CHANGED` entries.
+
 Manifest schema version 1 requires `operation: concat_transcode`, absolute unique input
 paths, `compression_profile: tiktok`, `error_policy.missing_input: fail`, and one of
 `source_policy: keep`, `delete_after_success`, `move_after_success`, or `move_all`.
@@ -510,6 +517,30 @@ in each manifest. An existing output is still represented by a manifest. VBC val
 ffprobe readability and required VBC tags: a valid tagged output is reused, while an untagged
 or invalid primary output is preserved under the next `_N.mp4` name before VBC creates a
 verified replacement.
+
+### Repairing output timestamps from completed manifests
+
+`scripts/repair_output_mtimes.py` restores timestamps for outputs that were completed
+before automatic timestamp preservation was introduced. It scans direct `*.json` children
+of a metadata output directory, reads `producer.source_latest_mtime_ns`, and updates the
+base output plus tagged numbered outputs. Untagged numbered files are ignored because they
+may be protected pre-existing files rather than orientation-split VBC results.
+
+```bash
+# Inspect the planned changes
+uv run python scripts/repair_output_mtimes.py \
+  /path/to/metadata_out \
+  --dry-run
+
+# Apply the changes
+uv run python scripts/repair_output_mtimes.py \
+  /path/to/metadata_out
+```
+
+The script changes only filesystem mtimes. Output files receive the exact manifest
+timestamp, while each immediate parent directory is changed only when it is older. Rich
+output reports changed files, changed directories, missing outputs, invalid manifests,
+and ignored untagged files.
 
 ### Restoring a failed manifest and moved sources
 
