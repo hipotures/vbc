@@ -466,11 +466,9 @@ sources in place. On restart, VBC reuses verified VBC outputs in numbered order,
 skips occupied untagged numbers, and continues with the first missing group.
 
 After successful finalization, every generated output receives the manifest's exact
-`producer.source_latest_mtime_ns`. The immediate output directory is advanced to that
-timestamp only when its existing mtime is older; a newer directory timestamp is never
-moved backwards. The same rule applies to regular video jobs using the source video's
-filesystem mtime. Actual file and directory changes are recorded in the application log
-as `OUTPUT_MTIME_CHANGED` entries.
+`producer.source_latest_mtime_ns`. The same rule applies to regular video jobs using the
+source video's filesystem mtime. Output directory timestamps are not modified. Actual
+file changes are recorded in the application log as `OUTPUT_MTIME_CHANGED` entries.
 
 Manifest schema version 1 requires `operation: concat_transcode`, absolute unique input
 paths, `compression_profile: tiktok`, `error_policy.missing_input: fail`, and one of
@@ -537,10 +535,9 @@ uv run python scripts/repair_output_mtimes.py \
   /path/to/metadata_out
 ```
 
-The script changes only filesystem mtimes. Output files receive the exact manifest
-timestamp, while each immediate parent directory is changed only when it is older. Rich
-output reports changed files, changed directories, missing outputs, invalid manifests,
-and ignored untagged files.
+The script changes only output file mtimes; directories are never modified. Output files
+receive the exact manifest timestamp. Rich output reports changed files, missing outputs,
+invalid manifests, and ignored untagged files.
 
 ### Restoring a failed manifest and moved sources
 

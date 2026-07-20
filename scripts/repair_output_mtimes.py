@@ -42,7 +42,6 @@ class RepairResult:
     conflicting_outputs: int = 0
     output_files_considered: int = 0
     output_files_updated: int = 0
-    directories_updated: int = 0
     dry_run: bool = False
     issues: list[str] = field(default_factory=list)
 
@@ -214,14 +213,9 @@ def repair_output_mtimes(
             result.output_files_updated += sum(
                 path.stat().st_mtime_ns != timestamp_ns for path in paths
             )
-            parent_paths = {path.parent for path in paths}
-            result.directories_updated += sum(
-                parent.stat().st_mtime_ns < timestamp_ns for parent in parent_paths
-            )
             continue
         update = apply_output_timestamps(paths, timestamp_ns)
         result.output_files_updated += update.files
-        result.directories_updated += update.directories
 
     return result
 
@@ -236,10 +230,6 @@ def _render_result(console: Console, result: RepairResult) -> None:
     table.add_row(
         "Files to update" if result.dry_run else "Files updated",
         str(result.output_files_updated),
-    )
-    table.add_row(
-        "Directories to update" if result.dry_run else "Directories updated",
-        str(result.directories_updated),
     )
     table.add_row("Missing base outputs", str(result.missing_base_outputs))
     table.add_row("Untagged files ignored", str(result.untagged_outputs_ignored))
@@ -261,8 +251,7 @@ def _render_result(console: Console, result: RepairResult) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Restore output file and immediate-directory mtimes from completed "
-            "VBC manifests."
+            "Restore output file mtimes from completed VBC manifests."
         )
     )
     parser.add_argument("metadata_out", type=Path)

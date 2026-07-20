@@ -54,10 +54,9 @@ def test_repairs_base_and_tagged_numbered_outputs_but_ignores_backup(
     assert base.stat().st_mtime_ns == target_ns
     assert split.stat().st_mtime_ns == target_ns
     assert untagged_backup.stat().st_mtime_ns == backup_mtime_ns
-    assert output_dir.stat().st_mtime_ns == target_ns
+    assert output_dir.stat().st_mtime_ns == 1
     assert result.output_files_considered == 2
     assert result.output_files_updated == 2
-    assert result.directories_updated == 1
     assert result.untagged_outputs_ignored == 1
 
 
@@ -83,6 +82,5 @@ def test_dry_run_reports_changes_without_touching_timestamps(tmp_path, monkeypat
     result = repair.repair_output_mtimes(metadata_out, dry_run=True)
 
     assert result.output_files_updated == 1
-    assert result.directories_updated == 1
     assert output.stat().st_mtime_ns == original_file_mtime_ns
     assert output_dir.stat().st_mtime_ns == original_dir_mtime_ns

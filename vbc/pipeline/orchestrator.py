@@ -2508,14 +2508,6 @@ class Orchestrator:
                 source_mtime_ns,
                 origin,
             )
-        for output_dir in update.directory_paths:
-            self.logger.info(
-                "OUTPUT_MTIME_CHANGED: type=directory path=%s timestamp_ns=%s "
-                "origin=%s",
-                output_dir,
-                source_mtime_ns,
-                origin,
-            )
         return update
 
     def _move_completed_file(self, video_file: VideoFile, output_dir: Path) -> bool:
@@ -3051,12 +3043,10 @@ class Orchestrator:
                 origin=request.manifest_path,
             )
             self.logger.info(
-                "MANIFEST_OUTPUT_MTIME: json=%s timestamp_ns=%s files_updated=%s "
-                "directories_updated=%s",
+                "MANIFEST_OUTPUT_MTIME: json=%s timestamp_ns=%s files_updated=%s",
                 request.manifest_path,
                 request.manifest.producer.source_latest_mtime_ns,
                 timestamp_update.files,
-                timestamp_update.directories,
             )
             self._route_manifest_success(request)
             self.event_bus.publish(JobCompleted(job=job))
@@ -3554,12 +3544,11 @@ class Orchestrator:
                 )
                 self.logger.info(
                     "OUTPUT_MTIME: source=%s output=%s timestamp_ns=%s "
-                    "file_updated=%s directory_updated=%s",
+                    "file_updated=%s",
                     video_file.path,
                     job.output_path,
                     source_mtime_ns,
                     timestamp_update.files,
-                    timestamp_update.directories,
                 )
                 self.event_bus.publish(JobCompleted(job=job))
                 if self.config.general.debug and start_time:

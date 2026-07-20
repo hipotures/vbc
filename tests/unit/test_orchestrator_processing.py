@@ -576,12 +576,7 @@ def test_process_file_success_ratio_pass_writes_tags(tmp_path, caplog):
     output_path = input_dir.with_name("input_out") / "video.mp4"
     assert output_path.stat().st_size == 600
     assert output_path.stat().st_mtime_ns == source_mtime_ns
-    assert output_path.parent.stat().st_mtime_ns == source_mtime_ns
     assert f"OUTPUT_MTIME_CHANGED: type=file path={output_path}" in caplog.text
-    assert (
-        f"OUTPUT_MTIME_CHANGED: type=directory path={output_path.parent}"
-        in caplog.text
-    )
     orchestrator._write_vbc_tags.assert_called_once()
 
 
