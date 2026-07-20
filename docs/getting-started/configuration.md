@@ -516,28 +516,28 @@ ffprobe readability and required VBC tags: a valid tagged output is reused, whil
 or invalid primary output is preserved under the next `_N.mp4` name before VBC creates a
 verified replacement.
 
-### Repairing output timestamps from completed manifests
+### Repairing timestamps from filenames
 
-`scripts/repair_output_mtimes.py` restores timestamps for outputs that were completed
-before automatic timestamp preservation was introduced. It scans direct `*.json` children
-of a metadata output directory, reads `producer.source_latest_mtime_ns`, and updates the
-base output plus tagged numbered outputs. Untagged numbered files are ignored because they
-may be protected pre-existing files rather than orientation-split VBC results.
+`scripts/repair_output_mtimes.py` recursively scans a directory without using metadata
+manifests. For every regular file whose name contains a valid `YYYYMMDD_HHMMSS` value, it
+sets the file mtime to that local date and time. The file may have any extension or no
+extension. Each directory containing matching files directly receives the newest timestamp
+found among those files. Symlinks are ignored.
 
 ```bash
 # Inspect the planned changes
 uv run python scripts/repair_output_mtimes.py \
-  /path/to/metadata_out \
+  /path/to/compressed \
   --dry-run
 
 # Apply the changes
 uv run python scripts/repair_output_mtimes.py \
-  /path/to/metadata_out
+  /path/to/compressed
 ```
 
-The script changes only output file mtimes; directories are never modified. Output files
-receive the exact manifest timestamp. Rich output reports changed files, missing outputs,
-invalid manifests, and ignored untagged files.
+Because filenames do not contain a timezone offset, timestamps are interpreted in the
+machine's local timezone. Rich output reports scanned and changed files and directories,
+invalid date-like names, ignored symlinks, and filesystem errors.
 
 ### Restoring a failed manifest and moved sources
 

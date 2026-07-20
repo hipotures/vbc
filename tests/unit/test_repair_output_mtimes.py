@@ -1,86 +1,71 @@
-import json
 import os
+from datetime import datetime
 
 from scripts import repair_output_mtimes as repair
 
 
-def _manifest(output_path, source_mtime_ns):
-    return {
-        "schema_version": 1,
-        "request_id": f"request-{source_mtime_ns}",
-        "created_at": "2026-07-18T12:10:00+02:00",
-        "producer": {
-            "app": "ttracker",
-            "username": "user",
-            "recording_id": f"user-{source_mtime_ns}",
-            "source_size_bytes": 100,
-            "source_latest_mtime_ns": source_mtime_ns,
-        },
-        "operation": "concat_transcode",
-        "inputs": [str(output_path.parent / "source.mp4")],
-        "output_path": str(output_path),
-        "source_policy": "keep",
-        "compression_profile": "tiktok",
-        "error_policy": {"missing_input": "fail"},
-    }
+def _local_timestamp_ns(value: str) -> int:
+    parsed = datetime.strptime(value, "%Y%m%d_%H%M%S").astimezone()
+    return int(parsed.timestamp()) * 1_000_000_000
 
 
-def test_repairs_base_and_tagged_numbered_outputs_but_ignores_backup(
-    tmp_path,
-    monkeypatch,
-):
-    metadata_out = tmp_path / "metadata_out"
-    metadata_out.mkdir()
-    output_dir = tmp_path / "compressed" / "user"
-    output_dir.mkdir(parents=True)
-    base = output_dir / "recording.mp4"
-    split = output_dir / "recording_2.mp4"
-    untagged_backup = output_dir / "recording_1.mp4"
-    for path in (base, split, untagged_backup):
+def test_repairs_any_matching_files_and_sets_each_direct_parent_to_newest(tmp_path):
+    first_dir = tmp_path / "compressed" / "first"
+    second_dir = tmp_path / "compressed" / "second"
+    first_dir.mkdir(parents=True)
+    second_dir.mkdir(parents=True)
+    older = first_dir / "user_20260720_142322.mp4"
+    newer = first_dir / "user_20260720_153045"
+    other_extension = second_dir / "prefix_20260102_030405.metadata"
+    ignored = first_dir / "no_timestamp.txt"
+    for path in (older, newer, other_extension, ignored):
         path.write_bytes(path.name.encode())
-    target_ns = 2_000_000_000_123_456_789
-    manifest = metadata_out / "request.json"
-    manifest.write_text(json.dumps(_manifest(base, target_ns)))
+    ignored_mtime_ns = ignored.stat().st_mtime_ns
+
+    result = repair.repair_output_mtimes(tmp_path / "compressed")
+
+    assert older.stat().st_mtime_ns == _local_timestamp_ns("20260720_142322")
+    assert newer.stat().st_mtime_ns == _local_timestamp_ns("20260720_153045")
+    assert other_extension.stat().st_mtime_ns == _local_timestamp_ns("20260102_030405")
+    assert ignored.stat().st_mtime_ns == ignored_mtime_ns
+    assert first_dir.stat().st_mtime_ns == _local_timestamp_ns("20260720_153045")
+    assert second_dir.stat().st_mtime_ns == _local_timestamp_ns("20260102_030405")
+    assert result.files_scanned == 4
+    assert result.matching_files == 3
+    assert result.files_updated == 3
+    assert result.directories_considered == 2
+    assert result.directories_updated == 2
+
+
+def test_accepts_numbered_suffix_and_ignores_invalid_dates(tmp_path):
+    output_dir = tmp_path / "user"
+    output_dir.mkdir()
+    numbered = output_dir / "user_20260720_142322_1.mp4"
+    invalid = output_dir / "user_20261340_256199.mp4"
+    numbered.write_bytes(b"video")
+    invalid.write_bytes(b"invalid")
+    invalid_mtime_ns = invalid.stat().st_mtime_ns
+
+    result = repair.repair_output_mtimes(tmp_path)
+
+    assert numbered.stat().st_mtime_ns == _local_timestamp_ns("20260720_142322")
+    assert invalid.stat().st_mtime_ns == invalid_mtime_ns
+    assert result.matching_files == 1
+    assert result.invalid_dates == 1
+
+
+def test_dry_run_reports_changes_without_touching_timestamps(tmp_path):
+    output_dir = tmp_path / "user"
+    output_dir.mkdir()
+    output = output_dir / "recording_20260720_142322.anything"
+    output.write_bytes(b"data")
     os.utime(output_dir, ns=(1, 1))
-    backup_mtime_ns = untagged_backup.stat().st_mtime_ns
-    monkeypatch.setattr(
-        repair,
-        "_find_vbc_tagged_outputs",
-        lambda _paths: {base.resolve(), split.resolve()},
-    )
-
-    result = repair.repair_output_mtimes(metadata_out)
-
-    assert base.stat().st_mtime_ns == target_ns
-    assert split.stat().st_mtime_ns == target_ns
-    assert untagged_backup.stat().st_mtime_ns == backup_mtime_ns
-    assert output_dir.stat().st_mtime_ns == 1
-    assert result.output_files_considered == 2
-    assert result.output_files_updated == 2
-    assert result.untagged_outputs_ignored == 1
-
-
-def test_dry_run_reports_changes_without_touching_timestamps(tmp_path, monkeypatch):
-    metadata_out = tmp_path / "metadata_out"
-    metadata_out.mkdir()
-    output_dir = tmp_path / "compressed" / "user"
-    output_dir.mkdir(parents=True)
-    output = output_dir / "recording.mp4"
-    output.write_bytes(b"video")
-    target_ns = 2_000_000_000_123_456_789
-    (metadata_out / "request.json").write_text(
-        json.dumps(_manifest(output, target_ns))
-    )
     original_file_mtime_ns = output.stat().st_mtime_ns
     original_dir_mtime_ns = output_dir.stat().st_mtime_ns
-    monkeypatch.setattr(
-        repair,
-        "_find_vbc_tagged_outputs",
-        lambda _paths: {output.resolve()},
-    )
 
-    result = repair.repair_output_mtimes(metadata_out, dry_run=True)
+    result = repair.repair_output_mtimes(tmp_path, dry_run=True)
 
-    assert result.output_files_updated == 1
+    assert result.files_updated == 1
+    assert result.directories_updated == 1
     assert output.stat().st_mtime_ns == original_file_mtime_ns
     assert output_dir.stat().st_mtime_ns == original_dir_mtime_ns
