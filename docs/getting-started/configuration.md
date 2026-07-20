@@ -535,6 +535,11 @@ uv run python scripts/repair_output_mtimes.py \
   /path/to/compressed
 ```
 
+Use `--files-only` to modify matching files without touching directories. Use
+`--user-dirs-only` to modify only user directories that are direct children of the supplied
+directory, without touching files. These two switches are mutually exclusive; without
+either switch, the script updates both files and their direct parent directories.
+
 Because filenames do not contain a timezone offset, timestamps are interpreted in the
 machine's local timezone. Rich output reports scanned and changed files and directories,
 invalid date-like names, ignored symlinks, and filesystem errors.

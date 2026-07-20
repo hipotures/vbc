@@ -69,3 +69,42 @@ def test_dry_run_reports_changes_without_touching_timestamps(tmp_path):
     assert result.directories_updated == 1
     assert output.stat().st_mtime_ns == original_file_mtime_ns
     assert output_dir.stat().st_mtime_ns == original_dir_mtime_ns
+
+
+def test_files_only_does_not_modify_directories(tmp_path):
+    user_dir = tmp_path / "user"
+    user_dir.mkdir()
+    output = user_dir / "recording_20260720_142322.mp4"
+    output.write_bytes(b"data")
+    os.utime(user_dir, ns=(1, 1))
+
+    result = repair.repair_output_mtimes(tmp_path, files_only=True)
+
+    assert output.stat().st_mtime_ns == _local_timestamp_ns("20260720_142322")
+    assert user_dir.stat().st_mtime_ns == 1
+    assert result.files_updated == 1
+    assert result.directories_considered == 0
+    assert result.directories_updated == 0
+
+
+def test_user_dirs_only_updates_direct_children_without_modifying_files(tmp_path):
+    user_dir = tmp_path / "user"
+    nested_dir = user_dir / "nested"
+    nested_dir.mkdir(parents=True)
+    output = user_dir / "recording_20260720_142322.mp4"
+    nested_output = nested_dir / "recording_20260720_153045.mp4"
+    output.write_bytes(b"data")
+    nested_output.write_bytes(b"nested")
+    original_output_mtime_ns = output.stat().st_mtime_ns
+    original_nested_mtime_ns = nested_output.stat().st_mtime_ns
+    original_nested_dir_mtime_ns = nested_dir.stat().st_mtime_ns
+
+    result = repair.repair_output_mtimes(tmp_path, user_dirs_only=True)
+
+    assert output.stat().st_mtime_ns == original_output_mtime_ns
+    assert nested_output.stat().st_mtime_ns == original_nested_mtime_ns
+    assert user_dir.stat().st_mtime_ns == _local_timestamp_ns("20260720_142322")
+    assert nested_dir.stat().st_mtime_ns == original_nested_dir_mtime_ns
+    assert result.files_updated == 0
+    assert result.directories_considered == 1
+    assert result.directories_updated == 1

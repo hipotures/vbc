@@ -67,8 +67,12 @@ def repair_output_mtimes(
     root: Path,
     *,
     dry_run: bool = False,
+    files_only: bool = False,
+    user_dirs_only: bool = False,
 ) -> RepairResult:
     """Repair matching files recursively and their direct parent directories."""
+    if files_only and user_dirs_only:
+        raise ValueError("files_only and user_dirs_only are mutually exclusive")
     if root.is_symlink():
         raise OutputMtimeRepairError(f"target directory cannot be a symlink: {root}")
     root = root.resolve(strict=True)
@@ -107,15 +111,20 @@ def repair_output_mtimes(
                     result.issues.append(f"not a regular file, ignored: {path}")
                     continue
                 result.matching_files += 1
-                previous = directory_timestamps.get(current_path)
-                if previous is None or timestamp_ns > previous:
-                    directory_timestamps[current_path] = timestamp_ns
-                changed = (
-                    _would_change(path, timestamp_ns)
-                    if dry_run
-                    else _set_mtime(path, timestamp_ns)
+                should_update_directory = not files_only and (
+                    not user_dirs_only or current_path.parent == root
                 )
-                result.files_updated += int(changed)
+                if should_update_directory:
+                    previous = directory_timestamps.get(current_path)
+                    if previous is None or timestamp_ns > previous:
+                        directory_timestamps[current_path] = timestamp_ns
+                if not user_dirs_only:
+                    changed = (
+                        _would_change(path, timestamp_ns)
+                        if dry_run
+                        else _set_mtime(path, timestamp_ns)
+                    )
+                    result.files_updated += int(changed)
             except OSError as exc:
                 result.issues.append(f"cannot update file {path}: {exc}")
 
@@ -173,6 +182,17 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("directory", type=Path)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument(
+        "--files-only",
+        action="store_true",
+        help="update matching files without modifying directories",
+    )
+    modes.add_argument(
+        "--user-dirs-only",
+        action="store_true",
+        help="update only direct child directories, without modifying files",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -186,7 +206,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     console = Console()
     try:
         with console.status("[cyan]Scanning filenames and timestamps…"):
-            result = repair_output_mtimes(args.directory, dry_run=args.dry_run)
+            result = repair_output_mtimes(
+                args.directory,
+                dry_run=args.dry_run,
+                files_only=args.files_only,
+                user_dirs_only=args.user_dirs_only,
+            )
     except (OSError, OutputMtimeRepairError) as exc:
         console.print(f"[bold red]Error:[/] {exc}")
         return 1
