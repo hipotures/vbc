@@ -234,10 +234,18 @@ def test_below_minimum_group_is_deletion_eligible_without_output(tmp_path):
     assert not source.exists()
 
 
-def test_multipart_size_threshold_uses_combined_source_size(tmp_path):
+def test_multipart_size_threshold_uses_combined_source_size(tmp_path, monkeypatch):
     source_root, compressed_root, source_user, _ = _paths(tmp_path)
     (source_user / "recording_part001.mp4").write_bytes(b"123456")
     (source_user / "recording_part002.mp4").write_bytes(b"123456")
+    monkeypatch.setattr(
+        cleanup.FFprobeAdapter,
+        "get_part_info",
+        lambda self, path, scan_packet_timeline: {
+            "has_video_stream": True,
+            "video_packets": 1,
+        },
+    )
 
     result = cleanup.analyze_source_archive(
         source_root,
@@ -254,18 +262,23 @@ def test_omitted_paths_and_size_are_resolved_from_config_and_manifests(
     source_root = tmp_path / "sources_compressed"
     compressed_root = tmp_path / "compressed"
     metadata_root = tmp_path / "metadata"
+    metadata_out = tmp_path / "metadata_out"
     source_root.mkdir()
     compressed_root.mkdir()
     metadata_root.mkdir()
+    metadata_out.mkdir()
     manifest = {
         "producer": {"username": "user"},
         "output_path": str(compressed_root / "user" / "recording.mp4"),
     }
     (metadata_root / "request.json").write_text(json.dumps(manifest))
+    (metadata_out / "ttracker-recording.json").write_text(json.dumps(manifest))
     config = SimpleNamespace(
         input_dirs=[
             SimpleNamespace(enabled=True, metadata=True, path=str(metadata_root))
         ],
+        output_dirs=[],
+        suffix_output_dirs="_out",
         metadata=SimpleNamespace(move_after_success_dir=str(source_root)),
         general=SimpleNamespace(min_size_bytes=1234),
     )
@@ -278,7 +291,8 @@ def test_omitted_paths_and_size_are_resolved_from_config_and_manifests(
         tmp_path / "vbc.yaml",
     )
 
-    assert resolved == (source_root, compressed_root, 1234)
+    assert resolved == (source_root, compressed_root, 1234, config)
+    assert cleanup._completed_recording_ids(config) == {"recording"}
 
 
 def test_default_report_hides_deletion_eligible_rows(tmp_path):
@@ -388,3 +402,96 @@ def test_delete_limit_alias_is_supported():
     )
 
     assert args.delete_limit == 2
+
+
+def test_single_numeric_source_part_tag_is_valid():
+    assert cleanup._parse_source_parts(1) == {1}
+    assert cleanup._parse_source_parts(0) is None
+    assert cleanup._parse_source_parts(True) is None
+
+
+def test_completed_group_without_video_is_deletion_eligible(tmp_path, monkeypatch):
+    source_root, compressed_root, source_user, _ = _paths(tmp_path)
+    source = source_user / "recording.mp4"
+    source.write_bytes(b"source larger than floor")
+    monkeypatch.setattr(
+        cleanup.FFprobeAdapter,
+        "get_part_info",
+        lambda self, path, scan_packet_timeline: {
+            "has_video_stream": False,
+            "video_packets": 0,
+        },
+    )
+
+    result = cleanup.analyze_source_archive(
+        source_root,
+        compressed_root,
+        min_size_bytes=10,
+        completed_recording_ids={"recording"},
+    )
+
+    assert result.decisions[0].status == "DONE_NO_VIDEO"
+    assert result.decisions[0].deletion_eligible
+
+
+def test_completed_group_with_video_remains_output_missing(tmp_path, monkeypatch):
+    source_root, compressed_root, source_user, _ = _paths(tmp_path)
+    (source_user / "recording.mp4").write_bytes(b"source larger than floor")
+    monkeypatch.setattr(
+        cleanup.FFprobeAdapter,
+        "get_part_info",
+        lambda self, path, scan_packet_timeline: {
+            "has_video_stream": True,
+            "video_packets": 1,
+        },
+    )
+
+    result = cleanup.analyze_source_archive(
+        source_root,
+        compressed_root,
+        min_size_bytes=10,
+        completed_recording_ids={"recording"},
+    )
+
+    assert result.decisions[0].status == "OUTPUT_MISSING"
+    assert not result.decisions[0].deletion_eligible
+
+
+def test_moov_failure_quarantines_source_and_metadata(tmp_path, monkeypatch):
+    source_root, compressed_root, source_user, _ = _paths(tmp_path)
+    metadata_root = tmp_path / "metadata"
+    error_root = tmp_path / "metadata_err"
+    metadata_root.mkdir()
+    error_root.mkdir()
+    source = source_user / "recording.mp4"
+    source.write_bytes(b"source larger than floor")
+    manifest = metadata_root / "ttracker-recording.json"
+    marker = error_root / "ttracker-recording.err"
+    manifest.write_text("{}")
+    marker.write_text("moov atom not found")
+
+    def fail_probe(self, path, scan_packet_timeline):
+        raise RuntimeError("ffprobe failed: moov atom not found")
+
+    monkeypatch.setattr(cleanup.FFprobeAdapter, "get_part_info", fail_probe)
+    result = cleanup.analyze_source_archive(
+        source_root,
+        compressed_root,
+        min_size_bytes=10,
+        metadata_search_dirs=(metadata_root, error_root),
+        quarantine_root=error_root,
+    )
+
+    decision = result.decisions[0]
+    assert decision.status == "CORRUPT_MOOV"
+    assert decision.deletion_eligible
+    cleanup.delete_verified_sources(result, dry_run=False)
+
+    destination_dir = error_root / "user"
+    assert result.quarantined == 1
+    assert not source.exists()
+    assert not manifest.exists()
+    assert not marker.exists()
+    assert (destination_dir / source.name).is_file()
+    assert (destination_dir / manifest.name).is_file()
+    assert (destination_dir / marker.name).is_file()

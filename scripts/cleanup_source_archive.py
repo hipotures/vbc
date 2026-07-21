@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -26,6 +27,7 @@ from rich.text import Text
 
 from vbc.config.loader import load_config
 from vbc.config.models import AppConfig
+from vbc.infrastructure.ffprobe import FFprobeAdapter
 
 _PART_SUFFIX = re.compile(r"^(?P<base>.+)_part(?P<number>\d+)$", re.I)
 _TAG_BATCH_SIZE = 200
@@ -105,13 +107,7 @@ def _resolve_cli_settings(
     compressed_dir: Path | None,
     min_size_bytes: int | None,
     config_path: Path,
-) -> tuple[Path, Path, int]:
-    if (
-        source_archive is not None
-        and compressed_dir is not None
-        and min_size_bytes is not None
-    ):
-        return source_archive, compressed_dir, min_size_bytes
+) -> tuple[Path, Path, int, AppConfig]:
     try:
         config = load_config(config_path)
     except Exception as exc:
@@ -129,7 +125,63 @@ def _resolve_cli_settings(
         compressed_dir = _infer_compressed_root(config)
     if min_size_bytes is None:
         min_size_bytes = config.general.min_size_bytes
-    return source_archive, compressed_dir, min_size_bytes
+    return source_archive, compressed_dir, min_size_bytes, config
+
+
+def _metadata_success_dirs(config: AppConfig) -> tuple[Path, ...]:
+    enabled_entries = [entry for entry in config.input_dirs if entry.enabled]
+    directories: list[Path] = []
+    for index, entry in enumerate(enabled_entries):
+        if not entry.metadata:
+            continue
+        if config.output_dirs:
+            directories.append(Path(config.output_dirs[index]))
+        elif config.suffix_output_dirs is not None:
+            input_path = Path(entry.path)
+            directories.append(
+                input_path.with_name(f"{input_path.name}{config.suffix_output_dirs}")
+            )
+    return tuple(directories)
+
+
+def _metadata_error_dirs(config: AppConfig) -> tuple[Path, ...]:
+    enabled_entries = [entry for entry in config.input_dirs if entry.enabled]
+    directories: list[Path] = []
+    for index, entry in enumerate(enabled_entries):
+        if not entry.metadata:
+            continue
+        if config.errors_dirs:
+            directories.append(Path(config.errors_dirs[index]))
+        elif config.suffix_errors_dirs is not None:
+            input_path = Path(entry.path)
+            directories.append(
+                input_path.with_name(f"{input_path.name}{config.suffix_errors_dirs}")
+            )
+    return tuple(directories)
+
+
+def _metadata_search_dirs(config: AppConfig) -> tuple[Path, ...]:
+    input_dirs = tuple(
+        Path(entry.path)
+        for entry in config.input_dirs
+        if entry.enabled and entry.metadata
+    )
+    return tuple(
+        dict.fromkeys(
+            (*input_dirs, *_metadata_success_dirs(config), *_metadata_error_dirs(config))
+        )
+    )
+
+
+def _completed_recording_ids(config: AppConfig) -> set[str]:
+    recording_ids: set[str] = set()
+    for directory in _metadata_success_dirs(config):
+        if not directory.is_dir():
+            continue
+        for manifest_path in directory.glob("ttracker-*.json"):
+            if manifest_path.is_file() and not manifest_path.is_symlink():
+                recording_ids.add(manifest_path.stem.removeprefix("ttracker-"))
+    return recording_ids
 
 
 @dataclass(frozen=True)
@@ -148,6 +200,8 @@ class SourceDecision:
     detail: str
     evidence_outputs: tuple[Path, ...] = ()
     size_bytes: int = 0
+    quarantine_path: Path | None = None
+    related_metadata_paths: tuple[Path, ...] = ()
 
     @property
     def verified(self) -> bool:
@@ -155,7 +209,11 @@ class SourceDecision:
 
     @property
     def deletion_eligible(self) -> bool:
-        return self.verified or self.status == "BELOW_MIN_SIZE"
+        return (
+            self.verified
+            or self.status in {"BELOW_MIN_SIZE", "DONE_NO_VIDEO"}
+            or (self.status == "CORRUPT_MOOV" and self.quarantine_path is not None)
+        )
 
 
 @dataclass
@@ -171,6 +229,10 @@ class CleanupResult:
     delete_limit: int | None = None
     deleted_paths: list[Path] = field(default_factory=list)
     would_delete_paths: list[Path] = field(default_factory=list)
+    quarantined: int = 0
+    quarantined_paths: list[Path] = field(default_factory=list)
+    would_quarantine: int = 0
+    would_quarantine_paths: list[Path] = field(default_factory=list)
 
 
 def _source_identity(path: Path) -> tuple[str, int]:
@@ -303,6 +365,8 @@ def _read_output_tags(
 
 
 def _parse_source_parts(value: object) -> set[int] | None:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return {value} if value > 0 else None
     if not isinstance(value, str):
         return None
     normalized = value.strip()
@@ -314,12 +378,60 @@ def _parse_source_parts(value: object) -> set[int] | None:
     return parts
 
 
+def _probe_missing_group(
+    group: SourceGroup,
+    ffprobe_adapter: FFprobeAdapter,
+) -> str:
+    has_usable_video = False
+    has_probe_failure = False
+    has_moov_failure = False
+    for _, source_path in group.sources:
+        try:
+            part_info = ffprobe_adapter.get_part_info(
+                source_path,
+                scan_packet_timeline=False,
+            )
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+            if "moov atom not found" in str(exc).lower():
+                has_moov_failure = True
+            else:
+                has_probe_failure = True
+            continue
+        if bool(part_info.get("has_video_stream")) and int(
+            part_info.get("video_packets") or 0
+        ) > 0:
+            has_usable_video = True
+    if has_moov_failure:
+        return "corrupt_moov"
+    if has_probe_failure:
+        return "probe_failed"
+    if has_usable_video:
+        return "has_video"
+    return "no_video"
+
+
+def _related_metadata_paths(
+    recording_id: str,
+    metadata_search_dirs: Sequence[Path],
+) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for directory in metadata_search_dirs:
+        for suffix in (".json", ".err"):
+            candidate = directory / f"ttracker-{recording_id}{suffix}"
+            if candidate.is_file() and not candidate.is_symlink():
+                paths.append(candidate)
+    return tuple(dict.fromkeys(paths))
+
+
 def analyze_source_archive(
     source_root: Path,
     compressed_root: Path,
     *,
     verify_vbc_tags: bool = False,
     min_size_bytes: int | None = None,
+    completed_recording_ids: set[str] | None = None,
+    metadata_search_dirs: Sequence[Path] = (),
+    quarantine_root: Path | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> CleanupResult:
     """Classify archived source files without consulting VBC manifests."""
@@ -356,6 +468,7 @@ def analyze_source_archive(
         non_video_ignored=non_video_ignored,
         min_size_bytes=min_size_bytes,
     )
+    ffprobe_adapter = FFprobeAdapter()
     try:
         if progress_callback is None:
             tags = _read_output_tags(all_outputs)
@@ -390,15 +503,42 @@ def analyze_source_archive(
 
         family = families[group_key]
         if not family:
-            for part_number, source_path in group.sources:
+            probe_result = _probe_missing_group(group, ffprobe_adapter)
+            if probe_result == "corrupt_moov":
+                status = "CORRUPT_MOOV"
+                detail = "ffprobe failed: moov atom not found"
+            elif (
+                completed_recording_ids is not None
+                and base_output.stem in completed_recording_ids
+                and probe_result == "no_video"
+            ):
+                status = "DONE_NO_VIDEO"
+                detail = "completed manifest; group has no usable video packets"
+            else:
+                status = "OUTPUT_MISSING"
+                detail = "base output does not exist"
+            related_metadata = _related_metadata_paths(
+                base_output.stem,
+                metadata_search_dirs,
+            )
+            for source_index, (part_number, source_path) in enumerate(group.sources):
+                quarantine_path = None
+                if status == "CORRUPT_MOOV" and quarantine_root is not None:
+                    quarantine_path = (
+                        quarantine_root / group.relative_dir / source_path.name
+                    )
                 result.decisions.append(
                     SourceDecision(
                         source_path,
                         base_output,
                         part_number,
-                        "OUTPUT_MISSING",
-                        "base output does not exist",
+                        status,
+                        detail,
                         size_bytes=source_path.stat().st_size,
+                        quarantine_path=quarantine_path,
+                        related_metadata_paths=(
+                            related_metadata if source_index == 0 else ()
+                        ),
                     )
                 )
             continue
@@ -491,6 +631,45 @@ def analyze_source_archive(
     return result
 
 
+def _quarantine_corrupt_source(decision: SourceDecision) -> bool:
+    destination = decision.quarantine_path
+    if destination is None:
+        return False
+    source = decision.source_path
+    if source.is_symlink() or not source.is_file() or destination.exists():
+        return False
+
+    moves: list[tuple[Path, Path]] = [(source, destination)]
+    for metadata_path in decision.related_metadata_paths:
+        if metadata_path.is_symlink() or not metadata_path.is_file():
+            continue
+        metadata_destination = destination.parent / metadata_path.name
+        if metadata_destination.exists():
+            return False
+        moves.append((metadata_path, metadata_destination))
+
+    moved: list[tuple[Path, Path]] = []
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        for move_source, move_destination in moves:
+            shutil.move(str(move_source), str(move_destination))
+            if move_source.exists() or not move_destination.is_file():
+                raise OSError(
+                    f"move verification failed: {move_source} -> {move_destination}"
+                )
+            moved.append((move_source, move_destination))
+    except OSError:
+        for move_source, move_destination in reversed(moved):
+            try:
+                if move_destination.exists() and not move_source.exists():
+                    move_source.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(move_destination), str(move_source))
+            except OSError:
+                pass
+        return False
+    return True
+
+
 def delete_verified_sources(
     result: CleanupResult,
     *,
@@ -522,6 +701,16 @@ def delete_verified_sources(
             source = decision.source_path
             if source.is_symlink() or not source.is_file():
                 result.failed += 1
+                continue
+            if decision.status == "CORRUPT_MOOV":
+                if dry_run:
+                    result.would_quarantine += 1
+                    result.would_quarantine_paths.append(source)
+                elif _quarantine_corrupt_source(decision):
+                    result.quarantined += 1
+                    result.quarantined_paths.append(decision.quarantine_path)
+                else:
+                    result.failed += 1
                 continue
             if dry_run:
                 result.would_delete += 1
@@ -578,6 +767,8 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
         "VERIFIED": "bold green",
         "LEGACY_MATCH": "green",
         "BELOW_MIN_SIZE": "cyan",
+        "DONE_NO_VIDEO": "cyan",
+        "CORRUPT_MOOV": "yellow",
         "UNMAPPED_SOURCE": "yellow",
         "OUTPUT_MISSING": "bold red",
         "INVALID_TAG": "bold red",
@@ -615,19 +806,25 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
             actions.add_row(Text("DELETED", style="bold green"), str(path))
         for path in result.would_delete_paths:
             actions.add_row(Text("WOULD_DELETE", style="bold yellow"), str(path))
+        for path in result.quarantined_paths:
+            actions.add_row(Text("QUARANTINED", style="bold cyan"), str(path))
+        for path in result.would_quarantine_paths:
+            actions.add_row(Text("WOULD_QUARANTINE", style="bold yellow"), str(path))
         console.print(actions)
     console.print(
         "[bold cyan]Cleanup summary[/] • "
         f"deleted={result.deleted} • would_delete={result.would_delete} • "
-        f"failed={result.failed}"
+        f"quarantined={result.quarantined} • "
+        f"would_quarantine={result.would_quarantine} • failed={result.failed}"
     )
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Verify a VBC source archive against compressed outputs without reading "
-            "manifest JSON files. Plain invocation is read-only."
+            "Verify a VBC source archive against compressed outputs. Completed "
+            "manifest names are used only to recognize no-video groups. Plain "
+            "invocation is read-only."
         )
     )
     parser.add_argument(
@@ -666,7 +863,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--delete-verified",
         action="store_true",
         help=(
-            "delete VERIFIED, LEGACY_MATCH, and BELOW_MIN_SIZE source files"
+            "delete verified/ignored sources and quarantine CORRUPT_MOOV sources"
         ),
     )
     parser.add_argument(
@@ -699,11 +896,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--delete-limit requires --delete-verified")
     console = Console()
     try:
-        source_archive, compressed_dir, min_size_bytes = _resolve_cli_settings(
+        source_archive, compressed_dir, min_size_bytes, config = _resolve_cli_settings(
             args.source_archive,
             args.compressed_dir,
             args.min_size_bytes,
             args.config,
+        )
+        metadata_error_dirs = _metadata_error_dirs(config)
+        quarantine_root = (
+            metadata_error_dirs[0] if len(metadata_error_dirs) == 1 else None
         )
         progress = Progress(
             SpinnerColumn(),
@@ -729,6 +930,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 compressed_dir,
                 verify_vbc_tags=args.verify_vbc_tags,
                 min_size_bytes=min_size_bytes,
+                completed_recording_ids=_completed_recording_ids(config),
+                metadata_search_dirs=_metadata_search_dirs(config),
+                quarantine_root=quarantine_root,
                 progress_callback=update_progress,
             )
         if args.delete_verified:

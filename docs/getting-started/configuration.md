@@ -622,9 +622,10 @@ never deletes or moves source videos or compressed outputs. For an orphan marker
 ### Verifying and cleaning the moved source archive
 
 `scripts/cleanup_source_archive.py` independently compares files in a moved source archive
-with files in the compressed output tree. It does not read manifest JSON files. Multipart
-names such as `recording_part001.mp4` are normalized to `recording.mp4` in the matching
-relative user directory.
+with files in the compressed output tree. Manifest contents are not trusted for output
+verification; completed manifest filenames are used only to recognize requests that VBC
+already routed successfully. Multipart names such as `recording_part001.mp4` are normalized
+to `recording.mp4` in the matching relative user directory.
 
 ```bash
 # Read-only inventory
@@ -658,12 +659,25 @@ The cleaner deletes only listed parts; an ignored audio-only part remains
 and use filename matching. With `--verify-vbc-tags`, both precise and legacy matches also
 require `VBCEncoder`.
 
+If an output is missing but the request is present in the configured metadata success
+directory, the cleaner runs bounded `ffprobe -count_packets` checks without a packet
+timeline. A group where every source has zero usable video packets is reported as
+`DONE_NO_VIDEO` and is deletion-eligible. Any part with video packets keeps the conservative
+`OUTPUT_MISSING` status.
+
+The specific ffprobe failure `moov atom not found` is reported as `CORRUPT_MOOV`. During
+`--delete-verified`, the cleaner quarantines these sources instead of deleting them. It
+uses the configured metadata error root, preserves the user directory, and moves any
+matching `ttracker-<recording_id>.json` and `.err` from the configured metadata input,
+success, or error directories. Destination collisions fail closed, and a partial move is
+rolled back. Other ffprobe failures remain `OUTPUT_MISSING`.
+
 Logical source groups below `general.min_size_bytes` are reported as `BELOW_MIN_SIZE`.
 Their individual and combined sizes are shown, and `--delete-verified` also deletes these
 sources even when no compressed output exists. Override the configured floor with
 `--min-size-bytes`. Remove `--dry-run` to apply deletion. Outputs, sources at or above the
-floor without a verified match, unmapped sources, invalid tags, symlinks, and non-video
-files are never deleted.
+floor without a verified match, unmapped sources, invalid tags, symlinks, and unrecognized
+non-video files are never deleted.
 
 The detailed table shows only sources requiring attention by default, so verified legacy
 matches and below-minimum entries do not hide unresolved cases. Their counts remain in the
