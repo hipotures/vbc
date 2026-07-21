@@ -177,3 +177,29 @@ def test_non_video_files_are_ignored(tmp_path, monkeypatch):
     assert result.decisions == []
     assert result.non_video_ignored == 1
     assert marker.exists()
+
+
+def test_analysis_reports_bounded_progress(tmp_path, monkeypatch):
+    source_root, compressed_root, source_user, output_user = _paths(tmp_path)
+    source = source_user / "recording.mp4"
+    output = output_user / "recording.mp4"
+    source.write_bytes(b"source")
+    output.write_bytes(b"output")
+    monkeypatch.setattr(
+        cleanup,
+        "_read_output_tags",
+        lambda _paths, progress_callback=None: {output.resolve(): {}},
+    )
+    updates = []
+
+    cleanup.analyze_source_archive(
+        source_root,
+        compressed_root,
+        progress_callback=lambda phase, completed, total: updates.append(
+            (phase, completed, total)
+        ),
+    )
+
+    assert ("Locating outputs", 1, 1) in updates
+    assert ("Reading VBC tags", 0, 1) in updates
+    assert updates[-1] == ("Matching archived sources", 1, 1)

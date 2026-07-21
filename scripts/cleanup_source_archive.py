@@ -10,9 +10,17 @@ import subprocess
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 from rich.table import Table
 from rich.text import Text
 
@@ -30,6 +38,8 @@ _VIDEO_EXTENSIONS = {
     ".mts",
     ".webm",
 }
+
+ProgressCallback = Callable[[str, int, int], None]
 
 
 class SourceCleanupError(RuntimeError):
@@ -147,7 +157,10 @@ def _tag_value(entry: dict[str, object], name: str) -> object | None:
     return None
 
 
-def _read_output_tags(paths: Sequence[Path]) -> dict[Path, dict[str, object]]:
+def _read_output_tags(
+    paths: Sequence[Path],
+    progress_callback: ProgressCallback | None = None,
+) -> dict[Path, dict[str, object]]:
     """Read cleanup tags from output files in bounded ExifTool batches."""
     unique_paths = tuple(dict.fromkeys(path.resolve(strict=False) for path in paths))
     config_path = Path(__file__).resolve().parents[1] / "conf" / "exiftool.conf"
@@ -185,6 +198,12 @@ def _read_output_tags(paths: Sequence[Path]) -> dict[Path, dict[str, object]]:
             source_value = entry.get("SourceFile")
             if source_value:
                 result[Path(str(source_value)).resolve(strict=False)] = entry
+        if progress_callback is not None:
+            progress_callback(
+                "Reading VBC tags",
+                min(start + len(batch), len(unique_paths)),
+                len(unique_paths),
+            )
     return result
 
 
@@ -205,6 +224,7 @@ def analyze_source_archive(
     compressed_root: Path,
     *,
     verify_vbc_tags: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> CleanupResult:
     """Classify archived source files without consulting VBC manifests."""
     groups, symlinks_ignored, non_video_ignored = collect_source_groups(source_root)
@@ -218,25 +238,33 @@ def analyze_source_archive(
 
     families: dict[tuple[Path, str], tuple[Path, ...]] = {}
     all_outputs: list[Path] = []
-    for group in groups:
+    for index, group in enumerate(groups, start=1):
         base_output = compressed_root / group.relative_dir / group.output_name
         family = _output_family(base_output)
         families[(group.relative_dir, group.output_name)] = family
         all_outputs.extend(family)
+        if progress_callback is not None:
+            progress_callback("Locating outputs", index, len(groups))
 
     result = CleanupResult(
         symlinks_ignored=symlinks_ignored,
         non_video_ignored=non_video_ignored,
     )
     try:
-        tags = _read_output_tags(all_outputs)
+        if progress_callback is None:
+            tags = _read_output_tags(all_outputs)
+        else:
+            progress_callback("Reading VBC tags", 0, len(all_outputs))
+            tags = _read_output_tags(all_outputs, progress_callback)
     except SourceCleanupError as exc:
         if verify_vbc_tags:
             raise
         tags = {}
         result.tag_scan_warning = f"{exc}; using filename-only legacy fallback"
 
-    for group in groups:
+    for index, group in enumerate(groups, start=1):
+        if progress_callback is not None:
+            progress_callback("Matching archived sources", index - 1, len(groups))
         base_output = compressed_root / group.relative_dir / group.output_name
         family = families[(group.relative_dir, group.output_name)]
         if not family:
@@ -331,6 +359,8 @@ def analyze_source_archive(
                     evidence,
                 )
             )
+    if progress_callback is not None:
+        progress_callback("Matching archived sources", len(groups), len(groups))
     return result
 
 
@@ -447,11 +477,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     console = Console()
     try:
-        with console.status("[cyan]Matching archived sources to outputs…"):
+        progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[cyan]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        )
+        with progress:
+            task_id = progress.add_task("Indexing source archive", total=None)
+
+            def update_progress(description: str, completed: int, total: int) -> None:
+                progress.update(
+                    task_id,
+                    description=description,
+                    completed=completed,
+                    total=total,
+                )
+
             result = analyze_source_archive(
                 args.source_archive,
                 args.compressed_dir,
                 verify_vbc_tags=args.verify_vbc_tags,
+                progress_callback=update_progress,
             )
         if args.delete_verified:
             delete_verified_sources(result, dry_run=args.dry_run)
