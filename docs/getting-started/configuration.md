@@ -659,6 +659,10 @@ sources even when no compressed output exists. Override the configured floor wit
 floor without a verified match, unmapped sources, invalid tags, symlinks, and non-video
 files are never deleted.
 
+The detailed table shows only sources requiring attention by default, so verified legacy
+matches and below-minimum entries do not hide unresolved cases. Their counts remain in the
+inventory summary. Use `--show-all` to print every source.
+
 When either positional path is omitted, the script loads `conf/vbc.yaml` (or `--config`).
 The source archive comes from `metadata.move_after_success_dir`. Because the compressed
 video root is stored in manifests rather than directly in VBC configuration, the script

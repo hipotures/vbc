@@ -1,5 +1,8 @@
 import json
+from io import StringIO
 from types import SimpleNamespace
+
+from rich.console import Console
 
 from scripts import cleanup_source_archive as cleanup
 
@@ -276,3 +279,49 @@ def test_omitted_paths_and_size_are_resolved_from_config_and_manifests(
     )
 
     assert resolved == (source_root, compressed_root, 1234)
+
+
+def test_default_report_hides_deletion_eligible_rows(tmp_path):
+    output = tmp_path / "output.mp4"
+    result = cleanup.CleanupResult(
+        decisions=[
+            cleanup.SourceDecision(
+                tmp_path / "legacy-source.mp4",
+                output,
+                1,
+                "LEGACY_MATCH",
+                "output exists (legacy filename match)",
+                (output,),
+                100,
+            ),
+            cleanup.SourceDecision(
+                tmp_path / "small-source.mp4",
+                output,
+                1,
+                "BELOW_MIN_SIZE",
+                "below threshold",
+                size_bytes=100,
+            ),
+            cleanup.SourceDecision(
+                tmp_path / "missing-source.mp4",
+                output,
+                1,
+                "OUTPUT_MISSING",
+                "base output does not exist",
+                size_bytes=200,
+            ),
+        ]
+    )
+    stream = StringIO()
+
+    cleanup._render_result(
+        result,
+        Console(file=stream, width=200, color_system=None),
+        show_all=False,
+    )
+
+    rendered = stream.getvalue()
+    assert "missing-source.mp4" in rendered
+    assert "legacy-source.mp4" not in rendered
+    assert "small-source.mp4" not in rendered
+    assert "9261 more" not in rendered

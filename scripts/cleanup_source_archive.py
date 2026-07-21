@@ -469,7 +469,7 @@ def analyze_source_archive(
             evidence: tuple[Path, ...] = ()
         else:
             status = "LEGACY_MATCH"
-            detail = "output exists; VBCSourceParts is unavailable"
+            detail = "output exists (legacy filename match)"
             evidence = (base_output,)
         for part_number, source_path in group.sources:
             result.decisions.append(
@@ -532,9 +532,22 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
     inventory.add_row("NON_VIDEO_IGNORED", str(result.non_video_ignored))
     console.print(inventory)
 
-    decisions = result.decisions if show_all else result.decisions[:100]
+    visible_decisions = (
+        result.decisions
+        if show_all
+        else [
+            decision
+            for decision in result.decisions
+            if not decision.deletion_eligible
+        ]
+    )
+    decisions = visible_decisions if show_all else visible_decisions[:100]
     table = Table(
-        title="Source verification",
+        title=(
+            "Source verification • all"
+            if show_all
+            else "Source verification • attention required"
+        ),
         title_style="bold cyan",
         header_style="bold",
         border_style="bright_black",
@@ -559,9 +572,9 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
             _format_size(decision.size_bytes),
             f"{decision.output_path} • {decision.detail}",
         )
-    if len(decisions) < len(result.decisions):
+    if len(decisions) < len(visible_decisions):
         table.add_row(
-            "…", f"{len(result.decisions) - len(decisions)} more", "", ""
+            "…", f"{len(visible_decisions) - len(decisions)} more", "", ""
         )
     console.print(table)
     if result.tag_scan_warning:
@@ -632,7 +645,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--show-all",
         action="store_true",
-        help="show every source instead of the first 100 rows",
+        help="show every source, including verified and below-minimum entries",
     )
     return parser
 
