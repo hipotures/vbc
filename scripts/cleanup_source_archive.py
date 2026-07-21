@@ -24,6 +24,9 @@ from rich.progress import (
 from rich.table import Table
 from rich.text import Text
 
+from vbc.config.loader import load_config
+from vbc.config.models import AppConfig
+
 _PART_SUFFIX = re.compile(r"^(?P<base>.+)_part(?P<number>\d+)$", re.I)
 _TAG_BATCH_SIZE = 200
 _VIDEO_EXTENSIONS = {
@@ -40,10 +43,93 @@ _VIDEO_EXTENSIONS = {
 }
 
 ProgressCallback = Callable[[str, int, int], None]
+_ROOT_INFERENCE_SAMPLE_SIZE = 100
+
+
+def _format_size(size_bytes: int) -> str:
+    value = float(size_bytes)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if value < 1024 or unit == "TiB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{size_bytes} B"
 
 
 class SourceCleanupError(RuntimeError):
     """Raised when source archive verification cannot proceed safely."""
+
+
+def _infer_compressed_root(config: AppConfig) -> Path:
+    manifest_paths: list[tuple[int, Path]] = []
+    for entry in config.input_dirs:
+        if not entry.enabled or not entry.metadata:
+            continue
+        metadata_dir = Path(entry.path)
+        if not metadata_dir.is_dir():
+            continue
+        for path in metadata_dir.glob("*.json"):
+            try:
+                if path.is_file() and not path.is_symlink():
+                    manifest_paths.append((path.stat().st_mtime_ns, path))
+            except OSError:
+                continue
+    manifest_paths.sort(key=lambda item: item[0], reverse=True)
+
+    roots: set[Path] = set()
+    for _, manifest_path in manifest_paths[:_ROOT_INFERENCE_SAMPLE_SIZE]:
+        try:
+            payload = json.loads(manifest_path.read_text())
+            output_path = Path(payload["output_path"])
+            username = str(payload["producer"]["username"])
+        except (OSError, KeyError, TypeError, json.JSONDecodeError):
+            continue
+        if not output_path.is_absolute() or output_path.parent.name != username:
+            continue
+        roots.add(output_path.parent.parent)
+
+    if not roots:
+        raise SourceCleanupError(
+            "compressed directory is not configured directly and could not be "
+            "inferred from current metadata manifests"
+        )
+    if len(roots) != 1:
+        rendered = ", ".join(str(path) for path in sorted(roots))
+        raise SourceCleanupError(
+            f"metadata manifests reference multiple compressed roots: {rendered}"
+        )
+    return roots.pop()
+
+
+def _resolve_cli_settings(
+    source_archive: Path | None,
+    compressed_dir: Path | None,
+    min_size_bytes: int | None,
+    config_path: Path,
+) -> tuple[Path, Path, int]:
+    if (
+        source_archive is not None
+        and compressed_dir is not None
+        and min_size_bytes is not None
+    ):
+        return source_archive, compressed_dir, min_size_bytes
+    try:
+        config = load_config(config_path)
+    except Exception as exc:
+        raise SourceCleanupError(f"failed to load VBC config {config_path}: {exc}") from exc
+
+    if source_archive is None:
+        configured_source = config.metadata.move_after_success_dir
+        if not configured_source:
+            raise SourceCleanupError(
+                "source archive was not supplied and metadata.move_after_success_dir "
+                "is not configured"
+            )
+        source_archive = Path(configured_source)
+    if compressed_dir is None:
+        compressed_dir = _infer_compressed_root(config)
+    if min_size_bytes is None:
+        min_size_bytes = config.general.min_size_bytes
+    return source_archive, compressed_dir, min_size_bytes
 
 
 @dataclass(frozen=True)
@@ -61,10 +147,15 @@ class SourceDecision:
     status: str
     detail: str
     evidence_outputs: tuple[Path, ...] = ()
+    size_bytes: int = 0
 
     @property
     def verified(self) -> bool:
         return self.status in {"VERIFIED", "LEGACY_MATCH"}
+
+    @property
+    def deletion_eligible(self) -> bool:
+        return self.verified or self.status == "BELOW_MIN_SIZE"
 
 
 @dataclass
@@ -76,6 +167,7 @@ class CleanupResult:
     symlinks_ignored: int = 0
     non_video_ignored: int = 0
     tag_scan_warning: str | None = None
+    min_size_bytes: int | None = None
 
 
 def _source_identity(path: Path) -> tuple[str, int]:
@@ -224,9 +316,12 @@ def analyze_source_archive(
     compressed_root: Path,
     *,
     verify_vbc_tags: bool = False,
+    min_size_bytes: int | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> CleanupResult:
     """Classify archived source files without consulting VBC manifests."""
+    if min_size_bytes is not None and min_size_bytes < 0:
+        raise SourceCleanupError("minimum source size cannot be negative")
     groups, symlinks_ignored, non_video_ignored = collect_source_groups(source_root)
     if compressed_root.is_symlink():
         raise SourceCleanupError(
@@ -237,11 +332,18 @@ def analyze_source_archive(
         raise SourceCleanupError(f"not a directory: {compressed_root}")
 
     families: dict[tuple[Path, str], tuple[Path, ...]] = {}
+    group_sizes: dict[tuple[Path, str], int] = {}
     all_outputs: list[Path] = []
     for index, group in enumerate(groups, start=1):
+        group_key = (group.relative_dir, group.output_name)
+        group_size = sum(path.stat().st_size for _, path in group.sources)
+        group_sizes[group_key] = group_size
         base_output = compressed_root / group.relative_dir / group.output_name
-        family = _output_family(base_output)
-        families[(group.relative_dir, group.output_name)] = family
+        if min_size_bytes is not None and group_size < min_size_bytes:
+            family = ()
+        else:
+            family = _output_family(base_output)
+        families[group_key] = family
         all_outputs.extend(family)
         if progress_callback is not None:
             progress_callback("Locating outputs", index, len(groups))
@@ -249,6 +351,7 @@ def analyze_source_archive(
     result = CleanupResult(
         symlinks_ignored=symlinks_ignored,
         non_video_ignored=non_video_ignored,
+        min_size_bytes=min_size_bytes,
     )
     try:
         if progress_callback is None:
@@ -266,7 +369,23 @@ def analyze_source_archive(
         if progress_callback is not None:
             progress_callback("Matching archived sources", index - 1, len(groups))
         base_output = compressed_root / group.relative_dir / group.output_name
-        family = families[(group.relative_dir, group.output_name)]
+        group_key = (group.relative_dir, group.output_name)
+        group_size = group_sizes[group_key]
+        if min_size_bytes is not None and group_size < min_size_bytes:
+            for part_number, source_path in group.sources:
+                result.decisions.append(
+                    SourceDecision(
+                        source_path,
+                        base_output,
+                        part_number,
+                        "BELOW_MIN_SIZE",
+                        f"group size {group_size} B is below {min_size_bytes} B",
+                        size_bytes=source_path.stat().st_size,
+                    )
+                )
+            continue
+
+        family = families[group_key]
         if not family:
             for part_number, source_path in group.sources:
                 result.decisions.append(
@@ -276,6 +395,7 @@ def analyze_source_archive(
                         part_number,
                         "OUTPUT_MISSING",
                         "base output does not exist",
+                        size_bytes=source_path.stat().st_size,
                     )
                 )
             continue
@@ -305,6 +425,7 @@ def analyze_source_archive(
                         part_number,
                         "INVALID_TAG",
                         "VBCSourceParts is invalid or required VBCEncoder is missing",
+                        size_bytes=source_path.stat().st_size,
                     )
                 )
             continue
@@ -325,6 +446,7 @@ def analyze_source_archive(
                             "VERIFIED",
                             "part listed by VBCSourceParts",
                             evidence,
+                            source_path.stat().st_size,
                         )
                     )
                 else:
@@ -335,6 +457,7 @@ def analyze_source_archive(
                             part_number,
                             "UNMAPPED_SOURCE",
                             "part is not listed by any output",
+                            size_bytes=source_path.stat().st_size,
                         )
                     )
             continue
@@ -357,6 +480,7 @@ def analyze_source_archive(
                     status,
                     detail,
                     evidence,
+                    source_path.stat().st_size,
                 )
             )
     if progress_callback is not None:
@@ -369,13 +493,16 @@ def delete_verified_sources(
     *,
     dry_run: bool,
 ) -> None:
-    """Delete only sources with still-present output evidence."""
+    """Delete output-verified sources and sources below the configured size floor."""
     for decision in result.decisions:
-        if not decision.verified:
+        if not decision.deletion_eligible:
             continue
-        if not decision.evidence_outputs or any(
-            output.is_symlink() or not output.is_file()
-            for output in decision.evidence_outputs
+        if decision.verified and (
+            not decision.evidence_outputs
+            or any(
+                output.is_symlink() or not output.is_file()
+                for output in decision.evidence_outputs
+            )
         ):
             result.failed += 1
             continue
@@ -414,10 +541,12 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
     )
     table.add_column("Status", no_wrap=True)
     table.add_column("Source", style="bold", overflow="fold")
+    table.add_column("Size", justify="right", no_wrap=True)
     table.add_column("Output / detail", overflow="fold")
     styles = {
         "VERIFIED": "bold green",
         "LEGACY_MATCH": "green",
+        "BELOW_MIN_SIZE": "cyan",
         "UNMAPPED_SOURCE": "yellow",
         "OUTPUT_MISSING": "bold red",
         "INVALID_TAG": "bold red",
@@ -427,13 +556,21 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
         table.add_row(
             Text(decision.status, style=styles.get(decision.status, "white")),
             str(decision.source_path),
+            _format_size(decision.size_bytes),
             f"{decision.output_path} • {decision.detail}",
         )
     if len(decisions) < len(result.decisions):
-        table.add_row("…", f"{len(result.decisions) - len(decisions)} more", "")
+        table.add_row(
+            "…", f"{len(result.decisions) - len(decisions)} more", "", ""
+        )
     console.print(table)
     if result.tag_scan_warning:
         console.print(f"[bold yellow]Warning:[/] {result.tag_scan_warning}")
+    if result.min_size_bytes is not None:
+        console.print(
+            "[bold cyan]Size policy[/] • sources in a logical group below "
+            f"{_format_size(result.min_size_bytes)} are deletion-eligible without an output"
+        )
     console.print(
         "[bold cyan]Cleanup summary[/] • "
         f"deleted={result.deleted} • would_delete={result.would_delete} • "
@@ -448,22 +585,49 @@ def _build_parser() -> argparse.ArgumentParser:
             "manifest JSON files. Plain invocation is read-only."
         )
     )
-    parser.add_argument("source_archive", type=Path)
-    parser.add_argument("compressed_dir", type=Path)
+    parser.add_argument(
+        "source_archive",
+        type=Path,
+        nargs="?",
+        help="defaults to metadata.move_after_success_dir from the VBC config",
+    )
+    parser.add_argument(
+        "compressed_dir",
+        type=Path,
+        nargs="?",
+        help="defaults to the unambiguous output root in current manifests",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path("conf/vbc.yaml"),
+        help="VBC configuration path used for omitted values",
+    )
     parser.add_argument(
         "--verify-vbc-tags",
         action="store_true",
         help="require VBCEncoder for both tagged and legacy output matches",
     )
     parser.add_argument(
+        "--min-size-bytes",
+        type=int,
+        default=None,
+        help=(
+            "treat logical source groups below this size as deletion-eligible "
+            "without an output (default: general.min_size_bytes from config)"
+        ),
+    )
+    parser.add_argument(
         "--delete-verified",
         action="store_true",
-        help="delete only VERIFIED and LEGACY_MATCH source files",
+        help=(
+            "delete VERIFIED, LEGACY_MATCH, and BELOW_MIN_SIZE source files"
+        ),
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="show how many verified sources would be deleted",
+        help="show how many deletion-eligible sources would be deleted",
     )
     parser.add_argument(
         "--show-all",
@@ -477,6 +641,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     console = Console()
     try:
+        source_archive, compressed_dir, min_size_bytes = _resolve_cli_settings(
+            args.source_archive,
+            args.compressed_dir,
+            args.min_size_bytes,
+            args.config,
+        )
         progress = Progress(
             SpinnerColumn(),
             TextColumn("[cyan]{task.description}"),
@@ -497,9 +667,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
 
             result = analyze_source_archive(
-                args.source_archive,
-                args.compressed_dir,
+                source_archive,
+                compressed_dir,
                 verify_vbc_tags=args.verify_vbc_tags,
+                min_size_bytes=min_size_bytes,
                 progress_callback=update_progress,
             )
         if args.delete_verified:

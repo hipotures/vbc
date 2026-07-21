@@ -632,6 +632,10 @@ uv run python scripts/cleanup_source_archive.py \
   /path/to/sources_compressed \
   /path/to/compressed
 
+# The paths and size floor may be omitted. The source archive and min_size_bytes
+# come from conf/vbc.yaml; the compressed root is inferred from current manifests.
+uv run python scripts/cleanup_source_archive.py
+
 # Preview safe deletion
 uv run python scripts/cleanup_source_archive.py \
   /path/to/sources_compressed \
@@ -646,8 +650,20 @@ orientation group lists only the physical parts that actually contributed to tha
 The cleaner deletes only listed parts; an ignored audio-only part remains
 `UNMAPPED_SOURCE`. Older outputs without `VBCSourceParts` are reported as `LEGACY_MATCH`
 and use filename matching. With `--verify-vbc-tags`, both precise and legacy matches also
-require `VBCEncoder`. Remove `--dry-run` to apply `--delete-verified`. Outputs, unmapped
-sources, missing matches, invalid tags, symlinks, and non-video files are never deleted.
+require `VBCEncoder`.
+
+Logical source groups below `general.min_size_bytes` are reported as `BELOW_MIN_SIZE`.
+Their individual and combined sizes are shown, and `--delete-verified` also deletes these
+sources even when no compressed output exists. Override the configured floor with
+`--min-size-bytes`. Remove `--dry-run` to apply deletion. Outputs, sources at or above the
+floor without a verified match, unmapped sources, invalid tags, symlinks, and non-video
+files are never deleted.
+
+When either positional path is omitted, the script loads `conf/vbc.yaml` (or `--config`).
+The source archive comes from `metadata.move_after_success_dir`. Because the compressed
+video root is stored in manifests rather than directly in VBC configuration, the script
+infers it from up to 100 newest manifests in enabled metadata directories and stops if the
+root is missing or ambiguous.
 
 #### `output_dirs`
 - **Type**: List of strings
