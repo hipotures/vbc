@@ -674,6 +674,9 @@ at most N actual deletions. Without the option, deletion remains unlimited. When
 is present, the report includes a separate `DELETED` table; with `--dry-run`, it instead
 lists the limited `WOULD_DELETE` paths.
 
+Scanning and deletion have separate progress bars. The deletion stage reports
+`Deleting sources N/N`, or `Previewing deletions N/N` with `--dry-run`.
+
 When either positional path is omitted, the script loads `conf/vbc.yaml` (or `--config`).
 The source archive comes from `metadata.move_after_success_dir`. Because the compressed
 video root is stored in manifests rather than directly in VBC configuration, the script

@@ -496,38 +496,47 @@ def delete_verified_sources(
     *,
     dry_run: bool,
     limit: int | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> None:
     """Delete output-verified sources and sources below the configured size floor."""
     result.delete_limit = limit
-    for decision in result.decisions:
-        if limit is not None and result.deleted + result.would_delete >= limit:
-            break
-        if not decision.deletion_eligible:
-            continue
-        if decision.verified and (
-            not decision.evidence_outputs
-            or any(
-                output.is_symlink() or not output.is_file()
-                for output in decision.evidence_outputs
-            )
-        ):
-            result.failed += 1
-            continue
-        source = decision.source_path
-        if source.is_symlink() or not source.is_file():
-            result.failed += 1
-            continue
-        if dry_run:
-            result.would_delete += 1
-            result.would_delete_paths.append(source)
-            continue
+    eligible = [
+        decision for decision in result.decisions if decision.deletion_eligible
+    ]
+    selected = eligible if limit is None else eligible[:limit]
+    phase = "Previewing deletions" if dry_run else "Deleting sources"
+    if progress_callback is not None:
+        progress_callback(phase, 0, len(selected))
+
+    for index, decision in enumerate(selected, start=1):
         try:
-            source.unlink()
-        except OSError:
-            result.failed += 1
-        else:
-            result.deleted += 1
-            result.deleted_paths.append(source)
+            if decision.verified and (
+                not decision.evidence_outputs
+                or any(
+                    output.is_symlink() or not output.is_file()
+                    for output in decision.evidence_outputs
+                )
+            ):
+                result.failed += 1
+                continue
+            source = decision.source_path
+            if source.is_symlink() or not source.is_file():
+                result.failed += 1
+                continue
+            if dry_run:
+                result.would_delete += 1
+                result.would_delete_paths.append(source)
+                continue
+            try:
+                source.unlink()
+            except OSError:
+                result.failed += 1
+            else:
+                result.deleted += 1
+                result.deleted_paths.append(source)
+        finally:
+            if progress_callback is not None:
+                progress_callback(phase, index, len(selected))
 
 
 def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -> None:
@@ -723,11 +732,35 @@ def main(argv: Sequence[str] | None = None) -> int:
                 progress_callback=update_progress,
             )
         if args.delete_verified:
-            delete_verified_sources(
-                result,
-                dry_run=args.dry_run,
-                limit=args.delete_limit,
+            delete_progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[cyan]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeRemainingColumn(),
+                console=console,
             )
+            with delete_progress:
+                delete_task_id = delete_progress.add_task(
+                    "Preparing deletion", total=None
+                )
+
+                def update_delete_progress(
+                    description: str, completed: int, total: int
+                ) -> None:
+                    delete_progress.update(
+                        delete_task_id,
+                        description=description,
+                        completed=completed,
+                        total=total,
+                    )
+
+                delete_verified_sources(
+                    result,
+                    dry_run=args.dry_run,
+                    limit=args.delete_limit,
+                    progress_callback=update_delete_progress,
+                )
     except (OSError, SourceCleanupError) as exc:
         Console(stderr=True).print(f"[bold red]Error:[/] {exc}")
         return 1

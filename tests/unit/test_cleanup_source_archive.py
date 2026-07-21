@@ -351,12 +351,24 @@ def test_delete_limit_caps_deletion_and_lists_deleted_paths(tmp_path):
         ]
     )
 
-    cleanup.delete_verified_sources(result, dry_run=False, limit=1)
+    updates = []
+    cleanup.delete_verified_sources(
+        result,
+        dry_run=False,
+        limit=1,
+        progress_callback=lambda phase, completed, total: updates.append(
+            (phase, completed, total)
+        ),
+    )
 
     assert result.deleted == 1
     assert result.deleted_paths == [first]
     assert not first.exists()
     assert second.exists()
+    assert updates == [
+        ("Deleting sources", 0, 1),
+        ("Deleting sources", 1, 1),
+    ]
     stream = StringIO()
     cleanup._render_result(
         result,
