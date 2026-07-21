@@ -665,12 +665,20 @@ timeline. A group where every source has zero usable video packets is reported a
 `DONE_NO_VIDEO` and is deletion-eligible. Any part with video packets keeps the conservative
 `OUTPUT_MISSING` status.
 
-The specific ffprobe failure `moov atom not found` is reported as `CORRUPT_MOOV`. During
-`--delete-verified`, the cleaner quarantines these sources instead of deleting them. It
-uses the configured metadata error root, preserves the user directory, and moves any
-matching `ttracker-<recording_id>.json` and `.err` from the configured metadata input,
-success, or error directories. Destination collisions fail closed, and a partial move is
-rolled back. Other ffprobe failures remain `OUTPUT_MISSING`.
+Known terminal failures are quarantined instead of deleted during `--delete-verified`:
+`moov atom not found` (`CORRUPT_MOOV`), FFmpeg exit `-6`/SIGABRT, FFmpeg exit
+`-11`/SIGSEGV, unsupported hardware capabilities, invalid video dimensions, and invalid
+input data. Classification prefers the matching `.err` marker; the missing-moov case can
+also be recognized directly by the bounded source probe. The cleaner uses the configured
+metadata error root, preserves the user directory, and moves the source files together
+with any matching `ttracker-<recording_id>.json` and `.err` found in the configured
+metadata input, success, or error directories. Destination collisions fail closed, and a
+partial move is rolled back.
+
+Unknown failures remain in the source archive as `OUTPUT_MISSING`. This is intentional:
+for example, FFmpeg exit code `234` is not assigned a meaning merely from the numeric code.
+After a non-dry-run cleanup, remaining source files therefore identify recordings whose
+missing compression output still needs explanation.
 
 Logical source groups below `general.min_size_bytes` are reported as `BELOW_MIN_SIZE`.
 Their individual and combined sizes are shown, and `--delete-verified` also deletes these

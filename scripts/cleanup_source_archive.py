@@ -31,6 +31,13 @@ from vbc.infrastructure.ffprobe import FFprobeAdapter
 
 _PART_SUFFIX = re.compile(r"^(?P<base>.+)_part(?P<number>\d+)$", re.I)
 _TAG_BATCH_SIZE = 200
+_QUARANTINE_STATUSES = {
+    "CORRUPT_INPUT",
+    "CORRUPT_MOOV",
+    "FFMPEG_SIGABRT",
+    "FFMPEG_SIGSEGV",
+    "HARDWARE_UNSUPPORTED",
+}
 _VIDEO_EXTENSIONS = {
     ".avi",
     ".flv",
@@ -212,7 +219,10 @@ class SourceDecision:
         return (
             self.verified
             or self.status in {"BELOW_MIN_SIZE", "DONE_NO_VIDEO"}
-            or (self.status == "CORRUPT_MOOV" and self.quarantine_path is not None)
+            or (
+                self.status in _QUARANTINE_STATUSES
+                and self.quarantine_path is not None
+            )
         )
 
 
@@ -423,6 +433,34 @@ def _related_metadata_paths(
     return tuple(dict.fromkeys(paths))
 
 
+def _quarantine_status_from_markers(
+    metadata_paths: Sequence[Path],
+) -> tuple[str, str] | None:
+    marker_texts: list[str] = []
+    for path in metadata_paths:
+        if path.suffix != ".err":
+            continue
+        try:
+            marker_texts.append(path.read_text(errors="replace").lower())
+        except OSError:
+            continue
+    combined = "\n".join(marker_texts)
+    if "moov atom not found" in combined:
+        return "CORRUPT_MOOV", "error marker: moov atom not found"
+    if "ffmpeg exited with code -6" in combined:
+        return "FFMPEG_SIGABRT", "error marker: FFmpeg terminated with SIGABRT"
+    if "ffmpeg exited with code -11" in combined:
+        return "FFMPEG_SIGSEGV", "error marker: FFmpeg terminated with SIGSEGV"
+    if "hardware is lacking required capabilities" in combined:
+        return "HARDWARE_UNSUPPORTED", "error marker: hardware capability unavailable"
+    if (
+        "invalid video dimensions" in combined
+        or "invalid data found when processing input" in combined
+    ):
+        return "CORRUPT_INPUT", "error marker: permanently invalid video input"
+    return None
+
+
 def analyze_source_archive(
     source_root: Path,
     compressed_root: Path,
@@ -503,27 +541,31 @@ def analyze_source_archive(
 
         family = families[group_key]
         if not family:
-            probe_result = _probe_missing_group(group, ffprobe_adapter)
-            if probe_result == "corrupt_moov":
-                status = "CORRUPT_MOOV"
-                detail = "ffprobe failed: moov atom not found"
-            elif (
-                completed_recording_ids is not None
-                and base_output.stem in completed_recording_ids
-                and probe_result == "no_video"
-            ):
-                status = "DONE_NO_VIDEO"
-                detail = "completed manifest; group has no usable video packets"
-            else:
-                status = "OUTPUT_MISSING"
-                detail = "base output does not exist"
             related_metadata = _related_metadata_paths(
                 base_output.stem,
                 metadata_search_dirs,
             )
+            marker_status = _quarantine_status_from_markers(related_metadata)
+            if marker_status is not None:
+                status, detail = marker_status
+            else:
+                probe_result = _probe_missing_group(group, ffprobe_adapter)
+                if probe_result == "corrupt_moov":
+                    status = "CORRUPT_MOOV"
+                    detail = "ffprobe failed: moov atom not found"
+                elif (
+                    completed_recording_ids is not None
+                    and base_output.stem in completed_recording_ids
+                    and probe_result == "no_video"
+                ):
+                    status = "DONE_NO_VIDEO"
+                    detail = "completed manifest; group has no usable video packets"
+                else:
+                    status = "OUTPUT_MISSING"
+                    detail = "base output does not exist"
             for source_index, (part_number, source_path) in enumerate(group.sources):
                 quarantine_path = None
-                if status == "CORRUPT_MOOV" and quarantine_root is not None:
+                if status in _QUARANTINE_STATUSES and quarantine_root is not None:
                     quarantine_path = (
                         quarantine_root / group.relative_dir / source_path.name
                     )
@@ -702,7 +744,7 @@ def delete_verified_sources(
             if source.is_symlink() or not source.is_file():
                 result.failed += 1
                 continue
-            if decision.status == "CORRUPT_MOOV":
+            if decision.status in _QUARANTINE_STATUSES:
                 if dry_run:
                     result.would_quarantine += 1
                     result.would_quarantine_paths.append(source)
@@ -769,6 +811,10 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
         "BELOW_MIN_SIZE": "cyan",
         "DONE_NO_VIDEO": "cyan",
         "CORRUPT_MOOV": "yellow",
+        "CORRUPT_INPUT": "yellow",
+        "FFMPEG_SIGABRT": "yellow",
+        "FFMPEG_SIGSEGV": "yellow",
+        "HARDWARE_UNSUPPORTED": "yellow",
         "UNMAPPED_SOURCE": "yellow",
         "OUTPUT_MISSING": "bold red",
         "INVALID_TAG": "bold red",
@@ -863,7 +909,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--delete-verified",
         action="store_true",
         help=(
-            "delete verified/ignored sources and quarantine CORRUPT_MOOV sources"
+            "delete verified/ignored sources and quarantine sources with "
+            "recognized terminal errors"
         ),
     )
     parser.add_argument(

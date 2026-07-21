@@ -495,3 +495,22 @@ def test_moov_failure_quarantines_source_and_metadata(tmp_path, monkeypatch):
     assert (destination_dir / source.name).is_file()
     assert (destination_dir / manifest.name).is_file()
     assert (destination_dir / marker.name).is_file()
+
+
+def test_error_marker_quarantine_classification_is_explicit(tmp_path):
+    marker = tmp_path / "request.err"
+    cases = {
+        "ffmpeg exited with code -6": "FFMPEG_SIGABRT",
+        "ffmpeg exited with code -11": "FFMPEG_SIGSEGV",
+        "Hardware is lacking required capabilities": "HARDWARE_UNSUPPORTED",
+        "Manifest preflight failed: Invalid video dimensions for input.mp4: 0x0": "CORRUPT_INPUT",
+        "ffprobe failed: Invalid data found when processing input": "CORRUPT_INPUT",
+    }
+    for error_text, expected_status in cases.items():
+        marker.write_text(error_text)
+        status = cleanup._quarantine_status_from_markers((marker,))
+        assert status is not None
+        assert status[0] == expected_status
+
+    marker.write_text("ffmpeg exited with code 234")
+    assert cleanup._quarantine_status_from_markers((marker,)) is None
