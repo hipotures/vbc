@@ -168,6 +168,9 @@ class CleanupResult:
     non_video_ignored: int = 0
     tag_scan_warning: str | None = None
     min_size_bytes: int | None = None
+    delete_limit: int | None = None
+    deleted_paths: list[Path] = field(default_factory=list)
+    would_delete_paths: list[Path] = field(default_factory=list)
 
 
 def _source_identity(path: Path) -> tuple[str, int]:
@@ -492,9 +495,13 @@ def delete_verified_sources(
     result: CleanupResult,
     *,
     dry_run: bool,
+    limit: int | None = None,
 ) -> None:
     """Delete output-verified sources and sources below the configured size floor."""
+    result.delete_limit = limit
     for decision in result.decisions:
+        if limit is not None and result.deleted + result.would_delete >= limit:
+            break
         if not decision.deletion_eligible:
             continue
         if decision.verified and (
@@ -512,6 +519,7 @@ def delete_verified_sources(
             continue
         if dry_run:
             result.would_delete += 1
+            result.would_delete_paths.append(source)
             continue
         try:
             source.unlink()
@@ -519,6 +527,7 @@ def delete_verified_sources(
             result.failed += 1
         else:
             result.deleted += 1
+            result.deleted_paths.append(source)
 
 
 def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -> None:
@@ -584,6 +593,20 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
             "[bold cyan]Size policy[/] • sources in a logical group below "
             f"{_format_size(result.min_size_bytes)} are deletion-eligible without an output"
         )
+    if result.delete_limit is not None:
+        actions = Table(
+            title=f"Deletion actions • limit {result.delete_limit}",
+            title_style="bold cyan",
+            header_style="bold",
+            border_style="bright_black",
+        )
+        actions.add_column("Action", no_wrap=True)
+        actions.add_column("Source", style="bold", overflow="fold")
+        for path in result.deleted_paths:
+            actions.add_row(Text("DELETED", style="bold green"), str(path))
+        for path in result.would_delete_paths:
+            actions.add_row(Text("WOULD_DELETE", style="bold yellow"), str(path))
+        console.print(actions)
     console.print(
         "[bold cyan]Cleanup summary[/] • "
         f"deleted={result.deleted} • would_delete={result.would_delete} • "
@@ -638,6 +661,14 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--delete-limit",
+        "--limit-delete",
+        type=int,
+        default=None,
+        metavar="N",
+        help="delete at most N eligible sources; requires --delete-verified",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="show how many deletion-eligible sources would be deleted",
@@ -651,7 +682,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    if args.delete_limit is not None and args.delete_limit < 1:
+        parser.error("--delete-limit must be at least 1")
+    if args.delete_limit is not None and not args.delete_verified:
+        parser.error("--delete-limit requires --delete-verified")
     console = Console()
     try:
         source_archive, compressed_dir, min_size_bytes = _resolve_cli_settings(
@@ -687,7 +723,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 progress_callback=update_progress,
             )
         if args.delete_verified:
-            delete_verified_sources(result, dry_run=args.dry_run)
+            delete_verified_sources(
+                result,
+                dry_run=args.dry_run,
+                limit=args.delete_limit,
+            )
     except (OSError, SourceCleanupError) as exc:
         Console(stderr=True).print(f"[bold red]Error:[/] {exc}")
         return 1

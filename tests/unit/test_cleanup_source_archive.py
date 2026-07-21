@@ -325,3 +325,54 @@ def test_default_report_hides_deletion_eligible_rows(tmp_path):
     assert "legacy-source.mp4" not in rendered
     assert "small-source.mp4" not in rendered
     assert "9261 more" not in rendered
+
+
+def test_delete_limit_caps_deletion_and_lists_deleted_paths(tmp_path):
+    first = tmp_path / "first.mp4"
+    second = tmp_path / "second.mp4"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    result = cleanup.CleanupResult(
+        decisions=[
+            cleanup.SourceDecision(
+                first,
+                tmp_path / "first-output.mp4",
+                1,
+                "BELOW_MIN_SIZE",
+                "below threshold",
+            ),
+            cleanup.SourceDecision(
+                second,
+                tmp_path / "second-output.mp4",
+                1,
+                "BELOW_MIN_SIZE",
+                "below threshold",
+            ),
+        ]
+    )
+
+    cleanup.delete_verified_sources(result, dry_run=False, limit=1)
+
+    assert result.deleted == 1
+    assert result.deleted_paths == [first]
+    assert not first.exists()
+    assert second.exists()
+    stream = StringIO()
+    cleanup._render_result(
+        result,
+        Console(file=stream, width=200, color_system=None),
+        show_all=False,
+    )
+    rendered = stream.getvalue()
+    assert "Deletion actions • limit 1" in rendered
+    assert "DELETED" in rendered
+    assert str(first) in rendered
+    assert str(second) not in rendered
+
+
+def test_delete_limit_alias_is_supported():
+    args = cleanup._build_parser().parse_args(
+        ["--delete-verified", "--limit-delete", "2"]
+    )
+
+    assert args.delete_limit == 2

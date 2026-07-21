@@ -643,6 +643,12 @@ uv run python scripts/cleanup_source_archive.py \
   --verify-vbc-tags \
   --delete-verified \
   --dry-run
+
+# Delete at most 10 eligible sources and print every deleted path
+uv run python scripts/cleanup_source_archive.py \
+  --verify-vbc-tags \
+  --delete-verified \
+  --delete-limit 10
 ```
 
 New outputs contain `VBCSourceParts`, for example `1,2,4,5`. Each output created from an
@@ -662,6 +668,11 @@ files are never deleted.
 The detailed table shows only sources requiring attention by default, so verified legacy
 matches and below-minimum entries do not hide unresolved cases. Their counts remain in the
 inventory summary. Use `--show-all` to print every source.
+
+`--delete-limit N` (alias `--limit-delete N`) limits a `--delete-verified` run to
+at most N actual deletions. Without the option, deletion remains unlimited. When the limit
+is present, the report includes a separate `DELETED` table; with `--dry-run`, it instead
+lists the limited `WOULD_DELETE` paths.
 
 When either positional path is omitted, the script loads `conf/vbc.yaml` (or `--config`).
 The source archive comes from `metadata.move_after_success_dir`. Because the compressed
