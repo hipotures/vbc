@@ -218,7 +218,8 @@ class SourceDecision:
     def deletion_eligible(self) -> bool:
         return (
             self.verified
-            or self.status in {"BELOW_MIN_SIZE", "DONE_NO_VIDEO"}
+            or self.status
+            in {"BELOW_MIN_SIZE", "DONE_NO_VIDEO", "IGNORED_NO_VIDEO"}
             or (
                 self.status in _QUARANTINE_STATUSES
                 and self.quarantine_path is not None
@@ -418,6 +419,22 @@ def _probe_missing_group(
     if has_usable_video:
         return "has_video"
     return "no_video"
+
+
+def _probe_source_has_usable_video(
+    source_path: Path,
+    ffprobe_adapter: FFprobeAdapter,
+) -> bool | None:
+    try:
+        part_info = ffprobe_adapter.get_part_info(
+            source_path,
+            scan_packet_timeline=False,
+        )
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
+        return None
+    return bool(part_info.get("has_video_stream")) and int(
+        part_info.get("video_packets") or 0
+    ) > 0
 
 
 def _related_metadata_paths(
@@ -635,6 +652,22 @@ def analyze_source_archive(
                         )
                     )
                 else:
+                    has_usable_video = _probe_source_has_usable_video(
+                        source_path,
+                        ffprobe_adapter,
+                    )
+                    if has_usable_video is False:
+                        result.decisions.append(
+                            SourceDecision(
+                                source_path,
+                                base_output,
+                                part_number,
+                                "IGNORED_NO_VIDEO",
+                                "part omitted by VBC and has no usable video packets",
+                                size_bytes=source_path.stat().st_size,
+                            )
+                        )
+                        continue
                     result.decisions.append(
                         SourceDecision(
                             source_path,
@@ -810,6 +843,7 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
         "LEGACY_MATCH": "green",
         "BELOW_MIN_SIZE": "cyan",
         "DONE_NO_VIDEO": "cyan",
+        "IGNORED_NO_VIDEO": "cyan",
         "CORRUPT_MOOV": "yellow",
         "CORRUPT_INPUT": "yellow",
         "FFMPEG_SIGABRT": "yellow",
@@ -831,7 +865,8 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
         table.add_row(
             "…", f"{len(visible_decisions) - len(decisions)} more", "", ""
         )
-    console.print(table)
+    if decisions:
+        console.print(table)
     if result.tag_scan_warning:
         console.print(f"[bold yellow]Warning:[/] {result.tag_scan_warning}")
     if result.min_size_bytes is not None:

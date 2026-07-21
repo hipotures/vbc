@@ -654,10 +654,12 @@ uv run python scripts/cleanup_source_archive.py \
 
 New outputs contain `VBCSourceParts`, for example `1,2,4,5`. Each output created from an
 orientation group lists only the physical parts that actually contributed to that output.
-The cleaner deletes only listed parts; an ignored audio-only part remains
-`UNMAPPED_SOURCE`. Older outputs without `VBCSourceParts` are reported as `LEGACY_MATCH`
-and use filename matching. With `--verify-vbc-tags`, both precise and legacy matches also
-require `VBCEncoder`.
+The cleaner deletes listed parts. For an omitted part, it additionally runs a bounded
+`ffprobe` without a packet timeline. A part independently confirmed to have no usable
+video packets is reported as `IGNORED_NO_VIDEO` and is deletion-eligible. An omitted part
+with video, or one that cannot be probed, remains `UNMAPPED_SOURCE`. Older outputs without
+`VBCSourceParts` are reported as `LEGACY_MATCH` and use filename matching. With
+`--verify-vbc-tags`, both precise and legacy matches also require `VBCEncoder`.
 
 If an output is missing but the request is present in the configured metadata success
 directory, the cleaner runs bounded `ffprobe -count_packets` checks without a packet

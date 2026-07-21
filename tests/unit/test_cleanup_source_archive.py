@@ -59,6 +59,48 @@ def test_tagged_outputs_map_only_parts_that_were_actually_used(tmp_path, monkeyp
     }
 
 
+def test_tagged_output_deletes_omitted_part_only_when_probe_confirms_no_video(
+    tmp_path, monkeypatch
+):
+    source_root, compressed_root, source_user, output_user = _paths(tmp_path)
+    mapped = source_user / "recording_part001.mp4"
+    no_video = source_user / "recording_part002.mp4"
+    mapped.write_bytes(b"mapped")
+    no_video.write_bytes(b"audio only")
+    output = output_user / "recording.mp4"
+    output.write_bytes(b"output")
+    monkeypatch.setattr(
+        cleanup,
+        "_read_output_tags",
+        lambda _paths: {
+            output.resolve(): {
+                "VBCEncoder": "NVENC AV1",
+                "VBCSourceParts": "1",
+            }
+        },
+    )
+    probed = []
+
+    def probe(self, path, scan_packet_timeline):
+        probed.append(path)
+        return {"has_video_stream": False, "video_packets": 0}
+
+    monkeypatch.setattr(cleanup.FFprobeAdapter, "get_part_info", probe)
+
+    result = cleanup.analyze_source_archive(
+        source_root,
+        compressed_root,
+        verify_vbc_tags=True,
+    )
+
+    statuses = {decision.part_number: decision.status for decision in result.decisions}
+    assert statuses == {1: "VERIFIED", 2: "IGNORED_NO_VIDEO"}
+    assert probed == [no_video]
+    cleanup.delete_verified_sources(result, dry_run=False)
+    assert not mapped.exists()
+    assert not no_video.exists()
+
+
 def test_legacy_output_without_source_parts_is_supported(tmp_path, monkeypatch):
     source_root, compressed_root, source_user, output_user = _paths(tmp_path)
     source = source_user / "recording.mp4"
@@ -339,6 +381,29 @@ def test_default_report_hides_deletion_eligible_rows(tmp_path):
     assert "legacy-source.mp4" not in rendered
     assert "small-source.mp4" not in rendered
     assert "9261 more" not in rendered
+
+
+def test_default_report_omits_empty_attention_table(tmp_path):
+    result = cleanup.CleanupResult(
+        decisions=[
+            cleanup.SourceDecision(
+                tmp_path / "ignored.mp4",
+                tmp_path / "output.mp4",
+                2,
+                "IGNORED_NO_VIDEO",
+                "no usable video packets",
+            )
+        ]
+    )
+    stream = StringIO()
+
+    cleanup._render_result(
+        result,
+        Console(file=stream, width=200, color_system=None),
+        show_all=False,
+    )
+
+    assert "Source verification • attention required" not in stream.getvalue()
 
 
 def test_delete_limit_caps_deletion_and_lists_deleted_paths(tmp_path):
