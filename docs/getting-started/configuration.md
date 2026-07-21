@@ -597,6 +597,28 @@ directory, source files follow the effective `source_policy`, and the old `.err`
 in the error directory. A failed or interrupted repair does not publish the JSON back into
 the watched input queue.
 
+### Analyzing and clearing the metadata error directory
+
+`scripts/video_error_analyzer.py` classifies every direct `.err` child of a metadata error
+directory. A plain invocation is read-only and does not require the corresponding JSON to
+exist:
+
+```bash
+uv run python scripts/video_error_analyzer.py /path/to/metadata_err
+```
+
+Known categories have independent action flags. `--repair-ffmpeg-244` delegates to the
+bounded repair described above. Deletion flags include `--delete-orphans`,
+`--delete-moov-missing`, `--delete-missing-input`, `--delete-invalid-dimensions`,
+`--delete-no-video`, `--delete-invalid-bitstream`, `--delete-hardware-capability`,
+`--delete-ffmpeg-abort`, `--delete-ffmpeg-segfault`, `--delete-ffmpeg-234`, and
+`--delete-unknown`. Multiple category flags may be combined. Add `--dry-run` to inspect the
+selected actions without changing files.
+
+Deletion is deliberately limited to the selected `.json` and `.err` metadata pair. It
+never deletes or moves source videos or compressed outputs. For an orphan marker, only the
+`.err` file is removed. There is no catch-all deletion switch.
+
 #### `output_dirs`
 - **Type**: List of strings
 - **Default**: `[]` (empty)
