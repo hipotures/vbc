@@ -729,6 +729,7 @@ def test_build_vbc_tag_args(orchestrator_basic, tmp_path):
     assert "-XMP:VBCOriginalBitrate=35.9 Mbps" in args
     assert "-XMP:VBCEncoder=NVENC AV1 (GPU)" in args
     assert "-XMP:VBCFinishedAt=2025-01-01T12:00:00" in args
+    assert "-XMP:VBCSourceParts=1" in args
 
 
 def test_build_vbc_tag_args_accepts_text_quality_label(orchestrator_basic, tmp_path):

@@ -319,7 +319,8 @@ general:
 - **Camera**: Model, lens, focal length, ISO, aperture
 - **XMP**: All XMP tags (Adobe, vendor-specific)
 - **QuickTime**: All QuickTime metadata
-- **Custom VBC tags**: Original filename, size, original bitrate, quality target, encoder, timestamp
+- **Custom VBC tags**: Original filename, size, original bitrate, quality target, encoder,
+  timestamp, and source part numbers used by the output
 
 ### ExifTool Config
 
@@ -348,6 +349,7 @@ VBC uses `conf/exiftool.conf` to define custom VBC tags:
     VBCJsonNotes => { },
     VBCEncoder => { },
     VBCFinishedAt => { },
+    VBCSourceParts => { },
 );
 ```
 

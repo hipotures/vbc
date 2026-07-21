@@ -1517,6 +1517,29 @@ def test_metadata_source_move_rolls_back_when_later_input_fails(
     assert not (move_root / "user" / part2.name).exists()
 
 
+def test_source_parts_tag_uses_filename_numbers_and_skips_ignored_parts(tmp_path):
+    input_paths = [
+        tmp_path / f"recording_part{index:03d}.mp4" for index in range(1, 6)
+    ]
+    used_parts = [
+        MultipartPart(
+            path=path,
+            width=640,
+            height=1280,
+            codec="h264",
+            fps=25,
+            duration=1,
+            video_packets=25,
+            audio_packets=10,
+        )
+        for path in (input_paths[0], input_paths[1], input_paths[3], input_paths[4])
+    ]
+
+    assert (
+        Orchestrator._manifest_source_parts_tag(used_parts, input_paths) == "1,2,4,5"
+    )
+
+
 def test_metadata_process_writes_consecutive_orientation_groups(tmp_path):
     ffprobe = MagicMock()
     orchestrator, metadata_dir, output_dir, _ = _orchestrator(tmp_path, ffprobe)
@@ -1642,6 +1665,10 @@ def test_metadata_process_writes_consecutive_orientation_groups(tmp_path):
     assert [call.args[1] for call in orchestrator._write_vbc_tags.call_args_list] == (
         expected_outputs
     )
+    assert [
+        call.kwargs["source_parts"]
+        for call in orchestrator._write_vbc_tags.call_args_list
+    ] == ["1,2", "3,4", "5"]
     assert orchestrator.ffmpeg_adapter.compress.call_args.args[0].output_count == 3
     assert not manifest_path.exists()
     completed_manifest = output_dir / "request.json"

@@ -1124,6 +1124,7 @@ class Orchestrator:
         original_size: int,
         finished_at: str,
         vbc_json_notes: Optional[str] = None,
+        source_parts: str = "1",
     ) -> List[str]:
         tags = [
             f"-XMP:VBCOriginalName={source_path.name}",
@@ -1132,6 +1133,7 @@ class Orchestrator:
             f"-XMP:VBCOriginalBitrate={original_bitrate_label}",
             f"-XMP:VBCEncoder={encoder}",
             f"-XMP:VBCFinishedAt={finished_at}",
+            f"-XMP:VBCSourceParts={source_parts}",
         ]
         if vbc_json_notes:
             tags.append(f"-XMP:VBCJsonNotes={vbc_json_notes}")
@@ -1148,6 +1150,7 @@ class Orchestrator:
         original_size: int,
         finished_at: str,
         vbc_json_notes: Optional[str] = None,
+        source_parts: str = "1",
         record_error_marker: bool = True,
     ) -> None:
         """Copy full metadata from source to output using ExifTool (legacy behavior)."""
@@ -1160,6 +1163,7 @@ class Orchestrator:
             original_size,
             finished_at,
             vbc_json_notes=vbc_json_notes,
+            source_parts=source_parts,
         )
 
         exiftool_cmd = ["exiftool"]
@@ -1326,6 +1330,7 @@ class Orchestrator:
         original_size: int,
         finished_at: str,
         vbc_json_notes: Optional[str] = None,
+        source_parts: str = "1",
     ) -> None:
         """Write VBC tags only (no metadata copy)."""
         config_path = Path(__file__).resolve().parents[2] / "conf" / "exiftool.conf"
@@ -1348,6 +1353,7 @@ class Orchestrator:
                 original_size,
                 finished_at,
                 vbc_json_notes=vbc_json_notes,
+                source_parts=source_parts,
             )
         )
         exiftool_cmd.append(str(output_path))
@@ -1601,6 +1607,27 @@ class Orchestrator:
             target_part.width + (target_part.width % 2),
             target_part.height + (target_part.height % 2),
         )
+
+    @staticmethod
+    def _manifest_source_parts_tag(
+        parts: List[MultipartPart],
+        manifest_inputs: List[Path],
+    ) -> str:
+        """List physical part numbers that contributed to one output group."""
+        manifest_positions = {
+            Path(input_path): index
+            for index, input_path in enumerate(manifest_inputs, start=1)
+        }
+        values: List[str] = []
+        for part in parts:
+            match = re.search(r"_part(\d+)(?=\.[^.]+$|$)", part.path.name, re.I)
+            number = (
+                int(match.group(1))
+                if match is not None
+                else manifest_positions.get(part.path, len(values) + 1)
+            )
+            values.append(str(number))
+        return ",".join(values)
 
     def _manifest_group_video_file(
         self,
@@ -2734,6 +2761,10 @@ class Orchestrator:
             protected_output_paths: set[Path] = set()
             next_suffix_index = 1
             for group_index, parts in enumerate(groups, start=1):
+                source_parts_tag = self._manifest_source_parts_tag(
+                    parts,
+                    request.all_input_paths,
+                )
                 reuse_output = False
                 if group_index == 1:
                     output_path = base_output_path
@@ -2979,6 +3010,7 @@ class Orchestrator:
                         group_video.size_bytes,
                         finished_at,
                         vbc_json_notes=vbc_json_notes,
+                        source_parts=source_parts_tag,
                         record_error_marker=False,
                     )
                 else:
@@ -2991,6 +3023,7 @@ class Orchestrator:
                         group_video.size_bytes,
                         finished_at,
                         vbc_json_notes=vbc_json_notes,
+                        source_parts=source_parts_tag,
                     )
 
                 verify_ok, verify_error = self._verify_output_tags(job.output_path)

@@ -619,6 +619,36 @@ Deletion is deliberately limited to the selected `.json` and `.err` metadata pai
 never deletes or moves source videos or compressed outputs. For an orphan marker, only the
 `.err` file is removed. There is no catch-all deletion switch.
 
+### Verifying and cleaning the moved source archive
+
+`scripts/cleanup_source_archive.py` independently compares files in a moved source archive
+with files in the compressed output tree. It does not read manifest JSON files. Multipart
+names such as `recording_part001.mp4` are normalized to `recording.mp4` in the matching
+relative user directory.
+
+```bash
+# Read-only inventory
+uv run python scripts/cleanup_source_archive.py \
+  /path/to/sources_compressed \
+  /path/to/compressed
+
+# Preview safe deletion
+uv run python scripts/cleanup_source_archive.py \
+  /path/to/sources_compressed \
+  /path/to/compressed \
+  --verify-vbc-tags \
+  --delete-verified \
+  --dry-run
+```
+
+New outputs contain `VBCSourceParts`, for example `1,2,4,5`. Each output created from an
+orientation group lists only the physical parts that actually contributed to that output.
+The cleaner deletes only listed parts; an ignored audio-only part remains
+`UNMAPPED_SOURCE`. Older outputs without `VBCSourceParts` are reported as `LEGACY_MATCH`
+and use filename matching. With `--verify-vbc-tags`, both precise and legacy matches also
+require `VBCEncoder`. Remove `--dry-run` to apply `--delete-verified`. Outputs, unmapped
+sources, missing matches, invalid tags, symlinks, and non-video files are never deleted.
+
 #### `output_dirs`
 - **Type**: List of strings
 - **Default**: `[]` (empty)
