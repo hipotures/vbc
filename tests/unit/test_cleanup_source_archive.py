@@ -522,6 +522,35 @@ def test_completed_group_with_video_remains_output_missing(tmp_path, monkeypatch
     assert not result.decisions[0].deletion_eligible
 
 
+def test_completed_group_uses_only_video_parts_for_size_floor(tmp_path, monkeypatch):
+    source_root, compressed_root, source_user, _ = _paths(tmp_path)
+    video = source_user / "recording_part001.mp4"
+    audio = source_user / "recording_part002.mp4"
+    video.write_bytes(b"123456")
+    audio.write_bytes(b"123456")
+
+    def probe(self, path, scan_packet_timeline):
+        if path == video:
+            return {"has_video_stream": True, "video_packets": 1}
+        return {"has_video_stream": False, "video_packets": 0}
+
+    monkeypatch.setattr(cleanup.FFprobeAdapter, "get_part_info", probe)
+
+    result = cleanup.analyze_source_archive(
+        source_root,
+        compressed_root,
+        min_size_bytes=10,
+        completed_recording_ids={"recording"},
+    )
+
+    assert {decision.status for decision in result.decisions} == {
+        "DONE_BELOW_MIN_SIZE"
+    }
+    assert all(decision.deletion_eligible for decision in result.decisions)
+    cleanup.delete_verified_sources(result, dry_run=True)
+    assert result.would_delete == 2
+
+
 def test_moov_failure_quarantines_source_and_metadata(tmp_path, monkeypatch):
     source_root, compressed_root, source_user, _ = _paths(tmp_path)
     metadata_root = tmp_path / "metadata"

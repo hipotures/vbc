@@ -664,7 +664,10 @@ with video, or one that cannot be probed, remains `UNMAPPED_SOURCE`. Older outpu
 If an output is missing but the request is present in the configured metadata success
 directory, the cleaner runs bounded `ffprobe -count_packets` checks without a packet
 timeline. A group where every source has zero usable video packets is reported as
-`DONE_NO_VIDEO` and is deletion-eligible. Any part with video packets keeps the conservative
+`DONE_NO_VIDEO` and is deletion-eligible. The cleaner also repeats VBC's effective size
+calculation after excluding audio-only parts. If the remaining video-bearing sources are
+below `general.min_size_bytes`, the group is reported as `DONE_BELOW_MIN_SIZE` and is also
+deletion-eligible. A completed group with enough usable video keeps the conservative
 `OUTPUT_MISSING` status.
 
 Known terminal failures are quarantined instead of deleted during `--delete-verified`:

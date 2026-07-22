@@ -219,7 +219,12 @@ class SourceDecision:
         return (
             self.verified
             or self.status
-            in {"BELOW_MIN_SIZE", "DONE_NO_VIDEO", "IGNORED_NO_VIDEO"}
+            in {
+                "BELOW_MIN_SIZE",
+                "DONE_BELOW_MIN_SIZE",
+                "DONE_NO_VIDEO",
+                "IGNORED_NO_VIDEO",
+            }
             or (
                 self.status in _QUARANTINE_STATUSES
                 and self.quarantine_path is not None
@@ -392,10 +397,11 @@ def _parse_source_parts(value: object) -> set[int] | None:
 def _probe_missing_group(
     group: SourceGroup,
     ffprobe_adapter: FFprobeAdapter,
-) -> str:
+) -> tuple[str, int]:
     has_usable_video = False
     has_probe_failure = False
     has_moov_failure = False
+    usable_video_size_bytes = 0
     for _, source_path in group.sources:
         try:
             part_info = ffprobe_adapter.get_part_info(
@@ -412,13 +418,14 @@ def _probe_missing_group(
             part_info.get("video_packets") or 0
         ) > 0:
             has_usable_video = True
+            usable_video_size_bytes += source_path.stat().st_size
     if has_moov_failure:
-        return "corrupt_moov"
+        return "corrupt_moov", usable_video_size_bytes
     if has_probe_failure:
-        return "probe_failed"
+        return "probe_failed", usable_video_size_bytes
     if has_usable_video:
-        return "has_video"
-    return "no_video"
+        return "has_video", usable_video_size_bytes
+    return "no_video", 0
 
 
 def _probe_source_has_usable_video(
@@ -566,7 +573,10 @@ def analyze_source_archive(
             if marker_status is not None:
                 status, detail = marker_status
             else:
-                probe_result = _probe_missing_group(group, ffprobe_adapter)
+                probe_result, usable_video_size_bytes = _probe_missing_group(
+                    group,
+                    ffprobe_adapter,
+                )
                 if probe_result == "corrupt_moov":
                     status = "CORRUPT_MOOV"
                     detail = "ffprobe failed: moov atom not found"
@@ -577,6 +587,18 @@ def analyze_source_archive(
                 ):
                     status = "DONE_NO_VIDEO"
                     detail = "completed manifest; group has no usable video packets"
+                elif (
+                    completed_recording_ids is not None
+                    and base_output.stem in completed_recording_ids
+                    and probe_result == "has_video"
+                    and min_size_bytes is not None
+                    and usable_video_size_bytes < min_size_bytes
+                ):
+                    status = "DONE_BELOW_MIN_SIZE"
+                    detail = (
+                        "completed manifest; usable-video size "
+                        f"{usable_video_size_bytes} B is below {min_size_bytes} B"
+                    )
                 else:
                     status = "OUTPUT_MISSING"
                     detail = "base output does not exist"
@@ -842,6 +864,7 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
         "VERIFIED": "bold green",
         "LEGACY_MATCH": "green",
         "BELOW_MIN_SIZE": "cyan",
+        "DONE_BELOW_MIN_SIZE": "cyan",
         "DONE_NO_VIDEO": "cyan",
         "IGNORED_NO_VIDEO": "cyan",
         "CORRUPT_MOOV": "yellow",
