@@ -38,19 +38,6 @@ _QUARANTINE_STATUSES = {
     "FFMPEG_SIGSEGV",
     "HARDWARE_UNSUPPORTED",
 }
-_VIDEO_EXTENSIONS = {
-    ".avi",
-    ".flv",
-    ".m2ts",
-    ".mkv",
-    ".mov",
-    ".mp4",
-    ".mpeg",
-    ".mpg",
-    ".mts",
-    ".webm",
-}
-
 ProgressCallback = Callable[[str, int, int], None]
 _ROOT_INFERENCE_SAMPLE_SIZE = 100
 
@@ -239,7 +226,6 @@ class CleanupResult:
     would_delete: int = 0
     failed: int = 0
     symlinks_ignored: int = 0
-    non_video_ignored: int = 0
     tag_scan_warning: str | None = None
     min_size_bytes: int | None = None
     delete_limit: int | None = None
@@ -258,7 +244,10 @@ def _source_identity(path: Path) -> tuple[str, int]:
     return match.group("base"), int(match.group("number"))
 
 
-def collect_source_groups(source_root: Path) -> tuple[list[SourceGroup], int, int]:
+def collect_source_groups(
+    source_root: Path,
+    extensions: Sequence[str],
+) -> tuple[list[SourceGroup], int]:
     """Group regular archive files by their normalized output path."""
     if source_root.is_symlink():
         raise SourceCleanupError(f"source archive cannot be a symlink: {source_root}")
@@ -267,16 +256,18 @@ def collect_source_groups(source_root: Path) -> tuple[list[SourceGroup], int, in
         raise SourceCleanupError(f"not a directory: {source_root}")
 
     grouped: dict[tuple[Path, str], list[tuple[int, Path]]] = defaultdict(list)
+    configured_extensions = {
+        (extension if extension.startswith(".") else f".{extension}").lower()
+        for extension in extensions
+    }
     symlinks_ignored = 0
-    non_video_ignored = 0
     for path in sorted(source_root.rglob("*")):
         if path.is_symlink():
             symlinks_ignored += 1
             continue
         if not path.is_file():
             continue
-        if path.suffix.lower() not in _VIDEO_EXTENSIONS:
-            non_video_ignored += 1
+        if path.suffix.lower() not in configured_extensions:
             continue
         relative = path.relative_to(source_root)
         base, part_number = _source_identity(path)
@@ -294,7 +285,7 @@ def collect_source_groups(source_root: Path) -> tuple[list[SourceGroup], int, in
                 sources=tuple(sorted(sources)),
             )
         )
-    return groups, symlinks_ignored, non_video_ignored
+    return groups, symlinks_ignored
 
 
 def _output_family(base_output: Path) -> tuple[Path, ...]:
@@ -493,6 +484,7 @@ def analyze_source_archive(
     source_root: Path,
     compressed_root: Path,
     *,
+    extensions: Sequence[str],
     verify_vbc_tags: bool = False,
     min_size_bytes: int | None = None,
     completed_recording_ids: set[str] | None = None,
@@ -503,7 +495,7 @@ def analyze_source_archive(
     """Classify archived source files without consulting VBC manifests."""
     if min_size_bytes is not None and min_size_bytes < 0:
         raise SourceCleanupError("minimum source size cannot be negative")
-    groups, symlinks_ignored, non_video_ignored = collect_source_groups(source_root)
+    groups, symlinks_ignored = collect_source_groups(source_root, extensions)
     if compressed_root.is_symlink():
         raise SourceCleanupError(
             f"compressed output directory cannot be a symlink: {compressed_root}"
@@ -531,7 +523,6 @@ def analyze_source_archive(
 
     result = CleanupResult(
         symlinks_ignored=symlinks_ignored,
-        non_video_ignored=non_video_ignored,
         min_size_bytes=min_size_bytes,
     )
     ffprobe_adapter = FFprobeAdapter()
@@ -908,7 +899,6 @@ def _render_result(result: CleanupResult, console: Console, *, show_all: bool) -
     for status, count in sorted(counts.items()):
         inventory.add_row(status, str(count))
     inventory.add_row("SYMLINKS_IGNORED", str(result.symlinks_ignored))
-    inventory.add_row("NON_VIDEO_IGNORED", str(result.non_video_ignored))
     console.print(inventory)
 
     visible_decisions = (
@@ -1108,6 +1098,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = analyze_source_archive(
                 source_archive,
                 compressed_dir,
+                extensions=config.general.extensions,
                 verify_vbc_tags=args.verify_vbc_tags,
                 min_size_bytes=min_size_bytes,
                 completed_recording_ids=_completed_recording_ids(config),

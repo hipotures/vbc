@@ -17,6 +17,15 @@ def _paths(tmp_path):
     return source_root, compressed_root, source_user, output_user
 
 
+def _analyze(source_root, compressed_root, **kwargs):
+    return cleanup.analyze_source_archive(
+        source_root,
+        compressed_root,
+        extensions=[".mp4"],
+        **kwargs,
+    )
+
+
 def test_tagged_outputs_map_only_parts_that_were_actually_used(tmp_path, monkeypatch):
     source_root, compressed_root, source_user, output_user = _paths(tmp_path)
     sources = []
@@ -43,7 +52,7 @@ def test_tagged_outputs_map_only_parts_that_were_actually_used(tmp_path, monkeyp
         },
     )
 
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         verify_vbc_tags=True,
@@ -87,7 +96,7 @@ def test_tagged_output_deletes_omitted_part_only_when_probe_confirms_no_video(
 
     monkeypatch.setattr(cleanup.FFprobeAdapter, "get_part_info", probe)
 
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         verify_vbc_tags=True,
@@ -113,7 +122,7 @@ def test_legacy_output_without_source_parts_is_supported(tmp_path, monkeypatch):
         lambda _paths: {output.resolve(): {}},
     )
 
-    result = cleanup.analyze_source_archive(source_root, compressed_root)
+    result = _analyze(source_root, compressed_root)
 
     assert result.decisions[0].status == "LEGACY_MATCH"
     assert result.decisions[0].verified
@@ -131,7 +140,7 @@ def test_strict_legacy_check_requires_vbc_encoder(tmp_path, monkeypatch):
         lambda _paths: {output.resolve(): {}},
     )
 
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         verify_vbc_tags=True,
@@ -158,7 +167,7 @@ def test_invalid_source_parts_tag_fails_closed(tmp_path, monkeypatch):
         },
     )
 
-    result = cleanup.analyze_source_archive(source_root, compressed_root)
+    result = _analyze(source_root, compressed_root)
 
     assert result.decisions[0].status == "INVALID_TAG"
 
@@ -181,7 +190,7 @@ def test_delete_verified_preserves_unmapped_sources_and_outputs(tmp_path, monkey
             }
         },
     )
-    result = cleanup.analyze_source_archive(source_root, compressed_root)
+    result = _analyze(source_root, compressed_root)
 
     cleanup.delete_verified_sources(result, dry_run=False)
 
@@ -202,7 +211,7 @@ def test_dry_run_does_not_delete_legacy_match(tmp_path, monkeypatch):
         "_read_output_tags",
         lambda _paths: {output.resolve(): {"VBCEncoder": "NVENC AV1"}},
     )
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         verify_vbc_tags=True,
@@ -214,17 +223,44 @@ def test_dry_run_does_not_delete_legacy_match(tmp_path, monkeypatch):
     assert source.exists()
 
 
-def test_non_video_files_are_ignored(tmp_path, monkeypatch):
+def test_files_outside_configured_extensions_are_silently_ignored(
+    tmp_path, monkeypatch
+):
     source_root, compressed_root, source_user, _ = _paths(tmp_path)
     marker = source_user / ".DELETE_HERE"
     marker.write_text("marker")
     monkeypatch.setattr(cleanup, "_read_output_tags", lambda _paths: {})
 
-    result = cleanup.analyze_source_archive(source_root, compressed_root)
+    result = _analyze(source_root, compressed_root)
+    stream = StringIO()
+    cleanup._render_result(
+        result,
+        Console(file=stream, width=200, color_system=None),
+        show_all=False,
+    )
 
     assert result.decisions == []
-    assert result.non_video_ignored == 1
+    assert "NON_VIDEO_IGNORED" not in stream.getvalue()
     assert marker.exists()
+
+
+def test_configured_extensions_define_archive_scope(tmp_path, monkeypatch):
+    source_root, compressed_root, source_user, _ = _paths(tmp_path)
+    included = source_user / "recording.flv"
+    excluded = source_user / "recording.mp4"
+    included.write_bytes(b"small")
+    excluded.write_bytes(b"small")
+    monkeypatch.setattr(cleanup, "_read_output_tags", lambda _paths: {})
+
+    result = cleanup.analyze_source_archive(
+        source_root,
+        compressed_root,
+        extensions=["flv"],
+        min_size_bytes=10,
+    )
+
+    assert [decision.source_path for decision in result.decisions] == [included]
+    assert excluded.exists()
 
 
 def test_analysis_reports_bounded_progress(tmp_path, monkeypatch):
@@ -240,7 +276,7 @@ def test_analysis_reports_bounded_progress(tmp_path, monkeypatch):
     )
     updates = []
 
-    cleanup.analyze_source_archive(
+    _analyze(
         source_root,
         compressed_root,
         progress_callback=lambda phase, completed, total: updates.append(
@@ -258,7 +294,7 @@ def test_below_minimum_group_is_deletion_eligible_without_output(tmp_path):
     source = source_user / "recording.mp4"
     source.write_bytes(b"small")
 
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         min_size_bytes=10,
@@ -289,7 +325,7 @@ def test_multipart_size_threshold_uses_combined_source_size(tmp_path, monkeypatc
         },
     )
 
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         min_size_bytes=10,
@@ -488,7 +524,7 @@ def test_completed_group_without_video_is_deletion_eligible(tmp_path, monkeypatc
         },
     )
 
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         min_size_bytes=10,
@@ -511,7 +547,7 @@ def test_completed_group_with_video_remains_output_missing(tmp_path, monkeypatch
         },
     )
 
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         min_size_bytes=10,
@@ -536,7 +572,7 @@ def test_completed_group_uses_only_video_parts_for_size_floor(tmp_path, monkeypa
 
     monkeypatch.setattr(cleanup.FFprobeAdapter, "get_part_info", probe)
 
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         min_size_bytes=10,
@@ -574,7 +610,7 @@ def test_small_failed_group_quarantines_only_corrupt_part(tmp_path, monkeypatch)
         raise RuntimeError(f"{path}: End of file")
 
     monkeypatch.setattr(cleanup.FFprobeAdapter, "get_part_info", probe)
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         min_size_bytes=100,
@@ -627,7 +663,7 @@ def test_failed_group_above_potential_video_floor_remains_unresolved(
         raise RuntimeError(f"{path}: End of file")
 
     monkeypatch.setattr(cleanup.FFprobeAdapter, "get_part_info", probe)
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         min_size_bytes=10,
@@ -656,7 +692,7 @@ def test_moov_failure_quarantines_source_and_metadata(tmp_path, monkeypatch):
         raise RuntimeError("ffprobe failed: moov atom not found")
 
     monkeypatch.setattr(cleanup.FFprobeAdapter, "get_part_info", fail_probe)
-    result = cleanup.analyze_source_archive(
+    result = _analyze(
         source_root,
         compressed_root,
         min_size_bytes=10,

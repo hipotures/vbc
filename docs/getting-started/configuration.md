@@ -626,6 +626,8 @@ with files in the compressed output tree. Manifest contents are not trusted for 
 verification; completed manifest filenames are used only to recognize requests that VBC
 already routed successfully. Multipart names such as `recording_part001.mp4` are normalized
 to `recording.mp4` in the matching relative user directory.
+The archive scan uses `general.extensions` from the same configuration as VBC. Files with
+other extensions are outside its scope, remain untouched, and are not reported as errors.
 
 ```bash
 # Read-only inventory
@@ -697,8 +699,8 @@ Logical source groups below `general.min_size_bytes` are reported as `BELOW_MIN_
 Their individual and combined sizes are shown, and `--delete-verified` also deletes these
 sources even when no compressed output exists. Override the configured floor with
 `--min-size-bytes`. Remove `--dry-run` to apply deletion. Outputs, sources at or above the
-floor without a verified match, unmapped sources, invalid tags, symlinks, and unrecognized
-non-video files are never deleted.
+floor without a verified match, unmapped sources, invalid tags, symlinks, and files outside
+`general.extensions` are never deleted.
 
 The detailed table shows only sources requiring attention by default, so verified legacy
 matches and below-minimum entries do not hide unresolved cases. Their counts remain in the
