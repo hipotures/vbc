@@ -680,6 +680,14 @@ with any matching `ttracker-<recording_id>.json` and `.err` found in the configu
 metadata input, success, or error directories. Destination collisions fail closed, and a
 partial move is rolled back.
 
+For a multipart failure, the cleaner can isolate a part that independently fails bounded
+probing with `End of file`, invalid input data, or a missing `moov` atom. If the sum of
+valid video parts and the complete sizes of those corrupt parts is still below
+`general.min_size_bytes`, only the corrupt parts are quarantined. Confirmed audio-only
+parts are excluded from that upper bound, and the remaining sources are deletion-eligible
+as ignored no-video or below-minimum data. An unresolved probe failure, or an upper bound
+at or above the configured floor, keeps the complete group as `OUTPUT_MISSING`.
+
 Unknown failures remain in the source archive as `OUTPUT_MISSING`. This is intentional:
 for example, FFmpeg exit code `234` is not assigned a meaning merely from the numeric code.
 After a non-dry-run cleanup, remaining source files therefore identify recordings whose

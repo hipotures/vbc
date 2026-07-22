@@ -551,6 +551,94 @@ def test_completed_group_uses_only_video_parts_for_size_floor(tmp_path, monkeypa
     assert result.would_delete == 2
 
 
+def test_small_failed_group_quarantines_only_corrupt_part(tmp_path, monkeypatch):
+    source_root, compressed_root, source_user, _ = _paths(tmp_path)
+    error_root = tmp_path / "metadata_err"
+    error_root.mkdir()
+    video = source_user / "recording_part001.mp4"
+    audio = source_user / "recording_part002.mp4"
+    corrupt = source_user / "recording_part003.mp4"
+    video.write_bytes(b"123456")
+    audio.write_bytes(b"audio only payload")
+    corrupt.write_bytes(b"xx")
+    manifest = error_root / "ttracker-recording.json"
+    marker = error_root / "ttracker-recording.err"
+    manifest.write_text("{}")
+    marker.write_text(f"ffprobe failed for {corrupt}: End of file")
+
+    def probe(self, path, scan_packet_timeline):
+        if path == video:
+            return {"has_video_stream": True, "video_packets": 1}
+        if path == audio:
+            return {"has_video_stream": False, "video_packets": 0}
+        raise RuntimeError(f"{path}: End of file")
+
+    monkeypatch.setattr(cleanup.FFprobeAdapter, "get_part_info", probe)
+    result = cleanup.analyze_source_archive(
+        source_root,
+        compressed_root,
+        min_size_bytes=100,
+        metadata_search_dirs=(error_root,),
+        quarantine_root=error_root,
+    )
+
+    statuses = {
+        decision.part_number: decision.status for decision in result.decisions
+    }
+    assert statuses == {
+        1: "BELOW_MIN_SIZE",
+        2: "IGNORED_NO_VIDEO",
+        3: "CORRUPT_INPUT",
+    }
+    cleanup.delete_verified_sources(result, dry_run=False)
+
+    destination = error_root / "user"
+    assert result.deleted == 2
+    assert result.quarantined == 1
+    assert not video.exists()
+    assert not audio.exists()
+    assert not corrupt.exists()
+    assert (destination / corrupt.name).read_bytes() == b"xx"
+    assert (destination / manifest.name).is_file()
+    assert (destination / marker.name).is_file()
+
+
+def test_failed_group_above_potential_video_floor_remains_unresolved(
+    tmp_path, monkeypatch
+):
+    source_root, compressed_root, source_user, _ = _paths(tmp_path)
+    error_root = tmp_path / "metadata_err"
+    error_root.mkdir()
+    video = source_user / "recording_part001.mp4"
+    audio = source_user / "recording_part002.mp4"
+    corrupt = source_user / "recording_part003.mp4"
+    video.write_bytes(b"12345678")
+    audio.write_bytes(b"audio only payload")
+    corrupt.write_bytes(b"xxxx")
+    (error_root / "ttracker-recording.err").write_text(
+        f"ffprobe failed for {corrupt}: End of file"
+    )
+
+    def probe(self, path, scan_packet_timeline):
+        if path == video:
+            return {"has_video_stream": True, "video_packets": 1}
+        if path == audio:
+            return {"has_video_stream": False, "video_packets": 0}
+        raise RuntimeError(f"{path}: End of file")
+
+    monkeypatch.setattr(cleanup.FFprobeAdapter, "get_part_info", probe)
+    result = cleanup.analyze_source_archive(
+        source_root,
+        compressed_root,
+        min_size_bytes=10,
+        metadata_search_dirs=(error_root,),
+        quarantine_root=error_root,
+    )
+
+    assert {decision.status for decision in result.decisions} == {"OUTPUT_MISSING"}
+    assert not any(decision.deletion_eligible for decision in result.decisions)
+
+
 def test_moov_failure_quarantines_source_and_metadata(tmp_path, monkeypatch):
     source_root, compressed_root, source_user, _ = _paths(tmp_path)
     metadata_root = tmp_path / "metadata"

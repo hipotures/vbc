@@ -397,35 +397,39 @@ def _parse_source_parts(value: object) -> set[int] | None:
 def _probe_missing_group(
     group: SourceGroup,
     ffprobe_adapter: FFprobeAdapter,
-) -> tuple[str, int]:
-    has_usable_video = False
-    has_probe_failure = False
-    has_moov_failure = False
+) -> tuple[dict[Path, str], int, int]:
+    outcomes: dict[Path, str] = {}
     usable_video_size_bytes = 0
+    potential_video_size_bytes = 0
     for _, source_path in group.sources:
+        source_size = source_path.stat().st_size
         try:
             part_info = ffprobe_adapter.get_part_info(
                 source_path,
                 scan_packet_timeline=False,
             )
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
-            if "moov atom not found" in str(exc).lower():
-                has_moov_failure = True
+            error_text = str(exc).lower()
+            if "moov atom not found" in error_text:
+                outcomes[source_path] = "corrupt_moov"
+            elif (
+                "end of file" in error_text
+                or "invalid data found when processing input" in error_text
+            ):
+                outcomes[source_path] = "corrupt_input"
             else:
-                has_probe_failure = True
+                outcomes[source_path] = "probe_failed"
+            potential_video_size_bytes += source_size
             continue
         if bool(part_info.get("has_video_stream")) and int(
             part_info.get("video_packets") or 0
         ) > 0:
-            has_usable_video = True
-            usable_video_size_bytes += source_path.stat().st_size
-    if has_moov_failure:
-        return "corrupt_moov", usable_video_size_bytes
-    if has_probe_failure:
-        return "probe_failed", usable_video_size_bytes
-    if has_usable_video:
-        return "has_video", usable_video_size_bytes
-    return "no_video", 0
+            outcomes[source_path] = "video"
+            usable_video_size_bytes += source_size
+            potential_video_size_bytes += source_size
+        else:
+            outcomes[source_path] = "no_video"
+    return outcomes, usable_video_size_bytes, potential_video_size_bytes
 
 
 def _probe_source_has_usable_video(
@@ -549,7 +553,18 @@ def analyze_source_archive(
         base_output = compressed_root / group.relative_dir / group.output_name
         group_key = (group.relative_dir, group.output_name)
         group_size = group_sizes[group_key]
+        related_metadata: tuple[Path, ...] = ()
         if min_size_bytes is not None and group_size < min_size_bytes:
+            related_metadata = _related_metadata_paths(
+                base_output.stem,
+                metadata_search_dirs,
+            )
+        has_error_marker = any(path.suffix == ".err" for path in related_metadata)
+        if (
+            min_size_bytes is not None
+            and group_size < min_size_bytes
+            and not has_error_marker
+        ):
             for part_number, source_path in group.sources:
                 result.decisions.append(
                     SourceDecision(
@@ -565,32 +580,92 @@ def analyze_source_archive(
 
         family = families[group_key]
         if not family:
-            related_metadata = _related_metadata_paths(
-                base_output.stem,
-                metadata_search_dirs,
-            )
+            if not related_metadata:
+                related_metadata = _related_metadata_paths(
+                    base_output.stem,
+                    metadata_search_dirs,
+                )
             marker_status = _quarantine_status_from_markers(related_metadata)
+            (
+                probe_outcomes,
+                usable_video_size_bytes,
+                potential_video_size_bytes,
+            ) = _probe_missing_group(group, ffprobe_adapter)
+            corrupt_outcomes = {"corrupt_input", "corrupt_moov"}
+            corrupt_sources = {
+                path
+                for path, outcome in probe_outcomes.items()
+                if outcome in corrupt_outcomes
+            }
+            can_isolate_small_corruption = (
+                min_size_bytes is not None
+                and quarantine_root is not None
+                and bool(corrupt_sources)
+                and "probe_failed" not in probe_outcomes.values()
+                and potential_video_size_bytes < min_size_bytes
+            )
+            if can_isolate_small_corruption:
+                metadata_attached = False
+                for part_number, source_path in group.sources:
+                    outcome = probe_outcomes[source_path]
+                    quarantine_path = None
+                    decision_metadata: tuple[Path, ...] = ()
+                    if outcome == "corrupt_moov":
+                        status = "CORRUPT_MOOV"
+                        detail = "ffprobe failed: moov atom not found"
+                    elif outcome == "corrupt_input":
+                        status = "CORRUPT_INPUT"
+                        detail = "ffprobe confirmed a truncated or invalid input"
+                    elif outcome == "no_video":
+                        status = "IGNORED_NO_VIDEO"
+                        detail = "part has no usable video packets"
+                    else:
+                        status = "BELOW_MIN_SIZE"
+                        detail = (
+                            "remaining potential-video size "
+                            f"{potential_video_size_bytes} B is below "
+                            f"{min_size_bytes} B"
+                        )
+                    if source_path in corrupt_sources:
+                        quarantine_path = (
+                            quarantine_root / group.relative_dir / source_path.name
+                        )
+                        if not metadata_attached:
+                            decision_metadata = related_metadata
+                            metadata_attached = True
+                    result.decisions.append(
+                        SourceDecision(
+                            source_path,
+                            base_output,
+                            part_number,
+                            status,
+                            detail,
+                            size_bytes=source_path.stat().st_size,
+                            quarantine_path=quarantine_path,
+                            related_metadata_paths=decision_metadata,
+                        )
+                    )
+                continue
+
+            outcome_values = set(probe_outcomes.values())
             if marker_status is not None:
                 status, detail = marker_status
+            elif "corrupt_moov" in outcome_values:
+                status = "CORRUPT_MOOV"
+                detail = "ffprobe failed: moov atom not found"
             else:
-                probe_result, usable_video_size_bytes = _probe_missing_group(
-                    group,
-                    ffprobe_adapter,
-                )
-                if probe_result == "corrupt_moov":
-                    status = "CORRUPT_MOOV"
-                    detail = "ffprobe failed: moov atom not found"
-                elif (
+                if (
                     completed_recording_ids is not None
                     and base_output.stem in completed_recording_ids
-                    and probe_result == "no_video"
+                    and outcome_values == {"no_video"}
                 ):
                     status = "DONE_NO_VIDEO"
                     detail = "completed manifest; group has no usable video packets"
                 elif (
                     completed_recording_ids is not None
                     and base_output.stem in completed_recording_ids
-                    and probe_result == "has_video"
+                    and outcome_values <= {"video", "no_video"}
+                    and "video" in outcome_values
                     and min_size_bytes is not None
                     and usable_video_size_bytes < min_size_bytes
                 ):
