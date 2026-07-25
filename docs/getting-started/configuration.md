@@ -442,7 +442,7 @@ has settled is retried after a one-second stability check before it can be route
 `_err`. A path that disappears before incremental discovery reaches it is treated as an
 already-routed task and is ignored without creating or overwriting an error marker.
 
-- success: `/metadata_out/request.json`
+- success: `/metadata_out/YYYYMMDD/request.json`
 - any probe, compression, verification, or cleanup error for a valid manifest whose
   inputs are under `/recordings/<username>/`:
   `/recordings_err/<username>/request.json`,
@@ -463,6 +463,12 @@ rebuilds its timestamps when `frames / fps` is within the limit; otherwise prefl
 fails. An aggregate duration above the limit also fails. The failure is shown in the
 activity feed and routes the JSON to `_err`. `copy_metadata` remains a video-to-video
 setting and uses the first effective video part from each generated orientation group.
+
+The success date directory comes from the timestamp suffix in
+`producer.recording_id` (`..._YYYYMMDD_HHMMSS`). If that identifier has no valid date,
+VBC uses the manifest's required `created_at` value. The compressed output filename does
+not need to contain a date. Existing flat success manifests remain supported by cleanup
+tools.
 
 Every generated output must pass frame, ffprobe, and VBC-tag verification before the JSON
 moves to `_out` or a delete/move source policy runs. Ctrl+C leaves the manifest and

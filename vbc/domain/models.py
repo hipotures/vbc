@@ -7,8 +7,27 @@ represent the problem domain, independent of infrastructure and UI.
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+import re
 from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_RECORDING_TIMESTAMP_SUFFIX = re.compile(r"_(\d{8})_\d{6}$")
+
+
+def recording_date_partition(
+    recording_id: str,
+    fallback: datetime | None = None,
+) -> str | None:
+    match = _RECORDING_TIMESTAMP_SUFFIX.search(recording_id)
+    if match is not None:
+        value = match.group(1)
+        try:
+            datetime.strptime(value, "%Y%m%d")
+        except ValueError:
+            pass
+        else:
+            return value
+    return fallback.strftime("%Y%m%d") if fallback is not None else None
 
 
 class JobStatus(str, Enum):
@@ -141,6 +160,16 @@ class CompressionManifest(BaseModel):
         if output_path in input_paths:
             raise ValueError("manifest output_path cannot also be an input")
         return self
+
+    @property
+    def date_partition(self) -> str:
+        value = recording_date_partition(
+            self.producer.recording_id,
+            self.created_at,
+        )
+        if value is None:
+            raise ValueError("manifest has no date partition")
+        return value
 
 
 class MultipartPart(BaseModel):

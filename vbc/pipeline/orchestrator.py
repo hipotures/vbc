@@ -1665,8 +1665,9 @@ class Orchestrator:
         )
 
     def _route_manifest_success(self, request: MetadataRequest) -> Path:
-        request.success_dir.mkdir(parents=True, exist_ok=True)
-        destination = request.success_dir / request.manifest_path.name
+        destination_dir = request.success_dir / request.manifest.date_partition
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / request.manifest_path.name
         request.manifest_path.replace(destination)
         self.logger.info("MANIFEST_DONE: %s -> %s", request.manifest_path, destination)
         return destination

@@ -27,7 +27,7 @@ from rich.text import Text
 
 from vbc.config.loader import load_config
 from vbc.config.models import AppConfig
-from vbc.domain.models import CompressionManifest
+from vbc.domain.models import CompressionManifest, recording_date_partition
 from vbc.infrastructure.ffprobe import FFprobeAdapter
 
 _PART_SUFFIX = re.compile(r"^(?P<base>.+)_part(?P<number>\d+)$", re.I)
@@ -61,7 +61,7 @@ def _infer_compressed_root(config: AppConfig) -> Path:
     for metadata_dir in _metadata_search_dirs(config):
         if not metadata_dir.is_dir():
             continue
-        for path in metadata_dir.glob("*.json"):
+        for path in metadata_dir.rglob("*.json"):
             try:
                 if path.is_file() and not path.is_symlink():
                     manifest_paths.append((path.stat().st_mtime_ns, path))
@@ -170,7 +170,7 @@ def _completed_recording_ids(config: AppConfig) -> set[str]:
     for directory in _metadata_success_dirs(config):
         if not directory.is_dir():
             continue
-        for manifest_path in directory.glob("ttracker-*.json"):
+        for manifest_path in directory.rglob("ttracker-*.json"):
             if manifest_path.is_file() and not manifest_path.is_symlink():
                 recording_ids.add(manifest_path.stem.removeprefix("ttracker-"))
     return recording_ids
@@ -443,10 +443,22 @@ def _related_metadata_paths(
 ) -> tuple[Path, ...]:
     paths: list[Path] = []
     for directory in metadata_search_dirs:
+        search_dirs = [directory]
+        date_partition = recording_date_partition(recording_id)
+        if date_partition is not None:
+            search_dirs.append(directory / date_partition)
         for suffix in (".json", ".err"):
-            candidate = directory / f"ttracker-{recording_id}{suffix}"
-            if candidate.is_file() and not candidate.is_symlink():
-                paths.append(candidate)
+            name = f"ttracker-{recording_id}{suffix}"
+            for search_dir in search_dirs:
+                candidate = search_dir / name
+                if candidate.is_file() and not candidate.is_symlink():
+                    paths.append(candidate)
+            if date_partition is None and directory.is_dir():
+                paths.extend(
+                    candidate
+                    for candidate in directory.rglob(name)
+                    if candidate.is_file() and not candidate.is_symlink()
+                )
     return tuple(dict.fromkeys(paths))
 
 

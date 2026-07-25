@@ -127,6 +127,19 @@ def test_manifest_schema_is_strict_and_requires_unique_absolute_inputs(tmp_path)
     assert CompressionManifest.model_validate(payload).source_policy == "move_all"
 
 
+def test_manifest_date_partition_does_not_require_date_in_output_name(tmp_path):
+    part = tmp_path / "part001.mp4"
+    payload = _manifest([part], tmp_path / "compressed-without-date.mp4")
+
+    manifest = CompressionManifest.model_validate(payload)
+    assert manifest.date_partition == "20260718"
+
+    payload["producer"]["recording_id"] = "recording-without-date"
+    payload["created_at"] = "2026-07-20T01:10:00+02:00"
+    manifest = CompressionManifest.model_validate(payload)
+    assert manifest.date_partition == "20260720"
+
+
 def test_fresh_partial_manifest_waits_until_copy_is_stable(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "vbc.pipeline.orchestrator._MANIFEST_SETTLE_SECONDS",
@@ -610,7 +623,7 @@ def test_metadata_preflight_completes_manifest_when_every_part_has_no_video(
 
     assert orchestrator._get_metadata(files[0]) is None
     assert not manifest_path.exists()
-    assert (output_dir / "request.json").exists()
+    assert (output_dir / "20260718" / "request.json").exists()
     assert empty.exists()
     assert not error_dir.exists()
 
@@ -637,7 +650,7 @@ def test_metadata_min_size_completes_manifest_without_deleting_sources(tmp_path)
     assert files == []
     assert stats["ignored_small"] == 1
     assert not manifest_path.exists()
-    assert (output_dir / "request.json").exists()
+    assert (output_dir / "20260718" / "request.json").exists()
     assert part1.exists()
     assert part2.exists()
     assert not error_dir.exists()
@@ -682,7 +695,7 @@ def test_metadata_effective_min_size_completes_after_ignoring_audio_only(tmp_pat
     assert stats["ignored_small"] == 0
     assert orchestrator._get_metadata(files[0]) is None
     assert not manifest_path.exists()
-    assert (output_dir / "request.json").exists()
+    assert (output_dir / "20260718" / "request.json").exists()
     assert video.exists()
     assert audio.exists()
     assert not (tmp_path / "recording.mp4").exists()
@@ -710,7 +723,7 @@ def test_tagged_output_completes_delete_policy_before_missing_input_check(tmp_pa
     assert stats["already_compressed"] == 1
     assert not source.exists()
     assert not manifest_path.exists()
-    assert (output_dir / "request.json").exists()
+    assert (output_dir / "20260718" / "request.json").exists()
     ffprobe.get_part_info.assert_not_called()
 
 
@@ -1300,7 +1313,7 @@ def test_metadata_process_routes_success_and_deletes_all_original_inputs(tmp_pat
     assert not part.exists()
     assert not ignored.exists()
     assert not manifest_path.exists()
-    assert (output_dir / "request.json").exists()
+    assert (output_dir / "20260718" / "request.json").exists()
 
 
 @pytest.mark.parametrize("source_policy", ["move_after_success", "move_all"])
@@ -1684,7 +1697,7 @@ def test_metadata_process_writes_consecutive_orientation_groups(tmp_path):
     ] == ["1,2", "3,4", "5"]
     assert orchestrator.ffmpeg_adapter.compress.call_args.args[0].output_count == 3
     assert not manifest_path.exists()
-    completed_manifest = output_dir / "request.json"
+    completed_manifest = output_dir / "20260718" / "request.json"
     assert completed_manifest.exists()
 
     completed_manifest.replace(manifest_path)
@@ -1780,7 +1793,7 @@ def test_metadata_process_resumes_missing_orientation_group(tmp_path):
     assert (tmp_path / "recording_1.mp4").read_bytes() == b"completed landscape"
     orchestrator._write_vbc_tags.assert_called_once()
     assert not manifest_path.exists()
-    assert (output_dir / "request.json").exists()
+    assert (output_dir / "20260718" / "request.json").exists()
 
 
 def test_metadata_process_backs_up_untagged_output_before_compression(tmp_path):
@@ -1840,7 +1853,7 @@ def test_metadata_process_backs_up_untagged_output_before_compression(tmp_path):
 
     assert output.read_bytes() == b"new"
     assert (tmp_path / "recording_1.mp4").read_bytes() == b"old"
-    assert (output_dir / "request.json").exists()
+    assert (output_dir / "20260718" / "request.json").exists()
 
 
 def test_metadata_process_hydrates_proxy_added_during_refresh(tmp_path):
@@ -1875,7 +1888,7 @@ def test_metadata_process_hydrates_proxy_added_during_refresh(tmp_path):
     orchestrator.ffmpeg_adapter.compress.assert_called_once()
     assert output.exists()
     assert not manifest_path.exists()
-    assert (output_dir / "request.json").exists()
+    assert (output_dir / "20260718" / "request.json").exists()
 
 
 def test_metadata_process_interruption_leaves_manifest_and_sources(tmp_path):

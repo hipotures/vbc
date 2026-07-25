@@ -359,6 +359,9 @@ def repair_candidate(
     try:
         config = load_config(config_path)
         context = resolve_repair_context(config, candidate.manifest_path)
+        manifest = CompressionManifest.model_validate_json(
+            candidate.manifest_path.read_text()
+        )
         restore_plan = restore_failed_manifest(
             candidate.manifest_path,
             config_path,
@@ -402,7 +405,11 @@ def repair_candidate(
                     drop_audio=candidate.handler.drop_audio,
                 )
 
-        success_manifest = context.success_dir / candidate.manifest_path.name
+        success_manifest = (
+            context.success_dir
+            / manifest.date_partition
+            / candidate.manifest_path.name
+        )
         if not success_manifest.is_file():
             raise RepairError("VBC did not route the manifest to the success directory")
         if not candidate.error_path.is_file():

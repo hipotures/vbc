@@ -366,11 +366,13 @@ def test_omitted_paths_and_size_are_resolved_from_config_and_manifests(
     compressed_root.mkdir()
     metadata_root.mkdir()
     metadata_out.mkdir()
+    completed_day = metadata_out / "20260726"
+    completed_day.mkdir()
     manifest = {
         "producer": {"username": "user"},
         "output_path": str(compressed_root / "user" / "recording.mp4"),
     }
-    (metadata_out / "ttracker-recording.json").write_text(json.dumps(manifest))
+    (completed_day / "ttracker-recording.json").write_text(json.dumps(manifest))
     config = SimpleNamespace(
         input_dirs=[
             SimpleNamespace(enabled=True, metadata=True, path=str(metadata_root))
@@ -792,6 +794,19 @@ def test_source_archive_quarantine_uses_manifest_source_error_directory(tmp_path
         (manifest_path,),
         "_err",
     ) == tmp_path / "recordings_err" / "user" / archived_source.name
+
+
+def test_related_metadata_paths_finds_dated_success_manifest(tmp_path):
+    success_dir = tmp_path / "metadata_out"
+    dated_dir = success_dir / "20260726"
+    dated_dir.mkdir(parents=True)
+    manifest = dated_dir / "ttracker-user_20260726_120000.json"
+    manifest.write_text("{}")
+
+    assert cleanup._related_metadata_paths(
+        "user_20260726_120000",
+        (success_dir,),
+    ) == (manifest,)
 
 
 def test_source_archive_quarantine_requires_valid_manifest(tmp_path):
