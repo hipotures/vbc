@@ -30,6 +30,20 @@ def test_dashboard_context_manager():
     assert hasattr(dashboard, '__exit__')
 
 
+def test_dashboard_shutdown_status_overrides_waiting():
+    state = UIState()
+    state.waiting_for_input = True
+    state.shutdown_requested = True
+    dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)
+    console = Console(record=True, width=100)
+
+    console.print(dashboard._generate_top_bar())
+    rendered = console.export_text()
+
+    assert "SHUTTING DOWN" in rendered
+    assert "WAITING" not in rendered
+
+
 def test_dashboard_format_helpers():
     state = UIState()
     dashboard = Dashboard(state, panel_height_scale=0.7, max_active_jobs=8)

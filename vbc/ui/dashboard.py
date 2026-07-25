@@ -737,6 +737,9 @@ class Dashboard:
             elif self.state.repair_active:
                 status = "[magenta]REPAIR[/]"
                 indicator = "[magenta]◐[/]"
+            elif self.state.shutdown_requested:
+                status = "[yellow]SHUTTING DOWN[/]"
+                indicator = "[yellow]◐[/]"
             elif self.state.waiting_for_input:
                 status = "[yellow]WAITING[/]"
                 indicator = "[yellow]⏸[/]"
@@ -745,9 +748,6 @@ class Dashboard:
             elif self.state.interrupt_requested:
                 status = "[bright_red]INTERRUPTED[/]"
                 indicator = "[red]![/]"
-            elif self.state.shutdown_requested:
-                status = "[yellow]SHUTTING DOWN[/]"
-                indicator = "[yellow]◐[/]"
             else:
                 status = "[bright_cyan]ACTIVE[/]"
             

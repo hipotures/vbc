@@ -319,14 +319,14 @@ def _vm_header(s: dict) -> dict:
         badge_cls, label = "badge-interrupt", "ERROR"
     elif s["is_repairing"]:
         badge_cls, label = "badge-active", "REPAIR"
+    elif s["is_shutdown"]:
+        badge_cls, label = "badge-shutdown", "SHUTTING DOWN"
     elif s["is_waiting"]:
         badge_cls, label = "badge-waiting", "WAITING"
     elif s["is_finished"]:
         badge_cls, label = "badge-done", "FINISHED"
     elif s["is_interrupted"]:
         badge_cls, label = "badge-interrupt", "INTERRUPTED"
-    elif s["is_shutdown"]:
-        badge_cls, label = "badge-shutdown", "SHUTTING DOWN"
     else:
         badge_cls, label = "badge-active", "ACTIVE"
 

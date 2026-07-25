@@ -26,6 +26,34 @@ def _queued_file(name: str) -> SimpleNamespace:
     return SimpleNamespace(path=Path(name), size_bytes=500_000, metadata=metadata)
 
 
+def test_vm_header_shutdown_status_overrides_waiting():
+    stats = {
+        "is_error_paused": False,
+        "is_repairing": False,
+        "is_shutdown": True,
+        "is_waiting": True,
+        "is_finished": False,
+        "is_interrupted": False,
+        "active_count": 0,
+        "target_threads": 0,
+        "throughput_bps": 0,
+        "eta_seconds": None,
+        "space_saved": 0,
+        "ratio": 1.0,
+        "failed": 0,
+        "skipped_count": 0,
+        "hw_cap_count": 0,
+        "cam_skipped_count": 0,
+        "kept_count": 0,
+        "ignored_small_count": 0,
+    }
+
+    vm = web_server._vm_header(stats)
+
+    assert vm["label"] == "SHUTTING DOWN"
+    assert vm["badge_cls"] == "badge-shutdown"
+
+
 def test_vm_activity_respects_dynamic_max_items():
     stats = {"recent_jobs": [_recent_job(f"video-{idx}.mp4") for idx in range(6)]}
 
