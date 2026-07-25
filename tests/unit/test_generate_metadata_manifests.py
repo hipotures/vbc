@@ -90,7 +90,7 @@ def test_multipart_group_with_gap_is_not_generated(tmp_path):
     assert list(metadata.glob("*.json")) == []
 
 
-def test_existing_manifest_is_never_overwritten(tmp_path):
+def test_different_existing_manifest_is_never_overwritten(tmp_path):
     recordings = tmp_path / "recordings"
     user_dir = recordings / "user"
     user_dir.mkdir(parents=True)
@@ -110,8 +110,48 @@ def test_existing_manifest_is_never_overwritten(tmp_path):
     )
 
     assert result.generated == 0
-    assert result.existing_manifests == 1
+    assert result.existing_manifests == 0
+    assert result.conflicting_manifests == 1
+    assert any("differs and was not overwritten" in issue for issue in result.issues)
     assert manifest.read_text() == "existing"
+
+
+def test_identical_existing_manifest_is_skipped_on_repeat_scan(tmp_path):
+    recordings = tmp_path / "recordings"
+    user_dir = recordings / "user"
+    user_dir.mkdir(parents=True)
+    source = user_dir / "user_20260701_120000.mp4"
+    source.write_bytes(b"legacy")
+    metadata = tmp_path / "metadata"
+    compressed = tmp_path / "compressed"
+
+    first = generate_manifests(
+        recordings,
+        metadata,
+        compressed,
+        modified_before=SAFE_CUTOFF,
+        vbc_encoded_sources=set(),
+    )
+    manifest = metadata / "ttracker-user_20260701_120000.json"
+    payload = json.loads(manifest.read_text())
+    payload["created_at"] = "2000-01-01T00:00:00+00:00"
+    manifest.write_text(json.dumps(payload, indent=2) + "\n")
+    snapshot = manifest.read_text()
+
+    second = generate_manifests(
+        recordings,
+        metadata,
+        compressed,
+        modified_before=SAFE_CUTOFF,
+        vbc_encoded_sources=set(),
+    )
+
+    assert first.generated == 1
+    assert second.generated == 0
+    assert second.existing_manifests == 1
+    assert second.conflicting_manifests == 0
+    assert second.issues == []
+    assert manifest.read_text() == snapshot
 
 
 def test_dry_run_does_not_create_metadata_directory(tmp_path):
@@ -208,9 +248,8 @@ def test_vbc_tag_scan_uses_exiftool_without_writing_sources(tmp_path, monkeypatc
     source_snapshot = encoded.read_bytes()
 
     def fake_run(command, **kwargs):
-        assert command[:2] == ["exiftool", "-r"]
-        assert "-if" not in command
-        assert "-VBCEncoder" in command
+        assert command[:4] == ["exiftool", "-fast2", "-json", "-VBCEncoder"]
+        assert command[4:] == [str(encoded), str(untagged)]
         return generator.subprocess.CompletedProcess(
             command,
             0,
@@ -225,16 +264,59 @@ def test_vbc_tag_scan_uses_exiftool_without_writing_sources(tmp_path, monkeypatc
         )
 
     monkeypatch.setattr(generator.subprocess, "run", fake_run)
+    progress_updates = []
 
-    assert generator.find_vbc_encoded_sources(recordings.resolve()) == {
-        encoded.resolve()
-    }
+    assert generator.find_vbc_encoded_sources(
+        recordings.resolve(),
+        progress_callback=lambda completed, total: progress_updates.append(
+            (completed, total)
+        ),
+    ) == {encoded.resolve()}
+    assert progress_updates == [(0, 2), (2, 2)]
     assert encoded.read_bytes() == source_snapshot
+
+
+def test_vbc_tag_scan_keeps_file_format_errors_for_discovery(
+    tmp_path,
+    monkeypatch,
+):
+    recordings = tmp_path / "recordings"
+    recordings.mkdir()
+    encoded = recordings / "encoded.mp4"
+    corrupt = recordings / "corrupt.mp4"
+    encoded.write_bytes(b"encoded")
+    corrupt.write_bytes(b"corrupt")
+
+    monkeypatch.setattr(
+        generator.subprocess,
+        "run",
+        lambda command, **kwargs: generator.subprocess.CompletedProcess(
+            command,
+            2,
+            stdout=json.dumps(
+                [{"SourceFile": str(encoded), "VBCEncoder": "NVENC AV1"}]
+            ),
+            stderr=(
+                f"Error: File format error - {corrupt}\n"
+                "    1 image files read\n"
+            ),
+        ),
+    )
+    issues = []
+
+    assert generator.find_vbc_encoded_sources(
+        recordings.resolve(),
+        issue_callback=issues.append,
+    ) == {encoded.resolve()}
+    assert len(issues) == 1
+    assert str(corrupt) in issues[0]
+    assert "kept for manifest discovery" in issues[0]
 
 
 def test_vbc_tag_scan_preserves_real_exiftool_errors(tmp_path, monkeypatch):
     recordings = tmp_path / "recordings"
     recordings.mkdir()
+    (recordings / "source.mp4").write_bytes(b"source")
 
     monkeypatch.setattr(
         generator.subprocess,

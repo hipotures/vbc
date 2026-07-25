@@ -505,13 +505,18 @@ sources or the manifest.
 `scripts/generate_metadata_manifests.py` scans a recordings tree without modifying it and
 writes strict manifests into a separate metadata directory. Files ending in
 `_partNNN.mp4` are grouped and numerically ordered; a plain MP4 without a matching part
-group becomes a single-input request. A read-only ExifTool tree scan first excludes prior
-outputs carrying the `VBCEncoder` tag. If an untagged plain file is followed by
+group becomes a single-input request. A read-only ExifTool tag scan first excludes prior
+outputs carrying the `VBCEncoder` tag. The scan runs in bounded batches and displays
+progress. A file that ExifTool reports as an unreadable format is warned about separately
+and remains eligible for normal manifest discovery; it does not abort the remaining scan.
+If an untagged plain file is followed by
 `_part002.mp4`, it is treated as the legacy first part. Otherwise a complete part group
 wins over a same-name untagged plain file, which is reported as shadowed. Groups with
 unresolved missing part numbers, symlinks, VBC staging artifacts, zero total size,
-duplicate manifest names, and existing manifest files are never overwritten or silently
-accepted.
+and duplicate manifest names are never generated. On a repeated scan, an existing
+manifest with the same logical content is counted and skipped. Its `created_at` timestamp
+is ignored for this comparison. An existing same-name manifest with any other difference
+is reported as a conflict and is never overwritten.
 
 ```bash
 uv run python scripts/generate_metadata_manifests.py \

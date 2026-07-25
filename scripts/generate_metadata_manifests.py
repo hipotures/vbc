@@ -10,11 +10,27 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
+
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 
 
 PART_RE = re.compile(r"^(?P<base>.+)_part(?P<index>\d+)\.mp4$", re.IGNORECASE)
 ROOT_RECORDING_RE = re.compile(r"^(?P<username>.+)_\d{8}_\d{6}$")
+EXIFTOOL_FILE_FORMAT_ERROR_RE = re.compile(r"^Error: File format error - (.+)$")
+EXIFTOOL_SUMMARY_RE = re.compile(
+    r"^\d+ (?:directories scanned|image files read|files failed condition)$"
+)
+TAG_SCAN_BATCH_SIZE = 200
+TagProgressCallback = Callable[[int, int], None]
+IssueCallback = Callable[[str], None]
 
 
 @dataclass(frozen=True)
@@ -34,6 +50,7 @@ class GenerationResult:
     discovered: int = 0
     generated: int = 0
     existing_manifests: int = 0
+    conflicting_manifests: int = 0
     existing_outputs: int = 0
     single_tasks: int = 0
     multipart_tasks: int = 0
@@ -71,17 +88,16 @@ def _parse_modified_before(value: str) -> datetime:
     return parsed
 
 
-def find_vbc_encoded_sources(recordings_dir: Path) -> set[Path]:
-    """Find prior VBC outputs by tag using one read-only ExifTool tree scan."""
+def _exiftool_batch_entries(
+    paths: Sequence[Path],
+    issue_callback: IssueCallback | None,
+) -> list[dict[str, object]]:
     command = [
         "exiftool",
-        "-r",
-        "-ext",
-        "mp4",
         "-fast2",
         "-json",
         "-VBCEncoder",
-        str(recordings_dir),
+        *(str(path) for path in paths),
     ]
     try:
         completed = subprocess.run(
@@ -94,24 +110,76 @@ def find_vbc_encoded_sources(recordings_dir: Path) -> set[Path]:
         raise RuntimeError(
             "ExifTool is required to distinguish VBC outputs from legacy sources"
         ) from exc
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or f"exit code {completed.returncode}"
+
+    format_errors: list[str] = []
+    unexpected_errors: list[str] = []
+    for line in completed.stderr.splitlines():
+        stripped = line.strip()
+        if not stripped or EXIFTOOL_SUMMARY_RE.fullmatch(stripped):
+            continue
+        match = EXIFTOOL_FILE_FORMAT_ERROR_RE.fullmatch(stripped)
+        if match is not None:
+            format_errors.append(match.group(1))
+        else:
+            unexpected_errors.append(stripped)
+
+    if completed.returncode != 0 and (
+        unexpected_errors or not format_errors
+    ):
+        detail = "\n".join(unexpected_errors) or (
+            completed.stderr.strip() or f"exit code {completed.returncode}"
+        )
         raise RuntimeError(f"read-only ExifTool tag scan failed: {detail}")
     try:
-        entries = json.loads(completed.stdout)
+        entries = json.loads(completed.stdout) if completed.stdout.strip() else []
     except json.JSONDecodeError as exc:
         raise RuntimeError("ExifTool returned invalid JSON during tag scan") from exc
+    if not isinstance(entries, list) or any(
+        not isinstance(entry, dict) for entry in entries
+    ):
+        raise RuntimeError("ExifTool returned invalid JSON during tag scan")
 
+    if issue_callback is not None:
+        for path in format_errors:
+            issue_callback(
+                "ExifTool could not read tags; source kept for manifest "
+                f"discovery: {path}"
+            )
+    return entries
+
+
+def find_vbc_encoded_sources(
+    recordings_dir: Path,
+    *,
+    progress_callback: TagProgressCallback | None = None,
+    issue_callback: IssueCallback | None = None,
+) -> set[Path]:
+    """Find prior VBC outputs with bounded read-only ExifTool batches."""
+    paths = tuple(
+        path
+        for path in sorted(recordings_dir.rglob("*"))
+        if path.is_file()
+        and not path.is_symlink()
+        and path.suffix.lower() == ".mp4"
+        and ".vbc-part" not in path.name.lower()
+    )
     tagged: set[Path] = set()
-    for entry in entries:
-        if entry.get("VBCEncoder") in (None, ""):
-            continue
-        source_value = entry.get("SourceFile")
-        if not source_value:
-            continue
-        source_path = Path(source_value).resolve(strict=False)
-        if _is_within(source_path, recordings_dir):
-            tagged.add(source_path)
+    if progress_callback is not None:
+        progress_callback(0, len(paths))
+    for start in range(0, len(paths), TAG_SCAN_BATCH_SIZE):
+        batch = paths[start : start + TAG_SCAN_BATCH_SIZE]
+        entries = _exiftool_batch_entries(batch, issue_callback)
+        for entry in entries:
+            if entry.get("VBCEncoder") in (None, ""):
+                continue
+            source_value = entry.get("SourceFile")
+            if not source_value:
+                continue
+            source_path = Path(str(source_value)).resolve(strict=False)
+            if _is_within(source_path, recordings_dir):
+                tagged.add(source_path)
+        if progress_callback is not None:
+            progress_callback(min(start + len(batch), len(paths)), len(paths))
     return tagged
 
 
@@ -251,6 +319,21 @@ def _manifest_payload(
     }
 
 
+def _same_manifest_task(
+    manifest_path: Path,
+    payload: dict[str, object],
+) -> bool:
+    try:
+        existing = json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(existing, dict):
+        return False
+    existing = {key: value for key, value in existing.items() if key != "created_at"}
+    planned = {key: value for key, value in payload.items() if key != "created_at"}
+    return existing == planned
+
+
 def generate_manifests(
     recordings_dir: Path,
     metadata_dir: Path,
@@ -260,6 +343,7 @@ def generate_manifests(
     source_policy: str = "keep",
     dry_run: bool = False,
     vbc_encoded_sources: set[Path] | None = None,
+    tag_progress_callback: TagProgressCallback | None = None,
 ) -> GenerationResult:
     recordings_dir = recordings_dir.resolve(strict=True)
     if not recordings_dir.is_dir():
@@ -275,8 +359,13 @@ def generate_manifests(
     if compressed_dir == recordings_dir or _is_within(compressed_dir, recordings_dir):
         raise ValueError("compressed directory cannot be inside the recordings tree")
 
+    tag_scan_issues: list[str] = []
     if vbc_encoded_sources is None:
-        vbc_encoded_sources = find_vbc_encoded_sources(recordings_dir)
+        vbc_encoded_sources = find_vbc_encoded_sources(
+            recordings_dir,
+            progress_callback=tag_progress_callback,
+            issue_callback=tag_scan_issues.append,
+        )
     else:
         vbc_encoded_sources = {
             path.resolve(strict=False) for path in vbc_encoded_sources
@@ -286,6 +375,7 @@ def generate_manifests(
         compressed_dir,
         vbc_encoded_sources,
     )
+    result.issues[:0] = tag_scan_issues
     created_at = datetime.now().astimezone().isoformat(timespec="seconds")
     cutoff_timestamp = modified_before.timestamp()
     manifest_names: set[str] = set()
@@ -301,8 +391,16 @@ def generate_manifests(
             continue
         manifest_names.add(manifest_name)
         manifest_path = metadata_dir / manifest_name
+        payload = _manifest_payload(task, source_policy, created_at)
         if manifest_path.exists():
-            result.existing_manifests += 1
+            if _same_manifest_task(manifest_path, payload):
+                result.existing_manifests += 1
+            else:
+                result.conflicting_manifests += 1
+                result.issues.append(
+                    "existing manifest differs and was not overwritten: "
+                    f"{manifest_path}"
+                )
             continue
         latest_mtime = max(path.stat().st_mtime for path in task.inputs)
         if latest_mtime >= cutoff_timestamp:
@@ -315,7 +413,6 @@ def generate_manifests(
         if sum(path.stat().st_size for path in task.inputs) <= 0:
             result.issues.append(f"zero-size task ignored: {task.output_path}")
             continue
-        payload = _manifest_payload(task, source_policy, created_at)
         if dry_run:
             result.generated += 1
             continue
@@ -324,7 +421,14 @@ def generate_manifests(
                 json.dump(payload, manifest_file, indent=2, ensure_ascii=False)
                 manifest_file.write("\n")
         except FileExistsError:
-            result.existing_manifests += 1
+            if _same_manifest_task(manifest_path, payload):
+                result.existing_manifests += 1
+            else:
+                result.conflicting_manifests += 1
+                result.issues.append(
+                    "existing manifest differs and was not overwritten: "
+                    f"{manifest_path}"
+                )
             continue
         result.generated += 1
 
@@ -371,18 +475,37 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     recordings_dir = args.recordings_dir.resolve(strict=True)
     compressed_dir = args.compressed_dir or recordings_dir.parent / "compressed"
-    result = generate_manifests(
-        recordings_dir,
-        args.metadata_dir,
-        compressed_dir,
-        modified_before=args.modified_before,
-        source_policy=args.source_policy,
-        dry_run=args.dry_run,
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[cyan]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(),
     )
+    with progress:
+        task_id = progress.add_task("Reading VBC tags", total=None)
+
+        def update_tag_progress(completed: int, total: int) -> None:
+            progress.update(
+                task_id,
+                completed=completed,
+                total=total,
+            )
+
+        result = generate_manifests(
+            recordings_dir,
+            args.metadata_dir,
+            compressed_dir,
+            modified_before=args.modified_before,
+            source_policy=args.source_policy,
+            dry_run=args.dry_run,
+            tag_progress_callback=update_tag_progress,
+        )
     print(
         "discovered={discovered} generated={generated} singles={singles} "
         "multipart={multipart} existing_outputs={outputs} "
-        "existing_manifests={manifests} shadowed_singles={shadowed} "
+        "existing_manifests={manifests} conflicting_manifests={conflicts} "
+        "shadowed_singles={shadowed} "
         "tagged_sources={tagged} recovered_legacy_first_parts={recovered} "
         "excluded_by_modified_before={excluded}".format(
             discovered=result.discovered,
@@ -391,6 +514,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             multipart=result.multipart_tasks,
             outputs=result.existing_outputs,
             manifests=result.existing_manifests,
+            conflicts=result.conflicting_manifests,
             shadowed=result.shadowed_singles,
             tagged=result.tagged_sources,
             recovered=result.recovered_legacy_first_parts,
