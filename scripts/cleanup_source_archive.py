@@ -27,6 +27,7 @@ from rich.text import Text
 
 from vbc.config.loader import load_config
 from vbc.config.models import AppConfig
+from vbc.domain.models import CompressionManifest
 from vbc.infrastructure.ffprobe import FFprobeAdapter
 
 _PART_SUFFIX = re.compile(r"^(?P<base>.+)_part(?P<number>\d+)$", re.I)
@@ -57,10 +58,7 @@ class SourceCleanupError(RuntimeError):
 
 def _infer_compressed_root(config: AppConfig) -> Path:
     manifest_paths: list[tuple[int, Path]] = []
-    for entry in config.input_dirs:
-        if not entry.enabled or not entry.metadata:
-            continue
-        metadata_dir = Path(entry.path)
+    for metadata_dir in _metadata_search_dirs(config):
         if not metadata_dir.is_dir():
             continue
         for path in metadata_dir.glob("*.json"):
@@ -86,7 +84,7 @@ def _infer_compressed_root(config: AppConfig) -> Path:
     if not roots:
         raise SourceCleanupError(
             "compressed directory is not configured directly and could not be "
-            "inferred from current metadata manifests"
+            "inferred from configured metadata manifests"
         )
     if len(roots) != 1:
         rendered = ", ".join(str(path) for path in sorted(roots))
@@ -152,11 +150,6 @@ def _metadata_error_dirs(config: AppConfig) -> tuple[Path, ...]:
                 input_path.with_name(f"{input_path.name}{config.suffix_errors_dirs}")
             )
     return tuple(directories)
-
-
-def _source_error_root(source_root: Path, suffix: str | None) -> Path:
-    error_suffix = suffix or "_err"
-    return source_root.with_name(f"{source_root.name}{error_suffix}")
 
 
 def _metadata_search_dirs(config: AppConfig) -> tuple[Path, ...]:
@@ -485,6 +478,47 @@ def _quarantine_status_from_markers(
     return None
 
 
+def _source_error_destination(
+    source_path: Path,
+    metadata_paths: Sequence[Path],
+    error_suffix: str | None,
+) -> Path | None:
+    destinations: set[Path] = set()
+    suffix = error_suffix or "_err"
+    for manifest_path in metadata_paths:
+        if manifest_path.suffix != ".json":
+            continue
+        try:
+            manifest = CompressionManifest.model_validate_json(
+                manifest_path.read_text()
+            )
+        except (OSError, ValueError):
+            continue
+
+        username = manifest.producer.username
+        if (
+            username in ("", ".", "..")
+            or Path(username).name != username
+            or source_path.parent.name != username
+        ):
+            continue
+        input_paths = [Path(value) for value in manifest.inputs]
+        if not any(path.name == source_path.name for path in input_paths):
+            continue
+        if any(path.parent.name != username for path in input_paths):
+            continue
+        source_roots = {path.parent.parent for path in input_paths}
+        if len(source_roots) != 1:
+            continue
+        source_root = next(iter(source_roots))
+        error_root = source_root.with_name(f"{source_root.name}{suffix}")
+        destinations.add(error_root / username / source_path.name)
+
+    if len(destinations) != 1:
+        return None
+    return destinations.pop()
+
+
 def analyze_source_archive(
     source_root: Path,
     compressed_root: Path,
@@ -494,7 +528,7 @@ def analyze_source_archive(
     min_size_bytes: int | None = None,
     completed_recording_ids: set[str] | None = None,
     metadata_search_dirs: Sequence[Path] = (),
-    quarantine_root: Path | None = None,
+    error_suffix: str | None = "_err",
     progress_callback: ProgressCallback | None = None,
 ) -> CleanupResult:
     """Classify archived source files without consulting VBC manifests."""
@@ -587,6 +621,14 @@ def analyze_source_archive(
                 usable_video_size_bytes,
                 potential_video_size_bytes,
             ) = _probe_missing_group(group, ffprobe_adapter)
+            quarantine_destinations = {
+                source_path: _source_error_destination(
+                    source_path,
+                    related_metadata,
+                    error_suffix,
+                )
+                for _, source_path in group.sources
+            }
             corrupt_outcomes = {"corrupt_input", "corrupt_moov"}
             corrupt_sources = {
                 path
@@ -595,8 +637,11 @@ def analyze_source_archive(
             }
             can_isolate_small_corruption = (
                 min_size_bytes is not None
-                and quarantine_root is not None
                 and bool(corrupt_sources)
+                and all(
+                    quarantine_destinations[path] is not None
+                    for path in corrupt_sources
+                )
                 and "probe_failed" not in probe_outcomes.values()
                 and potential_video_size_bytes < min_size_bytes
             )
@@ -623,9 +668,7 @@ def analyze_source_archive(
                             f"{min_size_bytes} B"
                         )
                     if source_path in corrupt_sources:
-                        quarantine_path = (
-                            quarantine_root / group.relative_dir / source_path.name
-                        )
+                        quarantine_path = quarantine_destinations[source_path]
                         if not metadata_attached:
                             decision_metadata = related_metadata
                             metadata_attached = True
@@ -675,10 +718,8 @@ def analyze_source_archive(
                     detail = "base output does not exist"
             for source_index, (part_number, source_path) in enumerate(group.sources):
                 quarantine_path = None
-                if status in _QUARANTINE_STATUSES and quarantine_root is not None:
-                    quarantine_path = (
-                        quarantine_root / group.relative_dir / source_path.name
-                    )
+                if status in _QUARANTINE_STATUSES:
+                    quarantine_path = quarantine_destinations[source_path]
                 result.decisions.append(
                     SourceDecision(
                         source_path,
@@ -1011,7 +1052,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "compressed_dir",
         type=Path,
         nargs="?",
-        help="defaults to the unambiguous output root in current manifests",
+        help="defaults to the unambiguous output root in configured manifests",
     )
     parser.add_argument(
         "--config",
@@ -1077,10 +1118,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.min_size_bytes,
             args.config,
         )
-        quarantine_root = _source_error_root(
-            source_archive,
-            config.suffix_errors_dirs,
-        )
         progress = Progress(
             SpinnerColumn(),
             TextColumn("[cyan]{task.description}"),
@@ -1108,7 +1145,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 min_size_bytes=min_size_bytes,
                 completed_recording_ids=_completed_recording_ids(config),
                 metadata_search_dirs=_metadata_search_dirs(config),
-                quarantine_root=quarantine_root,
+                error_suffix=config.suffix_errors_dirs,
                 progress_callback=update_progress,
             )
         if args.delete_verified:

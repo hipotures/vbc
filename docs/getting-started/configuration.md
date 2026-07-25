@@ -648,7 +648,8 @@ uv run python scripts/cleanup_source_archive.py \
   /path/to/compressed
 
 # The paths and size floor may be omitted. The source archive and min_size_bytes
-# come from conf/vbc.yaml; the compressed root is inferred from current manifests.
+# come from conf/vbc.yaml; the compressed root is inferred from active, completed,
+# or legacy error manifests in the configured metadata directories.
 uv run python scripts/cleanup_source_archive.py
 
 # Preview safe deletion
@@ -688,11 +689,13 @@ Known terminal failures are quarantined instead of deleted during `--delete-veri
 `moov atom not found` (`CORRUPT_MOOV`), FFmpeg exit `-6`/SIGABRT, FFmpeg exit
 `-11`/SIGSEGV, unsupported hardware capabilities, invalid video dimensions, and invalid
 input data. Classification prefers the matching `.err` marker; the missing-moov case can
-also be recognized directly by the bounded source probe. The cleaner uses the source
-archive's sibling `_err` directory, preserves the user directory, and moves the source
-files together with any matching `ttracker-<recording_id>.json` and `.err` found in the
-configured metadata input, success, or error directories. Destination collisions fail
-closed, and a partial move is rolled back.
+also be recognized directly by the bounded source probe. The cleaner reads the matching
+manifest and derives `<original source root>_err/<producer.username>` from its input
+paths. It moves the archived source together with any matching
+`ttracker-<recording_id>.json` and `.err` found in the configured metadata input,
+success, or error directories. A missing, invalid, or inconsistent manifest disables
+quarantine for that source. Destination collisions fail closed, and a partial move is
+rolled back.
 
 For a multipart failure, the cleaner can isolate a part that independently fails bounded
 probing with `End of file`, invalid input data, or a missing `moov` atom. If the sum of

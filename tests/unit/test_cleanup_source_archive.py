@@ -1,6 +1,5 @@
 import json
 from io import StringIO
-from pathlib import Path
 from types import SimpleNamespace
 
 from rich.console import Console
@@ -16,6 +15,27 @@ def _paths(tmp_path):
     source_user.mkdir(parents=True)
     output_user.mkdir(parents=True)
     return source_root, compressed_root, source_user, output_user
+
+
+def _manifest(input_paths, output_path):
+    return {
+        "schema_version": 1,
+        "request_id": "request-1",
+        "created_at": "2026-07-26T12:00:00Z",
+        "producer": {
+            "app": "ttracker",
+            "username": "user",
+            "recording_id": output_path.stem,
+            "source_size_bytes": 1,
+            "source_latest_mtime_ns": 1,
+        },
+        "operation": "concat_transcode",
+        "inputs": [str(path) for path in input_paths],
+        "output_path": str(output_path),
+        "source_policy": "move_after_success",
+        "compression_profile": "tiktok",
+        "error_policy": {"missing_input": "fail"},
+    }
 
 
 def _analyze(source_root, compressed_root, **kwargs):
@@ -350,7 +370,6 @@ def test_omitted_paths_and_size_are_resolved_from_config_and_manifests(
         "producer": {"username": "user"},
         "output_path": str(compressed_root / "user" / "recording.mp4"),
     }
-    (metadata_root / "request.json").write_text(json.dumps(manifest))
     (metadata_out / "ttracker-recording.json").write_text(json.dumps(manifest))
     config = SimpleNamespace(
         input_dirs=[
@@ -358,6 +377,8 @@ def test_omitted_paths_and_size_are_resolved_from_config_and_manifests(
         ],
         output_dirs=[],
         suffix_output_dirs="_out",
+        errors_dirs=[],
+        suffix_errors_dirs="_err",
         metadata=SimpleNamespace(move_after_success_dir=str(source_root)),
         general=SimpleNamespace(min_size_bytes=1234),
     )
@@ -592,6 +613,7 @@ def test_small_failed_group_quarantines_only_corrupt_part(tmp_path, monkeypatch)
     source_root, compressed_root, source_user, _ = _paths(tmp_path)
     error_root = tmp_path / "metadata_err"
     error_root.mkdir()
+    original_user = tmp_path / "recordings" / "user"
     video = source_user / "recording_part001.mp4"
     audio = source_user / "recording_part002.mp4"
     corrupt = source_user / "recording_part003.mp4"
@@ -600,7 +622,18 @@ def test_small_failed_group_quarantines_only_corrupt_part(tmp_path, monkeypatch)
     corrupt.write_bytes(b"xx")
     manifest = error_root / "ttracker-recording.json"
     marker = error_root / "ttracker-recording.err"
-    manifest.write_text("{}")
+    manifest.write_text(
+        json.dumps(
+            _manifest(
+                [
+                    original_user / video.name,
+                    original_user / audio.name,
+                    original_user / corrupt.name,
+                ],
+                compressed_root / "user" / "recording.mp4",
+            )
+        )
+    )
     marker.write_text(f"ffprobe failed for {corrupt}: End of file")
 
     def probe(self, path, scan_packet_timeline):
@@ -616,7 +649,6 @@ def test_small_failed_group_quarantines_only_corrupt_part(tmp_path, monkeypatch)
         compressed_root,
         min_size_bytes=100,
         metadata_search_dirs=(error_root,),
-        quarantine_root=error_root,
     )
 
     statuses = {
@@ -629,7 +661,7 @@ def test_small_failed_group_quarantines_only_corrupt_part(tmp_path, monkeypatch)
     }
     cleanup.delete_verified_sources(result, dry_run=False)
 
-    destination = error_root / "user"
+    destination = tmp_path / "recordings_err" / "user"
     assert result.deleted == 2
     assert result.quarantined == 1
     assert not video.exists()
@@ -669,7 +701,6 @@ def test_failed_group_above_potential_video_floor_remains_unresolved(
         compressed_root,
         min_size_bytes=10,
         metadata_search_dirs=(error_root,),
-        quarantine_root=error_root,
     )
 
     assert {decision.status for decision in result.decisions} == {"OUTPUT_MISSING"}
@@ -686,7 +717,15 @@ def test_moov_failure_quarantines_source_and_metadata(tmp_path, monkeypatch):
     source.write_bytes(b"source larger than floor")
     manifest = metadata_root / "ttracker-recording.json"
     marker = error_root / "ttracker-recording.err"
-    manifest.write_text("{}")
+    original_source = tmp_path / "recordings" / "user" / source.name
+    manifest.write_text(
+        json.dumps(
+            _manifest(
+                [original_source],
+                compressed_root / "user" / "recording.mp4",
+            )
+        )
+    )
     marker.write_text("moov atom not found")
 
     def fail_probe(self, path, scan_packet_timeline):
@@ -698,7 +737,6 @@ def test_moov_failure_quarantines_source_and_metadata(tmp_path, monkeypatch):
         compressed_root,
         min_size_bytes=10,
         metadata_search_dirs=(metadata_root, error_root),
-        quarantine_root=error_root,
     )
 
     decision = result.decisions[0]
@@ -706,7 +744,7 @@ def test_moov_failure_quarantines_source_and_metadata(tmp_path, monkeypatch):
     assert decision.deletion_eligible
     cleanup.delete_verified_sources(result, dry_run=False)
 
-    destination_dir = error_root / "user"
+    destination_dir = tmp_path / "recordings_err" / "user"
     assert result.quarantined == 1
     assert not source.exists()
     assert not manifest.exists()
@@ -735,14 +773,38 @@ def test_error_marker_quarantine_classification_is_explicit(tmp_path):
     assert cleanup._quarantine_status_from_markers((marker,)) is None
 
 
-def test_source_archive_quarantine_uses_sibling_error_directory():
-    source_root = Path("/mnt/1/TT/sources_compressed")
+def test_source_archive_quarantine_uses_manifest_source_error_directory(tmp_path):
+    archived_source = tmp_path / "sources_compressed" / "user" / "recording.mp4"
+    manifest_path = tmp_path / "metadata_err" / "ttracker-recording.json"
+    original_source = tmp_path / "recordings" / "user" / archived_source.name
+    manifest_path.parent.mkdir()
+    manifest_path.write_text(
+        json.dumps(
+            _manifest(
+                [original_source],
+                tmp_path / "compressed" / "user" / "recording.mp4",
+            )
+        )
+    )
 
-    assert cleanup._source_error_root(
-        source_root,
+    assert cleanup._source_error_destination(
+        archived_source,
+        (manifest_path,),
         "_err",
-    ) == Path("/mnt/1/TT/sources_compressed_err")
-    assert cleanup._source_error_root(
-        source_root,
-        None,
-    ) == Path("/mnt/1/TT/sources_compressed_err")
+    ) == tmp_path / "recordings_err" / "user" / archived_source.name
+
+
+def test_source_archive_quarantine_requires_valid_manifest(tmp_path):
+    archived_source = tmp_path / "sources_compressed" / "user" / "recording.mp4"
+    manifest_path = tmp_path / "metadata_err" / "ttracker-recording.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text("{}")
+
+    assert (
+        cleanup._source_error_destination(
+            archived_source,
+            (manifest_path,),
+            "_err",
+        )
+        is None
+    )
