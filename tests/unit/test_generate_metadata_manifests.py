@@ -202,18 +202,22 @@ def test_vbc_tag_scan_uses_exiftool_without_writing_sources(tmp_path, monkeypatc
     recordings = tmp_path / "recordings"
     recordings.mkdir()
     encoded = recordings / "encoded.mp4"
+    untagged = recordings / "untagged.mp4"
     encoded.write_bytes(b"encoded")
+    untagged.write_bytes(b"untagged")
     source_snapshot = encoded.read_bytes()
 
     def fake_run(command, **kwargs):
         assert command[:2] == ["exiftool", "-r"]
-        assert "$VBCEncoder" in command
+        assert "-if" not in command
+        assert "-VBCEncoder" in command
         return generator.subprocess.CompletedProcess(
             command,
             0,
             stdout=json.dumps(
                 [
                     {"SourceFile": str(encoded), "VBCEncoder": "NVENC AV1"},
+                    {"SourceFile": str(untagged)},
                     {"SourceFile": str(tmp_path / "outside.mp4")},
                 ]
             ),
@@ -226,6 +230,25 @@ def test_vbc_tag_scan_uses_exiftool_without_writing_sources(tmp_path, monkeypatc
         encoded.resolve()
     }
     assert encoded.read_bytes() == source_snapshot
+
+
+def test_vbc_tag_scan_preserves_real_exiftool_errors(tmp_path, monkeypatch):
+    recordings = tmp_path / "recordings"
+    recordings.mkdir()
+
+    monkeypatch.setattr(
+        generator.subprocess,
+        "run",
+        lambda command, **kwargs: generator.subprocess.CompletedProcess(
+            command,
+            2,
+            stdout="",
+            stderr="Error: permission denied",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="permission denied"):
+        generator.find_vbc_encoded_sources(recordings.resolve())
 
 
 def test_modified_before_excludes_complete_task_when_any_input_is_too_new(tmp_path):

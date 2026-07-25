@@ -79,8 +79,6 @@ def find_vbc_encoded_sources(recordings_dir: Path) -> set[Path]:
         "-ext",
         "mp4",
         "-fast2",
-        "-if",
-        "$VBCEncoder",
         "-json",
         "-VBCEncoder",
         str(recordings_dir),
@@ -106,6 +104,8 @@ def find_vbc_encoded_sources(recordings_dir: Path) -> set[Path]:
 
     tagged: set[Path] = set()
     for entry in entries:
+        if entry.get("VBCEncoder") in (None, ""):
+            continue
         source_value = entry.get("SourceFile")
         if not source_value:
             continue
