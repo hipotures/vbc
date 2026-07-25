@@ -228,10 +228,12 @@ class UIManager:
     def on_job_started(self, event: JobStarted):
         # Track when first job starts
         from datetime import datetime
-        if self.state.processing_start_time is None:
-            self.state.processing_start_time = datetime.now()
-        if event.job.status == JobStatus.PROCESSING:
-            with self.state._lock:
+        with self.state._lock:
+            self.state.waiting_for_input = False
+            self.state.finished = False
+            if self.state.processing_start_time is None:
+                self.state.processing_start_time = datetime.now()
+            if event.job.status == JobStatus.PROCESSING:
                 self.state.job_start_times[event.job.source_file.path.name] = datetime.now()
         self.state.add_active_job(event.job)
 

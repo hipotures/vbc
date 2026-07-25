@@ -76,6 +76,22 @@ def test_ui_manager_replaces_preflight_with_processing_job():
     assert state.job_start_times[video.path.name] > datetime(2000, 1, 1)
 
 
+def test_ui_manager_job_started_leaves_waiting_state():
+    bus = EventBus()
+    state = UIState()
+    UIManager(bus, state)
+    state.waiting_for_input = True
+    state.finished = True
+    video = VideoFile(path=Path("worker.mp4"), size_bytes=1000)
+    job = CompressionJob(source_file=video, status=JobStatus.PROCESSING)
+
+    bus.publish(JobStarted(job=job))
+
+    assert state.waiting_for_input is False
+    assert state.finished is False
+    assert state.active_jobs == [job]
+
+
 def test_ui_manager_discovery_and_controls():
     bus = EventBus()
     state = UIState()
