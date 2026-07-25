@@ -81,6 +81,23 @@ def test_directory_analysis_is_read_only_by_default(tmp_path):
     assert manifest_path.exists()
 
 
+def test_directory_analysis_finds_user_subdirectory(tmp_path):
+    error_dir = tmp_path / "metadata_err"
+    user_dir = error_dir / "user"
+    user_dir.mkdir(parents=True)
+    error_path, manifest_path = _entry(
+        user_dir,
+        "broken",
+        "moov atom not found",
+    )
+
+    entries = analyzer.collect_error_entries(error_dir)
+
+    assert len(entries) == 1
+    assert entries[0].error_path == error_path
+    assert entries[0].manifest_path == manifest_path
+
+
 def test_selected_delete_removes_only_matching_metadata_pair(tmp_path):
     error_dir = tmp_path / "metadata_err"
     error_dir.mkdir()

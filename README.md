@@ -425,7 +425,8 @@ metadata:
   # Default: 0 (strict).
   max_dropped_frames: 0
   # keep, delete_after_success, move_after_success, or move_all
-  # move_all also archives inputs after terminal manifest failures.
+  # Terminal manifest failures quarantine JSON, .err, and existing inputs
+  # together under <source directory>_err/<username>.
   # source_policy: move_all
   # move_after_success_dir: /path/to/source-archive
 

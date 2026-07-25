@@ -203,6 +203,32 @@ def test_existing_destination_manifest_aborts_before_source_moves(tmp_path):
     assert destination.read_text() == "existing"
 
 
+def test_restores_sources_from_user_error_package(tmp_path):
+    task = _setup_failed_task(tmp_path)
+    source_root = task["first"].parent.parent
+    package_dir = source_root.with_name(f"{source_root.name}_err") / "user"
+    package_dir.mkdir(parents=True)
+    packaged_manifest = package_dir / task["failed_manifest"].name
+    packaged_marker = package_dir / task["error_marker"].name
+    task["failed_manifest"].replace(packaged_manifest)
+    task["error_marker"].replace(packaged_marker)
+    packaged_first = package_dir / task["first"].name
+    packaged_second = package_dir / task["second"].name
+    packaged_first.write_bytes(b"first")
+    packaged_second.write_bytes(b"second")
+
+    result = restore_failed_manifest(packaged_manifest, task["config_path"])
+
+    assert task["first"].read_bytes() == b"first"
+    assert task["second"].read_bytes() == b"second"
+    assert not packaged_first.exists()
+    assert not packaged_second.exists()
+    assert not packaged_manifest.exists()
+    assert (task["metadata_dir"] / "request.json").exists()
+    assert packaged_marker.read_text() == "original verification error"
+    assert len(result.restored_sources) == 2
+
+
 @pytest.mark.parametrize(
     ("dry_run", "action", "summary"),
     [

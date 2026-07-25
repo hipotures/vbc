@@ -133,9 +133,32 @@ def _aligned_error_dirs(
     ]
 
 
+def _manifest_source_error_package_dir(
+    manifest: CompressionManifest,
+    suffix_errors_dirs: str | None,
+) -> Path:
+    username = manifest.producer.username
+    _validate_username(username)
+    source_roots: set[Path] = set()
+    for input_value in manifest.inputs:
+        source_path = Path(input_value)
+        if source_path.parent.name != username:
+            raise RestoreError(
+                "manifest input is outside its producer directory: "
+                f"{source_path}"
+            )
+        source_roots.add(source_path.parent.parent)
+    if len(source_roots) != 1:
+        raise RestoreError("manifest inputs do not share one producer source root")
+    source_root = next(iter(source_roots))
+    error_suffix = suffix_errors_dirs or "_err"
+    return source_root.with_name(f"{source_root.name}{error_suffix}") / username
+
+
 def _resolve_metadata_destination(
     config: AppConfig,
     failed_manifest: Path,
+    manifest: CompressionManifest,
 ) -> Path:
     entries, original_indices = _deduplicated_enabled_entries(config)
     error_dirs = _aligned_error_dirs(config, entries, original_indices)
@@ -143,11 +166,27 @@ def _resolve_metadata_destination(
     matches = [
         Path(entry.path)
         for entry, error_dir in zip(entries, error_dirs, strict=True)
-        if entry.metadata and error_dir.resolve(strict=False) == failed_parent
+        if entry.metadata
+        and (
+            error_dir.resolve(strict=False) == failed_parent
+            or error_dir.resolve(strict=False) in failed_parent.parents
+        )
     ]
     if not matches:
+        source_error_package = _manifest_source_error_package_dir(
+            manifest,
+            config.suffix_errors_dirs,
+        ).resolve(strict=False)
+        if failed_parent == source_error_package:
+            matches = [
+                Path(entry.path)
+                for entry in entries
+                if entry.metadata
+            ]
+    if not matches:
         raise RestoreError(
-            f"manifest is not inside a configured metadata error directory: {failed_parent}"
+            "manifest is neither inside a configured metadata error directory "
+            f"nor its source error package: {failed_parent}"
         )
     if len(matches) > 1:
         raise RestoreError(
@@ -182,7 +221,17 @@ def restore_failed_manifest(
         raise RestoreError(f"failed manifest must be a JSON file: {failed_manifest}")
 
     config = load_config(config_path)
-    manifest_destination = _resolve_metadata_destination(config, failed_manifest)
+    try:
+        manifest = CompressionManifest.model_validate_json(
+            failed_manifest.read_text(encoding="utf-8")
+        )
+    except Exception as exc:
+        raise RestoreError(f"invalid compression manifest: {exc}") from exc
+    manifest_destination = _resolve_metadata_destination(
+        config,
+        failed_manifest,
+        manifest,
+    )
     metadata_dir = manifest_destination.parent
     if not metadata_dir.is_dir():
         raise RestoreError(f"metadata directory does not exist: {metadata_dir}")
@@ -192,13 +241,6 @@ def restore_failed_manifest(
         raise RestoreError(
             f"destination manifest already exists: {manifest_destination}"
         )
-
-    try:
-        manifest = CompressionManifest.model_validate_json(
-            failed_manifest.read_text(encoding="utf-8")
-        )
-    except Exception as exc:
-        raise RestoreError(f"invalid compression manifest: {exc}") from exc
 
     username = manifest.producer.username
     _validate_username(username)
@@ -220,11 +262,18 @@ def restore_failed_manifest(
                 "manifest input is outside its producer directory: "
                 f"{original_path}"
             )
-        archive_path = (
-            archive_root / username / original_path.name
-            if archive_root is not None
-            else None
-        )
+        archive_candidates = [failed_manifest.parent / original_path.name]
+        if archive_root is not None:
+            archive_candidates.append(archive_root / username / original_path.name)
+        existing_archives = [
+            path for path in dict.fromkeys(archive_candidates) if path.exists()
+        ]
+        if len(existing_archives) > 1:
+            raise RestoreError(
+                "source exists in multiple archive locations: "
+                + " ; ".join(str(path) for path in existing_archives)
+            )
+        archive_path = existing_archives[0] if existing_archives else None
 
         if original_path.exists():
             if original_path.is_symlink() or not original_path.is_file():
@@ -240,7 +289,8 @@ def restore_failed_manifest(
             continue
 
         if archive_path is None or not archive_path.is_file():
-            missing.append((original_path, archive_path))
+            expected_archive = archive_candidates[0]
+            missing.append((original_path, expected_archive))
             continue
         if archive_path.is_symlink():
             raise RestoreError(f"archived source cannot be a symlink: {archive_path}")

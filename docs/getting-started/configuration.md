@@ -443,7 +443,11 @@ has settled is retried after a one-second stability check before it can be route
 already-routed task and is ignored without creating or overwriting an error marker.
 
 - success: `/metadata_out/request.json`
-- any manifest, probe, compression, verification, or cleanup error:
+- any probe, compression, verification, or cleanup error for a valid manifest whose
+  inputs are under `/recordings/<username>/`:
+  `/recordings_err/<username>/request.json`,
+  `/recordings_err/<username>/request.err`, and every existing source input
+- invalid manifest JSON whose producer and source list cannot be trusted:
   `/metadata_err/request.json` and `/metadata_err/request.err`
 
 `metadata.audio_only` is `fail` by default. `ignore` removes parts without usable video
@@ -478,11 +482,17 @@ ffprobe/VBC-tag verification.
 `move_after_success` uses `metadata.move_after_success_dir` and preserves the producer
 username as the first destination directory. A missing destination setting, a missing or
 unwritable directory, insufficient free space for all inputs, or an existing destination
-file makes the policy fall back to `keep` for the complete request. `move_all` uses the
-same destination and movement safeguards, but also moves every existing input after a
-terminal preflight, compression, or verification failure. The JSON and `.err` are routed
-to `metadata_err` first, so they retain the source list. Invalid JSON cannot move sources
-because its input list is not trusted. Ctrl+C is not terminal and never moves sources.
+file makes the policy fall back to `keep` for the complete request. `move_all` additionally
+archives inputs for completed ignored requests that produced no output. A terminal
+preflight, compression, verification, or cleanup failure instead derives the real source
+root from the manifest inputs and quarantines every existing input together with the JSON
+and `.err` under `<source_root>_err/<producer.username>/`, regardless of the success
+policy. For example, `/mnt/1/TT/recordings/user/file.mp4` is quarantined under
+`/mnt/1/TT/recordings_err/user/`. The watched metadata directory is only a request
+transport. Destination collisions fail closed and leave the original request in place.
+Invalid JSON cannot move sources because its producer and input list are not trusted, so
+only that JSON and its marker use `metadata_err`. Ctrl+C is not terminal and never moves
+sources or the manifest.
 
 ### Generating manifests for legacy recordings
 
@@ -546,17 +556,19 @@ invalid date-like names, ignored symlinks, and filesystem errors.
 
 ### Restoring a failed manifest and moved sources
 
-`scripts/restore_failed_manifest.py` restores one JSON from its configured metadata error
-directory. It reads `input_dirs`, `errors_dirs` or `suffix_errors_dirs`, and
-`metadata.move_after_success_dir` from the VBC configuration. Every source listed in the
-manifest must either already exist at its original path or be present under the archived
-producer directory. The script validates the complete plan before moving anything,
-refuses all destination collisions, restores source files first, and moves the JSON into
-the metadata input directory last so inotify cannot enqueue an incomplete request.
+`scripts/restore_failed_manifest.py` restores one JSON from a source error package or the
+legacy configured metadata error directory. It reads `input_dirs`, `errors_dirs` or
+`suffix_errors_dirs`, and `metadata.move_after_success_dir` from the VBC configuration.
+Every source listed in the manifest must either already exist at its original path, be
+next to the failed manifest in its producer error package, or be present under the legacy
+archived producer directory. The script validates the complete plan before moving
+anything, refuses all destination collisions, restores source files first, and moves the
+JSON into the metadata input directory last so inotify cannot enqueue an incomplete
+request.
 
 ```bash
 uv run python scripts/restore_failed_manifest.py \
-  /path/to/metadata_err/request.json \
+  /path/to/recordings_err/username/request.json \
   --dry-run
 ```
 
@@ -571,8 +583,8 @@ history.
 
 `scripts/repair_failed_manifests.py` performs a controlled recompression for known failure
 classes while leaving the original `.err` marker in place. It accepts one `.json`/`.err`
-file or scans all direct `*.err` children of a metadata error directory. Unsupported
-errors are reported and left unchanged. Repairs run sequentially and reuse the normal VBC
+file or recursively scans `*.err` files in a manifest error directory. Unsupported errors
+are reported and left unchanged. Repairs run sequentially and reuse the normal VBC
 preflight, output verification, VBC tagging, manifest routing, and source policy.
 
 The first supported handler is FFmpeg exit code `244` / error `-12`. It restores archived
@@ -583,12 +595,12 @@ the repair tool has a fixed 50 GiB address-space limit.
 ```bash
 # Inspect one task without changing files
 uv run python scripts/repair_failed_manifests.py \
-  /path/to/metadata_err/request.err \
+  /path/to/recordings_err/username/request.err \
   --dry-run
 
 # Repair every supported task in one configured error directory
 uv run python scripts/repair_failed_manifests.py \
-  /path/to/metadata_err
+  /path/to/recordings_err
 ```
 
 The default configuration is `conf/vbc.yaml`; use `--config /path/to/vbc.yaml` when
@@ -597,14 +609,14 @@ directory, source files follow the effective `source_policy`, and the old `.err`
 in the error directory. A failed or interrupted repair does not publish the JSON back into
 the watched input queue.
 
-### Analyzing and clearing the metadata error directory
+### Analyzing and clearing a manifest error directory
 
-`scripts/video_error_analyzer.py` classifies every direct `.err` child of a metadata error
-directory. A plain invocation is read-only and does not require the corresponding JSON to
-exist:
+`scripts/video_error_analyzer.py` recursively classifies every `.err` file in a manifest
+error directory such as `recordings_err`. A plain invocation is read-only and does not
+require the corresponding JSON to exist:
 
 ```bash
-uv run python scripts/video_error_analyzer.py /path/to/metadata_err
+uv run python scripts/video_error_analyzer.py /path/to/recordings_err
 ```
 
 Known categories have independent action flags. `--repair-ffmpeg-244` delegates to the
@@ -676,11 +688,11 @@ Known terminal failures are quarantined instead of deleted during `--delete-veri
 `moov atom not found` (`CORRUPT_MOOV`), FFmpeg exit `-6`/SIGABRT, FFmpeg exit
 `-11`/SIGSEGV, unsupported hardware capabilities, invalid video dimensions, and invalid
 input data. Classification prefers the matching `.err` marker; the missing-moov case can
-also be recognized directly by the bounded source probe. The cleaner uses the configured
-metadata error root, preserves the user directory, and moves the source files together
-with any matching `ttracker-<recording_id>.json` and `.err` found in the configured
-metadata input, success, or error directories. Destination collisions fail closed, and a
-partial move is rolled back.
+also be recognized directly by the bounded source probe. The cleaner uses the source
+archive's sibling `_err` directory, preserves the user directory, and moves the source
+files together with any matching `ttracker-<recording_id>.json` and `.err` found in the
+configured metadata input, success, or error directories. Destination collisions fail
+closed, and a partial move is rolled back.
 
 For a multipart failure, the cleaner can isolate a part that independently fails bounded
 probing with `End of file`, invalid input data, or a missing `moov` atom. If the sum of

@@ -102,6 +102,22 @@ def test_directory_scan_classifies_supported_and_unsupported_errors(tmp_path):
     assert sum(candidate.handler is None for candidate in candidates) == 1
 
 
+def test_directory_scan_finds_user_subdirectory(tmp_path):
+    scan_dir = tmp_path / "metadata_err"
+    user_dir = scan_dir / "user"
+    user_dir.mkdir(parents=True)
+    manifest_path = user_dir / "request.json"
+    manifest_path.write_text("{}")
+    error_path = manifest_path.with_suffix(".err")
+    error_path.write_text("ffmpeg exited with code 244")
+
+    candidates = collect_candidates(scan_dir)
+
+    assert len(candidates) == 1
+    assert candidates[0].manifest_path == manifest_path
+    assert candidates[0].error_path == error_path
+
+
 def test_error_number_minus_12_selects_drop_audio_handler(tmp_path):
     manifest_path, _, _, _, _ = _failed_task(
         tmp_path,
@@ -133,6 +149,36 @@ def test_dry_run_validates_plan_without_moving_sources(tmp_path):
     assert archived_source.exists()
     assert not source.exists()
     assert manifest_path.exists()
+
+
+def test_dry_run_accepts_source_error_package(tmp_path):
+    manifest_path, error_path, config_path, archived_source, source = _failed_task(
+        tmp_path,
+        "ffmpeg exited with code 244",
+    )
+    source_root = source.parent.parent
+    package_dir = source_root.with_name(f"{source_root.name}_err") / "user"
+    package_dir.mkdir(parents=True)
+    packaged_manifest = package_dir / manifest_path.name
+    packaged_error = package_dir / error_path.name
+    packaged_source = package_dir / source.name
+    manifest_path.replace(packaged_manifest)
+    error_path.replace(packaged_error)
+    archived_source.replace(packaged_source)
+    candidate = collect_candidates(packaged_manifest)[0]
+
+    outcome = repair_candidate(
+        candidate,
+        config_path,
+        Console(file=StringIO(), force_terminal=False),
+        dry_run=True,
+    )
+
+    assert outcome.status == "READY"
+    assert packaged_manifest.exists()
+    assert packaged_error.exists()
+    assert packaged_source.exists()
+    assert not source.exists()
 
 
 def test_rich_summary_is_compact_and_reports_memory_cap(tmp_path):

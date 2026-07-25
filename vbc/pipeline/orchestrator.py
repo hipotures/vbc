@@ -1686,17 +1686,114 @@ class Orchestrator:
         self.logger.error("MANIFEST_ERROR: %s (%s)", destination, message)
         return destination
 
+    def _route_manifest_request_error(
+        self,
+        request: MetadataRequest,
+        message: str,
+    ) -> Path:
+        username = request.manifest.producer.username
+        if username in ("", ".", "..") or Path(username).name != username:
+            raise ValueError(f"invalid producer username: {username!r}")
+
+        source_roots: set[Path] = set()
+        for source_path in request.all_input_paths:
+            if source_path.parent.name != username:
+                raise ValueError(
+                    "manifest input is outside its producer directory: "
+                    f"{source_path}"
+                )
+            source_roots.add(source_path.parent.parent)
+        if len(source_roots) != 1:
+            raise ValueError(
+                "manifest inputs do not share one producer source root: "
+                + ", ".join(str(path) for path in sorted(source_roots))
+            )
+        source_root = next(iter(source_roots))
+        error_suffix = self.config.suffix_errors_dirs or "_err"
+        source_error_root = source_root.with_name(
+            f"{source_root.name}{error_suffix}"
+        )
+        destination_dir = source_error_root / username
+        manifest_destination = destination_dir / request.manifest_path.name
+        error_destination = manifest_destination.with_suffix(".err")
+        if manifest_destination.exists():
+            raise FileExistsError(
+                f"destination manifest already exists: {manifest_destination}"
+            )
+        if error_destination.exists():
+            raise FileExistsError(
+                f"destination error marker already exists: {error_destination}"
+            )
+
+        move_plan: List[tuple[Path, Path]] = []
+        seen_destinations: set[Path] = set()
+        for source_path in request.all_input_paths:
+            if not source_path.exists():
+                continue
+            if not source_path.is_file():
+                raise OSError(f"manifest input is not a regular file: {source_path}")
+            destination = destination_dir / source_path.name
+            if destination in seen_destinations:
+                raise FileExistsError(
+                    f"multiple manifest inputs map to: {destination}"
+                )
+            seen_destinations.add(destination)
+            if source_path != destination and destination.exists():
+                raise FileExistsError(
+                    f"destination source already exists: {destination}"
+                )
+            if source_path != destination:
+                move_plan.append((source_path, destination))
+
+        if not request.manifest_path.is_file():
+            raise FileNotFoundError(
+                f"manifest disappeared before error routing: {request.manifest_path}"
+            )
+        move_plan.append((request.manifest_path, manifest_destination))
+
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        moved: List[tuple[Path, Path]] = []
+        try:
+            for source_path, destination in move_plan:
+                shutil.move(str(source_path), str(destination))
+                moved.append((source_path, destination))
+                if source_path.exists() or not destination.is_file():
+                    raise OSError(
+                        f"move verification failed: {source_path} -> {destination}"
+                    )
+            error_destination.write_text(message)
+        except OSError as exc:
+            if error_destination.exists():
+                error_destination.unlink()
+            rollback_errors: List[str] = []
+            for source_path, destination in reversed(moved):
+                try:
+                    if destination.exists() and not source_path.exists():
+                        source_path.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(destination), str(source_path))
+                except OSError as rollback_exc:
+                    rollback_errors.append(str(rollback_exc))
+            if rollback_errors:
+                raise OSError(
+                    f"{exc}; rollback failed: {rollback_errors}"
+                ) from exc
+            raise
+
+        self.logger.error(
+            "MANIFEST_ERROR: %s sources=%s (%s)",
+            manifest_destination,
+            len(move_plan) - 1,
+            message,
+        )
+        return manifest_destination
+
     def _apply_manifest_source_policy(
         self,
         request: MetadataRequest,
-        *,
-        succeeded: bool = True,
     ) -> None:
-        if not succeeded and request.source_policy != "move_all":
+        if request.source_policy == "keep":
             return
-        if succeeded and request.source_policy == "keep":
-            return
-        if succeeded and request.source_policy == "delete_after_success":
+        if request.source_policy == "delete_after_success":
             for source_path in request.all_input_paths:
                 if source_path.exists():
                     source_path.unlink()
@@ -1704,14 +1801,6 @@ class Orchestrator:
             return
 
         source_paths = request.all_input_paths
-        if not succeeded:
-            source_paths = [path for path in source_paths if path.is_file()]
-            if not source_paths:
-                self.logger.warning(
-                    "MANIFEST_SOURCE_MOVE_KEEP: json=%s reason=no_existing_sources",
-                    request.manifest_path,
-                )
-                return
 
         move_root = request.move_after_success_dir
         if move_root is None:
@@ -2223,20 +2312,21 @@ class Orchestrator:
                     stats["files_found"] -= 1
                     continue
                 message = str(exc) or exc.__class__.__name__
-                manifest_routed = False
                 try:
-                    destination = self._route_manifest_error(
-                        manifest_path, error_dir, message
-                    )
-                    manifest_routed = True
+                    if request is None:
+                        destination = self._route_manifest_error(
+                            manifest_path, error_dir, message
+                        )
+                    else:
+                        destination = self._route_manifest_request_error(
+                            request, message
+                        )
                 except Exception as move_exc:
                     self.logger.exception(
                         "Failed to route manifest error for %s", manifest_path
                     )
                     destination = manifest_path
                     message = f"{message}; failed to route manifest: {move_exc}"
-                if manifest_routed and request is not None:
-                    self._apply_manifest_source_policy(request, succeeded=False)
                 try:
                     size_bytes = destination.stat().st_size
                 except OSError:
@@ -2653,16 +2743,10 @@ class Orchestrator:
         )
         failed_job.status = JobStatus.FAILED
         failed_job.error_message = message
-        manifest_routed = False
         try:
-            self._route_manifest_error(
-                request.manifest_path, request.error_dir, message
-            )
-            manifest_routed = True
+            self._route_manifest_request_error(request, message)
         except Exception as exc:
             self.logger.exception("Failed to route manifest after job error: %s", exc)
-        if manifest_routed:
-            self._apply_manifest_source_policy(request, succeeded=False)
         if publish:
             self.event_bus.publish(JobFailed(job=failed_job, error_message=message))
 

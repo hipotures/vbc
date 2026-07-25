@@ -322,7 +322,10 @@ def test_metadata_preflight_rejects_duration_above_safety_limit(tmp_path):
         ffprobe,
         metadata_overrides={"max_duration_seconds": 60},
     )
-    part = tmp_path / "part001.mp4"
+    source_root = tmp_path / "recordings"
+    source_dir = source_root / "user"
+    source_dir.mkdir(parents=True)
+    part = source_dir / "part001.mp4"
     part.write_bytes(b"video")
     manifest_path = metadata_dir / "request.json"
     manifest_path.write_text(json.dumps(_manifest([part], tmp_path / "recording.mp4")))
@@ -334,15 +337,19 @@ def test_metadata_preflight_rejects_duration_above_safety_limit(tmp_path):
 
     assert orchestrator._get_metadata(files[0]) is None
     assert not manifest_path.exists()
-    assert (error_dir / "request.json").exists()
-    assert "duration exceeds safety limit" in (error_dir / "request.err").read_text()
+    package_dir = source_root.with_name("recordings_err") / "user"
+    assert (package_dir / part.name).read_bytes() == b"video"
+    assert (package_dir / "request.json").exists()
+    assert "duration exceeds safety limit" in (
+        package_dir / "request.err"
+    ).read_text()
     ffprobe.count_video_frames.assert_called_once_with(
         part,
         shutdown_event=orchestrator._shutdown_event,
     )
 
 
-def test_move_all_archives_existing_sources_after_preflight_failure(tmp_path):
+def test_manifest_failure_quarantines_sources_in_user_error_directory(tmp_path):
     ffprobe = MagicMock()
     move_root = tmp_path / "sources_compressed"
     move_root.mkdir()
@@ -366,13 +373,17 @@ def test_move_all_archives_existing_sources_after_preflight_failure(tmp_path):
 
     assert orchestrator._get_metadata(files[0]) is None
     assert not part.exists()
-    assert (move_root / "user" / part.name).read_bytes() == b"broken video"
+    package_dir = source_dir.parent.with_name("recordings_err") / "user"
+    assert (package_dir / part.name).read_bytes() == b"broken video"
+    assert not (move_root / "user" / part.name).exists()
     assert not manifest_path.exists()
-    assert (error_dir / "request.json").exists()
-    assert "ffprobe failed" in (error_dir / "request.err").read_text()
+    assert (package_dir / "request.json").exists()
+    assert "ffprobe failed" in (package_dir / "request.err").read_text()
 
 
-def test_move_all_archives_remaining_sources_when_one_input_is_missing(tmp_path):
+def test_manifest_failure_quarantines_existing_sources_when_one_input_is_missing(
+    tmp_path,
+):
     ffprobe = MagicMock()
     move_root = tmp_path / "sources_compressed"
     move_root.mkdir()
@@ -399,10 +410,12 @@ def test_move_all_archives_remaining_sources_when_one_input_is_missing(tmp_path)
     assert files == []
     assert stats["ignored_err"] == 1
     assert not existing.exists()
-    assert (move_root / "user" / existing.name).read_bytes() == b"existing video"
+    package_dir = source_dir.parent.with_name("recordings_err") / "user"
+    assert (package_dir / existing.name).read_bytes() == b"existing video"
+    assert not (move_root / "user" / existing.name).exists()
     assert not manifest_path.exists()
-    assert (error_dir / "request.json").exists()
-    assert "Missing manifest input" in (error_dir / "request.err").read_text()
+    assert (package_dir / "request.json").exists()
+    assert "Missing manifest input" in (package_dir / "request.err").read_text()
 
 
 def test_incremental_discovery_ignores_manifest_that_already_disappeared(tmp_path):
@@ -2011,11 +2024,16 @@ def test_metadata_split_interruption_keeps_completed_group_and_manifest(tmp_path
 def test_metadata_compression_failure_routes_json_and_request_err(tmp_path):
     ffprobe = MagicMock()
     orchestrator, metadata_dir, _, error_dir = _orchestrator(tmp_path, ffprobe)
-    part = tmp_path / "part001.mp4"
+    source_root = tmp_path / "recordings"
+    source_dir = source_root / "user"
+    source_dir.mkdir(parents=True)
+    part = source_dir / "part001.mp4"
     part.write_bytes(b"video")
     output = tmp_path / "recording.mp4"
     manifest_path = metadata_dir / "request.json"
-    payload = CompressionManifest.model_validate(_manifest([part], output))
+    payload = CompressionManifest.model_validate(
+        _manifest([part], output, source_policy="delete_after_success")
+    )
     request = MetadataRequest(
         manifest_path=manifest_path,
         metadata_dir=metadata_dir,
@@ -2034,7 +2052,7 @@ def test_metadata_compression_failure_routes_json_and_request_err(tmp_path):
                 audio_packets=0,
             )
         ],
-        source_policy="keep",
+        source_policy="delete_after_success",
         compression_profile="tiktok",
         audio_only="fail",
         target_width=640,
@@ -2056,8 +2074,101 @@ def test_metadata_compression_failure_routes_json_and_request_err(tmp_path):
 
     orchestrator._process_metadata_request(video)
 
-    assert part.exists()
+    package_dir = source_root.with_name("recordings_err") / "user"
+    assert not part.exists()
     assert not manifest_path.exists()
-    assert (error_dir / "request.json").exists()
-    assert (error_dir / "request.err").read_text() == "ffmpeg exited with code 1"
+    assert (package_dir / part.name).read_bytes() == b"video"
+    assert (package_dir / "request.json").exists()
+    assert (
+        package_dir / "request.err"
+    ).read_text() == "ffmpeg exited with code 1"
     assert not output.with_suffix(".err").exists()
+    assert not error_dir.exists()
+
+
+def test_manifest_error_package_collision_keeps_original_files(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(tmp_path, ffprobe)
+    source_dir = tmp_path / "recordings" / "user"
+    source_dir.mkdir(parents=True)
+    part = source_dir / "part001.mp4"
+    part.write_bytes(b"original")
+    manifest_path = metadata_dir / "request.json"
+    payload = CompressionManifest.model_validate(
+        _manifest([part], tmp_path / "recording.mp4")
+    )
+    manifest_path.write_text(payload.model_dump_json())
+    package_dir = source_dir.parent.with_name("recordings_err") / "user"
+    package_dir.mkdir(parents=True)
+    collision = package_dir / part.name
+    collision.write_bytes(b"existing")
+    request = MetadataRequest(
+        manifest_path=manifest_path,
+        metadata_dir=metadata_dir,
+        success_dir=tmp_path / "metadata_out",
+        error_dir=error_dir,
+        manifest=payload,
+        parts=[],
+        source_policy="keep",
+        compression_profile="tiktok",
+        audio_only="fail",
+        target_width=1,
+        target_height=1,
+    )
+
+    with pytest.raises(FileExistsError, match="destination source already exists"):
+        orchestrator._route_manifest_request_error(request, "compression failed")
+
+    assert part.read_bytes() == b"original"
+    assert manifest_path.exists()
+    assert collision.read_bytes() == b"existing"
+    assert not (package_dir / "request.json").exists()
+    assert not (package_dir / "request.err").exists()
+
+
+def test_manifest_error_package_rolls_back_partial_move(tmp_path, monkeypatch):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(tmp_path, ffprobe)
+    source_dir = tmp_path / "recordings" / "user"
+    source_dir.mkdir(parents=True)
+    part = source_dir / "part001.mp4"
+    part.write_bytes(b"original")
+    manifest_path = metadata_dir / "request.json"
+    payload = CompressionManifest.model_validate(
+        _manifest([part], tmp_path / "recording.mp4")
+    )
+    manifest_path.write_text(payload.model_dump_json())
+    request = MetadataRequest(
+        manifest_path=manifest_path,
+        metadata_dir=metadata_dir,
+        success_dir=tmp_path / "metadata_out",
+        error_dir=error_dir,
+        manifest=payload,
+        parts=[],
+        source_policy="keep",
+        compression_profile="tiktok",
+        audio_only="fail",
+        target_width=1,
+        target_height=1,
+    )
+    real_move = shutil.move
+
+    def fail_manifest_move(source, destination):
+        if Path(source) == manifest_path:
+            raise OSError("simulated manifest move failure")
+        return real_move(source, destination)
+
+    monkeypatch.setattr(
+        "vbc.pipeline.orchestrator.shutil.move",
+        fail_manifest_move,
+    )
+
+    with pytest.raises(OSError, match="simulated manifest move failure"):
+        orchestrator._route_manifest_request_error(request, "compression failed")
+
+    package_dir = source_dir.parent.with_name("recordings_err") / "user"
+    assert part.read_bytes() == b"original"
+    assert manifest_path.exists()
+    assert not (package_dir / part.name).exists()
+    assert not (package_dir / "request.json").exists()
+    assert not (package_dir / "request.err").exists()

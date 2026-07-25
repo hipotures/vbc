@@ -1,5 +1,6 @@
 import json
 from io import StringIO
+from pathlib import Path
 from types import SimpleNamespace
 
 from rich.console import Console
@@ -732,3 +733,16 @@ def test_error_marker_quarantine_classification_is_explicit(tmp_path):
 
     marker.write_text("ffmpeg exited with code 234")
     assert cleanup._quarantine_status_from_markers((marker,)) is None
+
+
+def test_source_archive_quarantine_uses_sibling_error_directory():
+    source_root = Path("/mnt/1/TT/sources_compressed")
+
+    assert cleanup._source_error_root(
+        source_root,
+        "_err",
+    ) == Path("/mnt/1/TT/sources_compressed_err")
+    assert cleanup._source_error_root(
+        source_root,
+        None,
+    ) == Path("/mnt/1/TT/sources_compressed_err")

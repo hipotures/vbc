@@ -25,6 +25,7 @@ from scripts.restore_failed_manifest import (
     RestoreError,
     _aligned_error_dirs,
     _deduplicated_enabled_entries,
+    _manifest_source_error_package_dir,
     restore_failed_manifest,
     restore_failed_sources,
     rollback_restored_sources,
@@ -32,6 +33,7 @@ from scripts.restore_failed_manifest import (
 from vbc.config.loader import load_config
 from vbc.config.models import AppConfig, InputDirEntry
 from vbc.domain.events import JobCompleted, JobFailed, JobProgressUpdated, JobStarted
+from vbc.domain.models import CompressionManifest
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.exif_tool import ExifToolAdapter
 from vbc.infrastructure.ffmpeg import FFmpegAdapter
@@ -142,7 +144,7 @@ def _candidate_from_path(path: Path) -> RepairCandidate:
 
 
 def collect_candidates(target: Path) -> list[RepairCandidate]:
-    """Collect one failed manifest or every direct .err child of a directory."""
+    """Collect one failed manifest or every .err descendant of a directory."""
     if target.is_symlink():
         raise RepairError(f"target cannot be a symlink: {target}")
     target = target.resolve(strict=True)
@@ -152,7 +154,7 @@ def collect_candidates(target: Path) -> list[RepairCandidate]:
         raise RepairError(f"target is neither a file nor directory: {target}")
 
     candidates: list[RepairCandidate] = []
-    for error_path in sorted(target.glob("*.err")):
+    for error_path in sorted(target.rglob("*.err")):
         try:
             candidates.append(_candidate_from_path(error_path))
         except (OSError, RepairError) as exc:
@@ -208,6 +210,12 @@ def resolve_repair_context(
     config: AppConfig,
     manifest_path: Path,
 ) -> RepairContext:
+    try:
+        manifest = CompressionManifest.model_validate_json(
+            manifest_path.read_text(encoding="utf-8")
+        )
+    except Exception as exc:
+        raise RepairError(f"invalid compression manifest: {exc}") from exc
     entries, original_indices = _deduplicated_enabled_entries(config)
     error_dirs = _aligned_error_dirs(config, entries, original_indices)
     output_dirs = _aligned_output_dirs(config, entries, original_indices)
@@ -220,12 +228,32 @@ def resolve_repair_context(
             error_dirs,
             strict=True,
         )
-        if entry.metadata and error_dir.resolve(strict=False) == failed_parent
+        if entry.metadata
+        and (
+            error_dir.resolve(strict=False) == failed_parent
+            or error_dir.resolve(strict=False) in failed_parent.parents
+        )
     ]
+    if not matches:
+        source_error_package = _manifest_source_error_package_dir(
+            manifest,
+            config.suffix_errors_dirs,
+        ).resolve(strict=False)
+        if failed_parent == source_error_package:
+            matches = [
+                RepairContext(Path(entry.path), output_dir, error_dir)
+                for entry, output_dir, error_dir in zip(
+                    entries,
+                    output_dirs,
+                    error_dirs,
+                    strict=True,
+                )
+                if entry.metadata
+            ]
     if len(matches) != 1:
         raise RepairError(
-            "failed manifest directory must map to exactly one enabled metadata input: "
-            f"{failed_parent}"
+            "failed manifest must map to exactly one enabled metadata input: "
+            f"{failed_parent}; matches={len(matches)}"
         )
     return matches[0]
 
@@ -447,7 +475,7 @@ def _render_summary(
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Repair one failed VBC manifest or scan a metadata error directory. "
+            "Repair one failed VBC manifest or scan a manifest error directory. "
             "Unsupported errors are reported and left unchanged."
         )
     )

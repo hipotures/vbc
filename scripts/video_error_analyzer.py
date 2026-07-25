@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Analyze a VBC metadata error directory and run explicitly selected actions."""
+"""Analyze a VBC manifest error directory and run explicitly selected actions."""
 
 from __future__ import annotations
 
@@ -168,7 +168,7 @@ def _read_marker(error_path: Path) -> str:
 
 
 def collect_error_entries(error_dir: Path) -> list[ErrorEntry]:
-    """Collect and classify direct .err children without requiring JSON files."""
+    """Collect and classify .err descendants without requiring JSON files."""
     if error_dir.is_symlink():
         raise AnalyzerError(f"error directory cannot be a symlink: {error_dir}")
     error_dir = error_dir.resolve(strict=True)
@@ -176,7 +176,7 @@ def collect_error_entries(error_dir: Path) -> list[ErrorEntry]:
         raise AnalyzerError(f"not a directory: {error_dir}")
 
     entries: list[ErrorEntry] = []
-    for error_path in sorted(error_dir.glob("*.err")):
+    for error_path in sorted(error_dir.rglob("*.err")):
         manifest_path = error_path.with_suffix(".json")
         try:
             error_text = _read_marker(error_path)
@@ -343,11 +343,11 @@ def _render_results(
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Analyze direct .err children of a VBC metadata error directory. "
+            "Recursively analyze .err files in a VBC manifest error directory. "
             "No files are changed unless an explicit repair or delete flag is used."
         )
     )
-    parser.add_argument("error_dir", type=Path, help="VBC metadata error directory")
+    parser.add_argument("error_dir", type=Path, help="VBC manifest error directory")
     parser.add_argument(
         "--config",
         "-c",
@@ -437,7 +437,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     if not entries:
-        console.print("[yellow]No direct .err files found.[/]")
+        console.print("[yellow]No .err files found.[/]")
         return 0
 
     console.print(

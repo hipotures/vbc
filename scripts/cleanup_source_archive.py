@@ -154,6 +154,11 @@ def _metadata_error_dirs(config: AppConfig) -> tuple[Path, ...]:
     return tuple(directories)
 
 
+def _source_error_root(source_root: Path, suffix: str | None) -> Path:
+    error_suffix = suffix or "_err"
+    return source_root.with_name(f"{source_root.name}{error_suffix}")
+
+
 def _metadata_search_dirs(config: AppConfig) -> tuple[Path, ...]:
     input_dirs = tuple(
         Path(entry.path)
@@ -1072,9 +1077,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.min_size_bytes,
             args.config,
         )
-        metadata_error_dirs = _metadata_error_dirs(config)
-        quarantine_root = (
-            metadata_error_dirs[0] if len(metadata_error_dirs) == 1 else None
+        quarantine_root = _source_error_root(
+            source_archive,
+            config.suffix_errors_dirs,
         )
         progress = Progress(
             SpinnerColumn(),
