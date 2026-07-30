@@ -1,8 +1,10 @@
 import json
 import os
 from datetime import datetime, timezone
+from io import StringIO
 
 import pytest
+from rich.console import Console
 
 from scripts import generate_metadata_manifests as generator
 from scripts.generate_metadata_manifests import generate_manifests
@@ -359,8 +361,40 @@ def test_modified_before_excludes_complete_task_when_any_input_is_too_new(tmp_pa
 
     assert result.generated == 1
     assert result.excluded_by_modified_before == 1
+    assert result.issues == []
     assert (metadata / "ttracker-user_20260701_120000.json").is_file()
     assert not (metadata / "ttracker-user_20260702_120000.json").exists()
+
+
+def test_summary_is_rendered_as_a_borderless_rich_table():
+    result = generator.GenerationResult(
+        discovered=185,
+        generated=2,
+        single_tasks=0,
+        multipart_tasks=185,
+        existing_outputs=0,
+        existing_manifests=0,
+        conflicting_manifests=0,
+        shadowed_singles=0,
+        tagged_sources=6,
+        recovered_legacy_first_parts=0,
+        excluded_by_modified_before=183,
+    )
+    output = StringIO()
+    console = Console(file=output, color_system=None, width=100)
+
+    generator._render_summary(console, result)
+
+    rendered = output.getvalue()
+    assert "Manifest generation summary" in rendered
+    assert "Discovered" in rendered
+    assert "185" in rendered
+    assert "Generated" in rendered
+    assert "Excluded by modified-before" in rendered
+    assert "183" in rendered
+    assert "discovered=" not in rendered
+    assert "┏" not in rendered
+    assert "┗" not in rendered
 
 
 def test_modified_before_requires_timezone(tmp_path):

@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Sequence
 
+from rich.console import Console
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -20,6 +21,7 @@ from rich.progress import (
     TextColumn,
     TimeRemainingColumn,
 )
+from rich.table import Table
 
 
 PART_RE = re.compile(r"^(?P<base>.+)_part(?P<index>\d+)\.mp4$", re.IGNORECASE)
@@ -405,10 +407,6 @@ def generate_manifests(
         latest_mtime = max(path.stat().st_mtime for path in task.inputs)
         if latest_mtime >= cutoff_timestamp:
             result.excluded_by_modified_before += 1
-            result.issues.append(
-                "task not older than --modified-before and was ignored: "
-                f"{task.output_path}"
-            )
             continue
         if sum(path.stat().st_size for path in task.inputs) <= 0:
             result.issues.append(f"zero-size task ignored: {task.output_path}")
@@ -471,16 +469,40 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _render_summary(console: Console, result: GenerationResult) -> None:
+    table = Table(title="Manifest generation summary", show_header=False, box=None)
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", justify="right", style="bold")
+    rows = (
+        ("Discovered", result.discovered),
+        ("Generated", result.generated),
+        ("Single tasks", result.single_tasks),
+        ("Multipart tasks", result.multipart_tasks),
+        ("Existing outputs", result.existing_outputs),
+        ("Existing manifests", result.existing_manifests),
+        ("Conflicting manifests", result.conflicting_manifests),
+        ("Shadowed singles", result.shadowed_singles),
+        ("Tagged sources", result.tagged_sources),
+        ("Recovered legacy first parts", result.recovered_legacy_first_parts),
+        ("Excluded by modified-before", result.excluded_by_modified_before),
+    )
+    for label, value in rows:
+        table.add_row(label, str(value))
+    console.print(table)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     recordings_dir = args.recordings_dir.resolve(strict=True)
     compressed_dir = args.compressed_dir or recordings_dir.parent / "compressed"
+    console = Console()
     progress = Progress(
         SpinnerColumn(),
         TextColumn("[cyan]{task.description}"),
         BarColumn(),
         MofNCompleteColumn(),
         TimeRemainingColumn(),
+        console=console,
     )
     with progress:
         task_id = progress.add_task("Reading VBC tags", total=None)
@@ -501,28 +523,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             dry_run=args.dry_run,
             tag_progress_callback=update_tag_progress,
         )
-    print(
-        "discovered={discovered} generated={generated} singles={singles} "
-        "multipart={multipart} existing_outputs={outputs} "
-        "existing_manifests={manifests} conflicting_manifests={conflicts} "
-        "shadowed_singles={shadowed} "
-        "tagged_sources={tagged} recovered_legacy_first_parts={recovered} "
-        "excluded_by_modified_before={excluded}".format(
-            discovered=result.discovered,
-            generated=result.generated,
-            singles=result.single_tasks,
-            multipart=result.multipart_tasks,
-            outputs=result.existing_outputs,
-            manifests=result.existing_manifests,
-            conflicts=result.conflicting_manifests,
-            shadowed=result.shadowed_singles,
-            tagged=result.tagged_sources,
-            recovered=result.recovered_legacy_first_parts,
-            excluded=result.excluded_by_modified_before,
-        )
-    )
+    _render_summary(console, result)
     for issue in result.issues:
-        print(f"warning: {issue}")
+        console.print(f"[yellow]warning:[/] {issue}")
     return 0
 
 
