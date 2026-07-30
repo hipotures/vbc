@@ -471,9 +471,12 @@ not need to contain a date. Existing flat success manifests remain supported by 
 tools.
 
 Every generated output must pass frame, ffprobe, and VBC-tag verification before the JSON
-moves to `_out` or a delete/move source policy runs. Ctrl+C leaves the manifest and
-sources in place. On restart, VBC reuses verified VBC outputs in numbered order,
-skips occupied untagged numbers, and continues with the first missing group.
+moves to `_out` or an output-dependent source policy runs. A request below
+`general.min_size_bytes` is also a successful no-output result:
+`delete_after_success` deletes all of its sources and `move_all` archives them. Ctrl+C
+leaves the manifest and sources in place. On restart, VBC reuses verified VBC outputs in
+numbered order, skips occupied untagged numbers, and continues with the first missing
+group.
 
 After successful finalization, every generated output receives the manifest's exact
 `producer.source_latest_mtime_ns`. The same rule applies to regular video jobs using the
@@ -483,8 +486,11 @@ file changes are recorded in the application log as `OUTPUT_MTIME_CHANGED` entri
 Manifest schema version 1 requires `operation: concat_transcode`, absolute unique input
 paths, `compression_profile: tiktok`, `error_policy.missing_input: fail`, and one of
 `source_policy: keep`, `delete_after_success`, `move_after_success`, or `move_all`.
-Deletion and `move_after_success` run only after atomic output finalization and successful
-ffprobe/VBC-tag verification.
+Deletion and `move_after_success` normally run only after atomic output finalization and
+successful ffprobe/VBC-tag verification. The exception is a request below
+`general.min_size_bytes`: it is considered successfully handled without an output, so
+`delete_after_success` deletes all inputs. Each deletion is recorded as
+`MANIFEST_SOURCE_DELETED` with the source path, size in bytes, manifest path, and reason.
 `move_after_success` uses `metadata.move_after_success_dir` and preserves the producer
 username as the first destination directory. A missing destination setting, a missing or
 unwritable directory, insufficient free space for all inputs, or an existing destination
@@ -793,7 +799,7 @@ root is missing or ambiguous.
 - **Default**: 1048576 (1 MiB)
 - **Description**: Minimum input file size to process
 - **Use case**: Skip corrupted/incomplete files
-- **Manifest behavior**: Compared with the sum of effective video-part sizes after audio-only filtering. A smaller request creates no video, keeps every source, and moves its JSON to `_out` as a completed ignored task.
+- **Manifest behavior**: Compared with the sum of effective video-part sizes after audio-only filtering. A smaller request creates no video and moves its JSON to `_out` as a completed ignored task. `delete_after_success` deletes all sources, `move_all` archives them, and the remaining policies keep them.
 
 ### Metadata
 

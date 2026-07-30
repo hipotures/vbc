@@ -356,7 +356,8 @@ This keeps the UI populated while ffprobe resolves the visible and near-future q
 entries. One cached probe per unchanged part returns stream facts, packet counts, and
 packet-timeline duration, so queue refreshes and output validation do not rescan source
 video. A request below `min_size_bytes` is a terminal ignored task: VBC creates no output,
-keeps all source parts unless `move_all` archives them, and moves the unchanged manifest
+deletes all source parts for `delete_after_success`, archives them for `move_all`, keeps
+them for the remaining policies, and moves the unchanged manifest
 to `_out`.
 
 Metadata directories may additionally enable `watch: true`. A single Linux inotify

@@ -1791,14 +1791,24 @@ class Orchestrator:
     def _apply_manifest_source_policy(
         self,
         request: MetadataRequest,
+        *,
+        reason: str = "output_verified",
     ) -> None:
         if request.source_policy == "keep":
             return
         if request.source_policy == "delete_after_success":
             for source_path in request.all_input_paths:
                 if source_path.exists():
+                    source_size = source_path.stat().st_size
                     source_path.unlink()
-                    self.logger.info("MANIFEST_SOURCE_DELETED: %s", source_path)
+                    self.logger.info(
+                        "MANIFEST_SOURCE_DELETED: source=%s size_bytes=%s "
+                        "json=%s reason=%s",
+                        source_path,
+                        source_size,
+                        request.manifest_path,
+                        reason,
+                    )
             return
 
         source_paths = request.all_input_paths
@@ -2098,8 +2108,8 @@ class Orchestrator:
                 total_size,
                 self.file_scanner.min_size_bytes,
             )
-            if request.source_policy == "move_all":
-                self._apply_manifest_source_policy(request)
+            if request.source_policy in ("delete_after_success", "move_all"):
+                self._apply_manifest_source_policy(request, reason="ignored_small")
             self._route_manifest_success(request)
             return None
 
@@ -2283,8 +2293,11 @@ class Orchestrator:
                         total_size,
                         self.file_scanner.min_size_bytes,
                     )
-                    if request.source_policy == "move_all":
-                        self._apply_manifest_source_policy(request)
+                    if request.source_policy in ("delete_after_success", "move_all"):
+                        self._apply_manifest_source_policy(
+                            request,
+                            reason="ignored_small",
+                        )
                     self._route_manifest_success(request)
                     continue
                 self.logger.info(

@@ -1,4 +1,5 @@
 import json
+import logging
 import shutil
 import threading
 import time
@@ -628,7 +629,7 @@ def test_metadata_preflight_completes_manifest_when_every_part_has_no_video(
     assert not error_dir.exists()
 
 
-def test_metadata_min_size_completes_manifest_without_deleting_sources(tmp_path):
+def test_metadata_min_size_keep_completes_manifest_without_deleting_sources(tmp_path):
     ffprobe = MagicMock()
     orchestrator, metadata_dir, output_dir, error_dir = _orchestrator(
         tmp_path,
@@ -657,7 +658,54 @@ def test_metadata_min_size_completes_manifest_without_deleting_sources(tmp_path)
     ffprobe.get_part_info.assert_not_called()
 
 
-def test_metadata_effective_min_size_completes_after_ignoring_audio_only(tmp_path):
+def test_metadata_min_size_delete_policy_deletes_sources(tmp_path, caplog):
+    caplog.set_level(logging.INFO, logger="vbc.pipeline.orchestrator")
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, error_dir = _orchestrator(
+        tmp_path,
+        ffprobe,
+        min_size=250,
+    )
+    part1 = tmp_path / "part001.mp4"
+    part2 = tmp_path / "part002.mp4"
+    part1.write_bytes(b"a" * 100)
+    part2.write_bytes(b"b" * 100)
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(
+            _manifest(
+                [part1, part2],
+                tmp_path / "recording.mp4",
+                source_policy="delete_after_success",
+            )
+        )
+    )
+
+    files, stats = orchestrator._perform_discovery(metadata_dir)
+
+    assert files == []
+    assert stats["ignored_small"] == 1
+    assert not manifest_path.exists()
+    assert (output_dir / "20260718" / "request.json").exists()
+    assert not part1.exists()
+    assert not part2.exists()
+    assert not error_dir.exists()
+    ffprobe.get_part_info.assert_not_called()
+    assert (
+        f"MANIFEST_SOURCE_DELETED: source={part1} size_bytes=100 "
+        f"json={manifest_path} reason=ignored_small"
+    ) in caplog.text
+    assert (
+        f"MANIFEST_SOURCE_DELETED: source={part2} size_bytes=100 "
+        f"json={manifest_path} reason=ignored_small"
+    ) in caplog.text
+
+
+def test_metadata_effective_min_size_deletes_after_ignoring_audio_only(
+    tmp_path,
+    caplog,
+):
+    caplog.set_level(logging.INFO, logger="vbc.pipeline.orchestrator")
     ffprobe = MagicMock()
     orchestrator, metadata_dir, output_dir, error_dir = _orchestrator(
         tmp_path,
@@ -696,10 +744,18 @@ def test_metadata_effective_min_size_completes_after_ignoring_audio_only(tmp_pat
     assert orchestrator._get_metadata(files[0]) is None
     assert not manifest_path.exists()
     assert (output_dir / "20260718" / "request.json").exists()
-    assert video.exists()
-    assert audio.exists()
+    assert not video.exists()
+    assert not audio.exists()
     assert not (tmp_path / "recording.mp4").exists()
     assert not error_dir.exists()
+    assert (
+        f"MANIFEST_SOURCE_DELETED: source={video} size_bytes=200 "
+        f"json={manifest_path} reason=ignored_small"
+    ) in caplog.text
+    assert (
+        f"MANIFEST_SOURCE_DELETED: source={audio} size_bytes=100 "
+        f"json={manifest_path} reason=ignored_small"
+    ) in caplog.text
 
 
 def test_tagged_output_completes_delete_policy_before_missing_input_check(tmp_path):
