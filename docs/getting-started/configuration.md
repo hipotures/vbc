@@ -452,17 +452,20 @@ already-routed task and is ignored without creating or overwriting an error mark
 
 `metadata.audio_only` is `fail` by default. `ignore` removes parts without usable video
 packets from the effective concat list while retaining them for `source_policy` handling.
-If no usable video remains, VBC creates no output and moves the unchanged manifest to
-`_out` as an ignored task. Optional policy
-overrides are reloaded before each manifest job; an invalid edit keeps the last valid
-metadata policy. `metadata.max_dropped_frames` defaults to strict `0`; each generated
-output accepts only that many missing frames, logs a warning, and never accepts extra
-frames. `metadata.max_duration_seconds` defaults to 24 hours. A packet duration above the
-limit triggers a decoded-frame count only for that anomalous part. VBC accepts it and
-rebuilds its timestamps when `frames / fps` is within the limit; otherwise preflight
-fails. An aggregate duration above the limit also fails. The failure is shown in the
-activity feed and routes the JSON to `_err`. `copy_metadata` remains a video-to-video
-setting and uses the first effective video part from each generated orientation group.
+`delete` removes those parts from both the concat list and the filesystem during
+preflight, independently of `source_policy`, and logs each removal as
+`MANIFEST_SOURCE_DELETED` with `reason=audio_only`. If no usable video remains, VBC
+creates no output and moves the unchanged manifest to `_out` as an ignored task.
+Optional policy overrides are reloaded before each manifest job; an invalid edit keeps
+the last valid metadata policy. `metadata.max_dropped_frames` defaults to strict `0`;
+each generated output accepts only that many missing frames, logs a warning, and never
+accepts extra frames. `metadata.max_duration_seconds` defaults to 24 hours. A packet
+duration above the limit triggers a decoded-frame count only for that anomalous part.
+VBC accepts it and rebuilds its timestamps when `frames / fps` is within the limit;
+otherwise preflight fails. An aggregate duration above the limit also fails. The failure
+is shown in the activity feed and routes the JSON to `_err`. `copy_metadata` remains a
+video-to-video setting and uses the first effective video part from each generated
+orientation group.
 
 The success date directory comes from the timestamp suffix in
 `producer.recording_id` (`..._YYYYMMDD_HHMMSS`). If that identifier has no valid date,
@@ -799,7 +802,7 @@ root is missing or ambiguous.
 - **Default**: 1048576 (1 MiB)
 - **Description**: Minimum input file size to process
 - **Use case**: Skip corrupted/incomplete files
-- **Manifest behavior**: Compared with the sum of effective video-part sizes after audio-only filtering. A smaller request creates no video and moves its JSON to `_out` as a completed ignored task. `delete_after_success` deletes all sources, `move_all` archives them, and the remaining policies keep them.
+- **Manifest behavior**: Compared with the sum of effective video-part sizes after audio-only filtering. A smaller request creates no video and moves its JSON to `_out` as a completed ignored task. `delete_after_success` deletes every remaining source (`audio_only: delete` has already removed filtered inputs), `move_all` archives the remaining sources, and the remaining policies keep them.
 
 ### Metadata
 

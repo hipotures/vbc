@@ -420,6 +420,7 @@ suffix_errors_dirs: "_err"
 
 # Manifest policy. This is separate from general.copy_metadata.
 metadata:
+  # fail, ignore, or delete parts without usable video
   audio_only: ignore
   # Maximum missing output video frames accepted for one logical manifest job.
   # Default: 0 (strict).

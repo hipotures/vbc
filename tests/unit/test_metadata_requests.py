@@ -194,7 +194,7 @@ def test_stable_invalid_manifest_routes_to_error_after_settle(monkeypatch, tmp_p
 
 def test_metadata_hot_reload_keeps_last_valid_policy(tmp_path):
     config_path = tmp_path / "vbc.yaml"
-    config_path.write_text("metadata:\n  audio_only: ignore\n")
+    config_path.write_text("metadata:\n  audio_only: delete\n")
     config = AppConfig(general=GeneralConfig(threads=1))
     orchestrator = Orchestrator(
         config=config,
@@ -206,9 +206,9 @@ def test_metadata_hot_reload_keeps_last_valid_policy(tmp_path):
         config_path=config_path,
     )
 
-    assert orchestrator._load_current_metadata_config().audio_only == "ignore"
+    assert orchestrator._load_current_metadata_config().audio_only == "delete"
     config_path.write_text("metadata: [invalid")
-    assert orchestrator._load_current_metadata_config().audio_only == "ignore"
+    assert orchestrator._load_current_metadata_config().audio_only == "delete"
 
 
 def test_metadata_discovery_queues_proxy_then_hydrates_visible_job(tmp_path):
@@ -627,6 +627,216 @@ def test_metadata_preflight_completes_manifest_when_every_part_has_no_video(
     assert (output_dir / "20260718" / "request.json").exists()
     assert empty.exists()
     assert not error_dir.exists()
+
+
+def test_metadata_audio_only_delete_removes_filtered_part(tmp_path, caplog):
+    caplog.set_level(logging.INFO, logger="vbc.pipeline.orchestrator")
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, error_dir = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={"audio_only": "delete"},
+    )
+    video = tmp_path / "part001.mp4"
+    audio = tmp_path / "part002.mp4"
+    video.write_bytes(b"video")
+    audio.write_bytes(b"audio")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(_manifest([video, audio], tmp_path / "recording.mp4"))
+    )
+    ffprobe.get_part_info.side_effect = [
+        _part_info(),
+        _part_info(video_packets=0, audio_packets=5),
+    ]
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+    metadata = orchestrator._get_metadata(files[0])
+
+    assert metadata is not None
+    assert video.exists()
+    assert not audio.exists()
+    request = files[0].metadata_request
+    assert request.ignored_inputs == [audio]
+    assert request.deleted_inputs == [audio]
+    assert request.effective_input_paths == [video]
+    assert request.remaining_input_paths == [video]
+    assert manifest_path.exists()
+    assert not error_dir.exists()
+    assert (
+        f"MANIFEST_SOURCE_DELETED: source={audio} size_bytes=5 "
+        f"json={manifest_path} reason=audio_only"
+    ) in caplog.text
+
+
+def test_metadata_audio_only_delete_completes_all_audio_manifest(tmp_path, caplog):
+    caplog.set_level(logging.INFO, logger="vbc.pipeline.orchestrator")
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, error_dir = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={"audio_only": "delete"},
+    )
+    audio = tmp_path / "part001.mp4"
+    audio.write_bytes(b"audio only")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(_manifest([audio], tmp_path / "recording.mp4"))
+    )
+    ffprobe.get_part_info.return_value = _part_info(
+        video_packets=0,
+        audio_packets=5,
+    )
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+
+    assert orchestrator._get_metadata(files[0]) is None
+    assert not audio.exists()
+    assert not manifest_path.exists()
+    assert (output_dir / "20260718" / "request.json").exists()
+    assert not error_dir.exists()
+    assert (
+        f"MANIFEST_SOURCE_DELETED: source={audio} size_bytes=10 "
+        f"json={manifest_path} reason=audio_only"
+    ) in caplog.text
+
+
+def test_metadata_audio_only_delete_probes_below_minimum_manifest(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, _ = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={"audio_only": "delete"},
+        min_size=100,
+    )
+    audio = tmp_path / "part001.mp4"
+    audio.write_bytes(b"audio")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(_manifest([audio], tmp_path / "recording.mp4"))
+    )
+    ffprobe.get_part_info.return_value = _part_info(
+        video_packets=0,
+        audio_packets=5,
+    )
+
+    files, stats = orchestrator._perform_discovery(metadata_dir)
+
+    assert len(files) == 1
+    assert stats["ignored_small"] == 0
+    assert orchestrator._get_metadata(files[0]) is None
+    assert not audio.exists()
+    assert not manifest_path.exists()
+    assert (output_dir / "20260718" / "request.json").exists()
+    ffprobe.get_part_info.assert_called_once_with(audio)
+
+
+def test_metadata_audio_only_delete_probes_source_with_verified_output(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, output_dir, _ = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={"audio_only": "delete"},
+    )
+    audio = tmp_path / "part001.mp4"
+    audio.write_bytes(b"audio")
+    output = tmp_path / "recording.mp4"
+    output.write_bytes(b"encoded")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(json.dumps(_manifest([audio], output)))
+    orchestrator._verify_output_file = MagicMock(return_value=(True, None))
+    ffprobe.get_part_info.return_value = _part_info(
+        video_packets=0,
+        audio_packets=5,
+    )
+
+    files, stats = orchestrator._perform_discovery(metadata_dir)
+
+    assert len(files) == 1
+    assert stats["already_compressed"] == 0
+    assert orchestrator._get_metadata(files[0]) is None
+    assert output.exists()
+    assert not audio.exists()
+    assert not manifest_path.exists()
+    assert (output_dir / "20260718" / "request.json").exists()
+    ffprobe.get_part_info.assert_called_once_with(audio)
+
+
+def test_metadata_audio_only_delete_then_delete_policy_removes_video(tmp_path):
+    ffprobe = MagicMock()
+    orchestrator, metadata_dir, _, _ = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={"audio_only": "delete"},
+    )
+    video = tmp_path / "part001.mp4"
+    audio = tmp_path / "part002.mp4"
+    video.write_bytes(b"video")
+    audio.write_bytes(b"audio")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(
+            _manifest(
+                [video, audio],
+                tmp_path / "recording.mp4",
+                source_policy="delete_after_success",
+            )
+        )
+    )
+    ffprobe.get_part_info.side_effect = [
+        _part_info(),
+        _part_info(video_packets=0, audio_packets=5),
+    ]
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+    assert orchestrator._get_metadata(files[0]) is not None
+    assert video.exists()
+    assert not audio.exists()
+
+    orchestrator._apply_manifest_source_policy(files[0].metadata_request)
+
+    assert not video.exists()
+    assert not audio.exists()
+
+
+def test_metadata_audio_only_delete_then_move_policy_moves_video(tmp_path):
+    ffprobe = MagicMock()
+    move_root = tmp_path / "source_archive"
+    move_root.mkdir()
+    orchestrator, metadata_dir, _, _ = _orchestrator(
+        tmp_path,
+        ffprobe,
+        metadata_overrides={
+            "audio_only": "delete",
+            "source_policy": "move_after_success",
+            "move_after_success_dir": str(move_root),
+        },
+    )
+    source_dir = tmp_path / "recordings" / "user"
+    source_dir.mkdir(parents=True)
+    video = source_dir / "part001.mp4"
+    audio = source_dir / "part002.mp4"
+    video.write_bytes(b"video")
+    audio.write_bytes(b"audio")
+    manifest_path = metadata_dir / "request.json"
+    manifest_path.write_text(
+        json.dumps(_manifest([video, audio], tmp_path / "recording.mp4"))
+    )
+    ffprobe.get_part_info.side_effect = [
+        _part_info(),
+        _part_info(video_packets=0, audio_packets=5),
+    ]
+
+    files, _ = orchestrator._perform_discovery(metadata_dir)
+    assert orchestrator._get_metadata(files[0]) is not None
+    assert video.exists()
+    assert not audio.exists()
+
+    orchestrator._apply_manifest_source_policy(files[0].metadata_request)
+
+    assert not video.exists()
+    assert (move_root / "user" / video.name).is_file()
+    assert not (move_root / "user" / audio.name).exists()
 
 
 def test_metadata_min_size_keep_completes_manifest_without_deleting_sources(tmp_path):

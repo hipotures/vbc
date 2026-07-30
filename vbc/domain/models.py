@@ -206,12 +206,13 @@ class MetadataRequest(BaseModel):
     manifest: CompressionManifest
     parts: List[MultipartPart]
     ignored_inputs: List[Path] = Field(default_factory=list)
+    deleted_inputs: List[Path] = Field(default_factory=list)
     source_policy: Literal[
         "keep", "delete_after_success", "move_after_success", "move_all"
     ]
     move_after_success_dir: Optional[Path] = None
     compression_profile: str
-    audio_only: Literal["fail", "ignore"]
+    audio_only: Literal["fail", "ignore", "delete"]
     target_width: int = Field(gt=0)
     target_height: int = Field(gt=0)
     drop_audio: bool = False
@@ -223,6 +224,11 @@ class MetadataRequest(BaseModel):
     @property
     def effective_input_paths(self) -> List[Path]:
         return [part.path for part in self.parts]
+
+    @property
+    def remaining_input_paths(self) -> List[Path]:
+        deleted = set(self.deleted_inputs)
+        return [path for path in self.all_input_paths if path not in deleted]
 
 
 class VideoFile(BaseModel):

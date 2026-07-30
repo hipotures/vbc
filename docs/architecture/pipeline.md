@@ -349,7 +349,9 @@ manifest. Its display path is the requested output, while its identity and direc
 ownership remain the manifest path. Discovery reads and validates all JSON files, checks
 their input paths, and immediately publishes lightweight queue proxies. The rolling
 25-item metadata window then probes every physical part, filters configured audio-only
-inputs, and calculates effective aggregate size. Consecutive parts are grouped by
+inputs, and calculates effective aggregate size. The `delete` policy removes filtered
+parts during preflight and records each source path and size; `ignore` retains them for
+later source-policy handling. Consecutive parts are grouped by
 orientation; changes between portrait, landscape, or square start a new output group,
 while compatible resolutions inside one group are normalized to its largest frame.
 This keeps the UI populated while ffprobe resolves the visible and near-future queue

@@ -129,6 +129,14 @@ def test_metadata_audio_only_defaults_to_fail():
     assert config.metadata.max_duration_seconds == 86400
 
 
+def test_metadata_audio_only_accepts_delete():
+    config = AppConfig(
+        general=GeneralConfig(threads=1, extensions=[".mp4"]),
+        metadata={"audio_only": "delete"},
+    )
+    assert config.metadata.audio_only == "delete"
+
+
 def test_metadata_rejects_negative_max_dropped_frames():
     with pytest.raises(ValidationError):
         AppConfig(

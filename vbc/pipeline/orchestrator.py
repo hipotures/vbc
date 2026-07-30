@@ -1797,21 +1797,16 @@ class Orchestrator:
         if request.source_policy == "keep":
             return
         if request.source_policy == "delete_after_success":
-            for source_path in request.all_input_paths:
-                if source_path.exists():
-                    source_size = source_path.stat().st_size
-                    source_path.unlink()
-                    self.logger.info(
-                        "MANIFEST_SOURCE_DELETED: source=%s size_bytes=%s "
-                        "json=%s reason=%s",
-                        source_path,
-                        source_size,
-                        request.manifest_path,
-                        reason,
-                    )
+            self._delete_manifest_sources(
+                request,
+                request.remaining_input_paths,
+                reason=reason,
+            )
             return
 
-        source_paths = request.all_input_paths
+        source_paths = request.remaining_input_paths
+        if not source_paths:
+            return
 
         move_root = request.move_after_success_dir
         if move_root is None:
@@ -1906,6 +1901,26 @@ class Orchestrator:
                 rollback_errors,
             )
 
+    def _delete_manifest_sources(
+        self,
+        request: MetadataRequest,
+        source_paths: List[Path],
+        *,
+        reason: str,
+    ) -> None:
+        for source_path in source_paths:
+            if source_path.exists():
+                source_size = source_path.stat().st_size
+                source_path.unlink()
+                self.logger.info(
+                    "MANIFEST_SOURCE_DELETED: source=%s size_bytes=%s "
+                    "json=%s reason=%s",
+                    source_path,
+                    source_size,
+                    request.manifest_path,
+                    reason,
+                )
+
     def _get_manifest_part_info(self, source_path: Path) -> Dict[str, Any]:
         """Probe each unchanged manifest part at most once during this run."""
         with self._probe_path_lock(source_path):
@@ -1998,7 +2013,7 @@ class Orchestrator:
                 is_audio_only = (
                     bool(part_info.get("has_audio_stream")) and audio_packets > 0
                 )
-                if audio_only == "ignore":
+                if audio_only in ("ignore", "delete"):
                     ignored_inputs.append(source_path)
                     if is_audio_only:
                         self.logger.info(
@@ -2080,6 +2095,15 @@ class Orchestrator:
                 )
             )
 
+        request.ignored_inputs = ignored_inputs
+        if audio_only == "delete" and ignored_inputs:
+            self._delete_manifest_sources(
+                request,
+                ignored_inputs,
+                reason="audio_only",
+            )
+            request.deleted_inputs = list(ignored_inputs)
+
         if not parts:
             self._metadata_failed_paths.add(video_file.path)
             self.logger.info(
@@ -2127,7 +2151,6 @@ class Orchestrator:
             duration=total_duration,
         )
         request.parts = parts
-        request.ignored_inputs = ignored_inputs
         request.target_width = target_width
         request.target_height = target_height
         video_file.size_bytes = total_size
@@ -2268,7 +2291,11 @@ class Orchestrator:
 
                 # A multipart manifest may produce additional numbered outputs,
                 # which are known only after its parts have been probed.
-                if output_path.exists() and len(manifest.inputs) == 1:
+                if (
+                    audio_only != "delete"
+                    and output_path.exists()
+                    and len(manifest.inputs) == 1
+                ):
                     output_ok, _ = self._verify_output_file(output_path)
                     if output_ok:
                         self._apply_manifest_source_policy(request)
@@ -2284,7 +2311,10 @@ class Orchestrator:
                             f"Missing manifest input: {source_path}"
                         )
                     total_size += source_path.stat().st_size
-                if total_size < self.file_scanner.min_size_bytes:
+                if (
+                    audio_only != "delete"
+                    and total_size < self.file_scanner.min_size_bytes
+                ):
                     stats["ignored_small"] += 1
                     stats["files_found"] -= 1
                     self.logger.info(
@@ -2810,7 +2840,11 @@ class Orchestrator:
             request.compression_profile = compression_profile
             request.audio_only = audio_only
 
-            if request.ignored_inputs and audio_only == "fail":
+            if (
+                request.ignored_inputs
+                and not request.deleted_inputs
+                and audio_only == "fail"
+            ):
                 ignored = ", ".join(str(path) for path in request.ignored_inputs)
                 self._fail_metadata_request(
                     video_file,
@@ -2818,7 +2852,7 @@ class Orchestrator:
                 )
                 return
 
-            for source_path in request.all_input_paths:
+            for source_path in request.remaining_input_paths:
                 if not source_path.is_file():
                     self._fail_metadata_request(
                         video_file,

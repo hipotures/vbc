@@ -440,7 +440,7 @@ class MetadataConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    audio_only: Literal["fail", "ignore"] = "fail"
+    audio_only: Literal["fail", "ignore", "delete"] = "fail"
     max_dropped_frames: int = Field(default=0, ge=0)
     max_duration_seconds: int = Field(default=86400, gt=0)
     source_policy: Optional[

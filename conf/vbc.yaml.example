@@ -52,7 +52,7 @@ suffix_errors_dirs: "_err"
 # Manifest policy. This is separate from general.copy_metadata.
 # Fields shared with a manifest override its values when set here.
 metadata:
-  # Handling of parts without video packets: "fail" or "ignore".
+  # Handling of parts without video packets: "fail", "ignore", or "delete".
   audio_only: "fail"
 
   # Maximum missing output video frames accepted per generated output (>= 0).
