@@ -201,6 +201,10 @@ general:
   # - "exit": mark as failed and terminate process with error
   verify_fail_action: "false"
 
+  # Keep the source, or delete it after successful compression and verification.
+  # delete_after_success always forces output verification before deletion.
+  source_policy: "keep"
+
   # Skip files already encoded in AV1 codec.
   skip_av1: false
 
