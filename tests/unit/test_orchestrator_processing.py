@@ -420,7 +420,12 @@ def test_process_file_success_ratio_keeps_original(tmp_path):
     source = input_dir / "video.mp4"
     source.write_bytes(b"a" * 1000)
 
-    config = _make_config(use_exif=False, copy_metadata=False, min_compression_ratio=0.1)
+    config = _make_config(
+        use_exif=False,
+        copy_metadata=False,
+        min_compression_ratio=0.1,
+        source_policy="delete_after_success",
+    )
     bus = EventBus()
     events = []
     bus.subscribe(JobCompleted, lambda e: events.append(e))
@@ -471,6 +476,7 @@ def test_process_file_success_ratio_keeps_original(tmp_path):
 
     output_path = input_dir.with_name("input_out") / "video.mp4"
     assert output_path.read_bytes() == source.read_bytes()
+    assert source.exists()
     orchestrator._write_vbc_tags.assert_not_called()
     ffprobe.get_stream_info.assert_not_called()
 
@@ -600,7 +606,8 @@ def test_process_file_verify_output_success_marks_job_verified(tmp_path):
     config = _make_config(
         use_exif=False,
         copy_metadata=False,
-        verify_fail_action="log",
+        verify_fail_action="false",
+        source_policy="delete_after_success",
     )
     bus = EventBus()
     completed_events = []
@@ -635,12 +642,22 @@ def test_process_file_verify_output_success_marks_job_verified(tmp_path):
     )
     orchestrator._check_and_fix_color_space = MagicMock(return_value=(source, None))
     orchestrator._write_vbc_tags = MagicMock()
+    orchestrator._verify_output_file = MagicMock(
+        side_effect=lambda output_path: (
+            (source.exists() and output_path.exists()),
+            None if source.exists() and output_path.exists() else "output missing",
+        )
+    )
 
     video_file = VideoFile(path=source, size_bytes=source.stat().st_size)
     orchestrator._process_file(video_file, input_dir)
 
     assert completed_events
     assert completed_events[0].job.verification_passed is True
+    orchestrator._verify_output_file.assert_called_once_with(
+        input_dir.with_name("input_out") / "video.mp4"
+    )
+    assert not source.exists()
 
 
 def test_process_file_verify_output_failure_logs_error_and_continues(tmp_path):
@@ -653,6 +670,7 @@ def test_process_file_verify_output_failure_logs_error_and_continues(tmp_path):
         use_exif=False,
         copy_metadata=False,
         verify_fail_action="log",
+        source_policy="delete_after_success",
     )
     bus = EventBus()
     failed_events = []
@@ -696,6 +714,7 @@ def test_process_file_verify_output_failure_logs_error_and_continues(tmp_path):
     assert failed_events
     assert failed_events[0].job.status == JobStatus.FAILED
     assert "Verification failed" in (failed_events[0].job.error_message or "")
+    assert source.exists()
     assert orchestrator._pause_requested is False
     assert orchestrator._verification_abort_message is None
 

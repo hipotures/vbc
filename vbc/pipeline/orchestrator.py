@@ -3659,8 +3659,12 @@ class Orchestrator:
                                 f"RATE_OUTPUT: {filename} failed to probe output bitrate: {exc}"
                             )
 
-                if (
+                verification_required = (
                     job_config.general.verify_fail_action != "false"
+                    or job_config.general.source_policy == "delete_after_success"
+                )
+                if (
+                    verification_required
                     and not kept_original
                     and job.output_path is not None
                 ):
@@ -3715,6 +3719,22 @@ class Orchestrator:
                     source_mtime_ns,
                     timestamp_update.files,
                 )
+                if (
+                    job_config.general.source_policy == "delete_after_success"
+                    and not kept_original
+                ):
+                    if video_file.path.samefile(job.output_path):
+                        raise RuntimeError(
+                            "Refusing to delete source because output matches source"
+                        )
+                    source_size = video_file.path.stat().st_size
+                    video_file.path.unlink()
+                    self.logger.info(
+                        "SOURCE_DELETED: source=%s size_bytes=%s output=%s",
+                        video_file.path,
+                        source_size,
+                        job.output_path,
+                    )
                 self.event_bus.publish(JobCompleted(job=job))
                 if self.config.general.debug and start_time:
                     elapsed = time.monotonic() - start_time

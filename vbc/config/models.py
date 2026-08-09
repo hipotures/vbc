@@ -238,6 +238,7 @@ class GeneralConfig(BaseModel):
         min_size_bytes: Skip files smaller than this (default 1MiB).
         clean_errors: Remove .err markers and retry failed jobs.
         verify_fail_action: Output verification mode (false, log, pause, exit).
+        source_policy: Whether to retain the classic-compression source after success.
         skip_av1: Skip files already encoded in AV1 codec.
         strip_unicode_display: Remove unicode chars from displayed filenames (UI safety).
         manual_rotation: Force rotation angle (0, 90, 180, 270) for all videos (None = auto).
@@ -270,6 +271,7 @@ class GeneralConfig(BaseModel):
     min_size_bytes: int = Field(default=1048576)
     clean_errors: bool = False
     verify_fail_action: Literal["false", "log", "pause", "exit"] = "false"
+    source_policy: Literal["keep", "delete_after_success"] = "keep"
     skip_av1: bool = False
     strip_unicode_display: bool = True
     manual_rotation: Optional[int] = Field(default=None)

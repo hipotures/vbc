@@ -97,6 +97,7 @@ general:
   # === Error Handling ===
   clean_errors: false           # Remove .err markers on startup
   verify_fail_action: false     # false | log | pause | exit
+  source_policy: keep           # keep | delete_after_success
   auto_repair_errors: true      # Repair current-session failures before WAITING/exit
 
   # === UI/Display ===
@@ -936,6 +937,17 @@ root is missing or ambiguous.
   - VBC tags exist: `VBCOriginalName`, `VBCOriginalSize`, `VBCQuality`,
     `VBCOriginalBitrate`, `VBCEncoder`, `VBCFinishedAt`
 
+#### `source_policy`
+- **Type**: String
+- **Default**: `keep`
+- **Values**:
+  - `keep`: retain the original source file
+  - `delete_after_success`: delete the source only after a successful compression and verification
+- **Safety**: This option forces verification even when `verify_fail_action: false`.
+  VBC checks that ffprobe can read the output, that it contains video packets, and
+  that all required VBC tags are present. If compression did not meet the minimum
+  savings ratio, VBC keeps the original source.
+
 #### `auto_repair_errors`
 - **Type**: Boolean
 - **Default**: true
@@ -1070,7 +1082,7 @@ VBC scans input directories for `VBC.YAML` and applies the **nearest ancestor** 
 **Allowed `general` keys:** `gpu`, `cpu_fallback`, `ffmpeg_cpu_threads`, `copy_metadata`,
 `use_exif`, `filter_cameras`, `dynamic_quality`, `quality_mode`, `bps`, `minrate`, `maxrate`, `rate_target_max_bps`,
 `extensions`, `min_size_bytes`, `clean_errors`, `verify_fail_action`, `skip_av1`, `manual_rotation`,
-`min_compression_ratio`, `debug`.
+`min_compression_ratio`, `source_policy`, `debug`.
 
 **Special key:** `cq` (int 0–63) overrides quality for both GPU and CPU encoder args.
 

@@ -27,6 +27,7 @@ _ALLOWED_GENERAL_KEYS = {
     "min_size_bytes",
     "clean_errors",
     "verify_fail_action",
+    "source_policy",
     "skip_av1",
     "manual_rotation",
     "min_compression_ratio",

@@ -468,6 +468,9 @@ general:
   # Copy EXIF/XMP/GPS tags from source to output.
   copy_metadata: true
 
+  # keep | delete_after_success. Deletion forces output verification.
+  source_policy: keep
+
   # Use ExifTool for deep metadata analysis (required for dynamic_quality/filtering).
   use_exif: true
 

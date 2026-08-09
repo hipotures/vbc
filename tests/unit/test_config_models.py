@@ -47,6 +47,7 @@ def test_config_defaults():
     assert gen.ffmpeg_cpu_threads is None
     assert gen.preflight_in_worker is False
     assert gen.verify_fail_action == "false"
+    assert gen.source_policy == "keep"
     assert "-cq 45" in config.gpu_encoder.common_args
     assert "-crf 32" in config.cpu_encoder.common_args
     assert config.errors_dirs == []
@@ -57,6 +58,12 @@ def test_worker_preflight_is_global_general_setting():
     config = AppConfig(general={"preflight_in_worker": True})
 
     assert config.general.preflight_in_worker is True
+
+
+def test_classic_source_policy_accepts_delete_after_success():
+    config = AppConfig(general={"source_policy": "delete_after_success"})
+
+    assert config.general.source_policy == "delete_after_success"
 
 
 def test_input_dirs_accepts_object_format():
