@@ -1012,7 +1012,7 @@ root is missing or ambiguous.
 - **Type**: Boolean
 - **Default**: `false`
 - **Description**: Read a per-video rotation from a same-stem `.rot` file
-- **Format**: One directive: `--video-rotate=0`, `90`, `180`, or `270`
+- **Format**: One directive: `--video-rotate=-1`, `0`, `90`, `180`, or `270`
 - **Example**: `clip.part.mp4` uses `clip.part.rot`
 - **Priority**: Manual CLI rotation → `.rot` sidecar → filename patterns
 
@@ -1024,6 +1024,8 @@ autorotate:
 
 When disabled, VBC does not inspect `.rot` files. A missing `.rot` file falls
 through to `patterns`; an invalid or unreadable sidecar fails that video job.
+The value `-1` means that rotation could not be determined: VBC applies no
+custom rotation and does not fall through to filename patterns.
 When a sidecar supplies a rotation, VBC ignores rotation metadata embedded in
 the input and applies only the sidecar value.
 

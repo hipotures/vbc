@@ -523,6 +523,27 @@ def test_determine_rotation_falls_back_to_pattern_without_sidecar(
     assert rotation == 180
 
 
+def test_determine_rotation_treats_sidecar_minus_one_as_no_rotation(
+    tmp_path, orchestrator_basic
+):
+    video_path = tmp_path / "clip.mp4"
+    video_path.touch()
+    video_path.with_suffix(".rot").write_text(
+        "--video-rotate=-1\n",
+        encoding="utf-8",
+    )
+    orchestrator_basic.config.autorotate = AutoRotateConfig(
+        sidecar=True,
+        patterns={r"clip\.mp4": 180},
+    )
+
+    rotation = orchestrator_basic._determine_rotation(
+        VideoFile(path=video_path, size_bytes=1000)
+    )
+
+    assert rotation is None
+
+
 def test_determine_rotation_ignores_sidecar_when_disabled(
     tmp_path, orchestrator_basic
 ):

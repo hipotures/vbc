@@ -361,6 +361,7 @@ web_server:
 autorotate:
   # Read rotation from a same-stem .rot file when present.
   # Example: video.mp4 + video.rot containing "--video-rotate=90".
+  # A value of -1 means no custom rotation.
   # An explicit rotation ignores rotation metadata stored in the video.
   sidecar: false
 

@@ -112,7 +112,9 @@ A sidecar contains one directive, for example:
 --video-rotate=90
 ```
 
-The accepted angles are `0`, `90`, `180`, and `270`. Sidecars are ignored
+The accepted values are `-1`, `0`, `90`, `180`, and `270`. A value of `-1`
+means that rotation could not be determined; VBC applies no custom rotation
+and does not check filename patterns for that video. Sidecars are ignored
 unless `autorotate.sidecar` is enabled globally or in the applicable
 `VBC.YAML`. An explicit rotation from a sidecar, filename pattern, or CLI
 override ignores embedded input rotation metadata.

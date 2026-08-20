@@ -1029,13 +1029,14 @@ class Orchestrator:
             sidecar_path = file.path.with_suffix(".rot")
             if sidecar_path.is_file():
                 directive = sidecar_path.read_text(encoding="utf-8").strip()
-                match = re.fullmatch(r"--video-rotate=(0|90|180|270)", directive)
+                match = re.fullmatch(r"--video-rotate=(-1|0|90|180|270)", directive)
                 if match is None:
                     raise ValueError(
                         f"Invalid rotation sidecar {sidecar_path}: expected "
-                        "--video-rotate=<0|90|180|270>"
+                        "--video-rotate=<-1|0|90|180|270>"
                     )
-                return int(match.group(1))
+                angle = int(match.group(1))
+                return None if angle == -1 else angle
         filename = file.path.name
         for pattern, angle in cfg.autorotate.patterns.items():
             if re.search(pattern, filename):
