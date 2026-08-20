@@ -374,16 +374,18 @@ class GeneralConfig(BaseModel):
 
 
 class AutoRotateConfig(BaseModel):
-    """Filename pattern-based automatic rotation configuration.
+    """Automatic rotation configuration.
 
-    Maps regex patterns to rotation angles. If a filename matches a pattern,
-    that rotation is applied automatically (overrides manual_rotation).
+    Rotation can be selected from a per-video .rot sidecar file or from
+    filename patterns.
 
     Attributes:
+        sidecar: Read rotation from a same-stem .rot file when present.
         patterns: Dict mapping regex patterns to angles (0, 90, 180, 270).
                   Example: {"DJI_.*\\.MP4": 0, "GOPR.*\\.MP4": 180}
     """
 
+    sidecar: bool = False
     patterns: Dict[str, int] = Field(default_factory=dict)
 
     @field_validator("patterns")

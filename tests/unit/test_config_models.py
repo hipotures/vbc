@@ -1,7 +1,8 @@
 import pytest
 import yaml
 from pydantic import ValidationError
-from vbc.config.models import AppConfig, GeneralConfig
+from vbc.config.models import AppConfig, AutoRotateConfig, GeneralConfig
+from vbc.config.overrides import merge_local_config
 
 
 def test_valid_config():
@@ -21,6 +22,30 @@ def test_valid_config():
     config = AppConfig(**data)
     assert config.general.threads == 4
     assert config.autorotate.patterns["QVR.*"] == 180
+
+
+def test_autorotate_sidecar_defaults_to_disabled():
+    assert AutoRotateConfig().sidecar is False
+
+
+def test_local_config_can_enable_autorotate_sidecar():
+    base = AppConfig(
+        general=GeneralConfig(threads=1),
+        autorotate=AutoRotateConfig(
+            sidecar=False,
+            patterns={"QVR.*": 180},
+        ),
+    )
+
+    config = merge_local_config(
+        base,
+        {"autorotate": {"sidecar": True}},
+        cli_overrides=None,
+    )
+
+    assert config.autorotate.sidecar is True
+    assert config.autorotate.patterns == {"QVR.*": 180}
+    assert base.autorotate.sidecar is False
 
 
 def test_invalid_threads():
@@ -338,6 +363,7 @@ cpu_encoder:
     - "-crf 30"
     - "-f mp4"
 autorotate:
+  sidecar: true
   patterns:
     "test.*": 90
 """)
@@ -346,6 +372,7 @@ autorotate:
     config = load_config(f)
     assert config.general.threads == 8
     assert "-cq 30" in config.gpu_encoder.common_args
+    assert config.autorotate.sidecar is True
     assert config.autorotate.patterns["test.*"] == 90
 
 

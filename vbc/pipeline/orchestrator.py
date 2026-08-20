@@ -1013,7 +1013,7 @@ class Orchestrator:
     def _determine_rotation(
         self, file: VideoFile, config: Optional[AppConfig] = None
     ) -> Optional[int]:
-        """Determines if rotation is needed based on filename pattern.
+        """Determine rotation from manual, sidecar, or filename configuration.
 
         Args:
             file: Video file to determine rotation for.
@@ -1025,6 +1025,17 @@ class Orchestrator:
         cfg = config if config is not None else self.config
         if cfg.general.manual_rotation is not None:
             return cfg.general.manual_rotation
+        if cfg.autorotate.sidecar:
+            sidecar_path = file.path.with_suffix(".rot")
+            if sidecar_path.is_file():
+                directive = sidecar_path.read_text(encoding="utf-8").strip()
+                match = re.fullmatch(r"--video-rotate=(0|90|180|270)", directive)
+                if match is None:
+                    raise ValueError(
+                        f"Invalid rotation sidecar {sidecar_path}: expected "
+                        "--video-rotate=<0|90|180|270>"
+                    )
+                return int(match.group(1))
         filename = file.path.name
         for pattern, angle in cfg.autorotate.patterns.items():
             if re.search(pattern, filename):
@@ -3470,7 +3481,6 @@ class Orchestrator:
                 self.cli_overrides,  # CLI overrides
             )
 
-            rotation = self._determine_rotation(video_file, config=job_config)
             quality_value: Optional[int] = None
             quality_display = "unknown"
             quality_tag_label = "unknown"
@@ -3479,6 +3489,7 @@ class Orchestrator:
             vbc_json_notes: Optional[str] = None
 
             try:
+                rotation = self._determine_rotation(video_file, config=job_config)
                 if job_config.general.quality_mode == "rate":
                     rate_control = self._determine_rate_control(
                         video_file,

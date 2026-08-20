@@ -143,10 +143,6 @@ def load_local_config_data(path: Path) -> Dict[str, Any]:
         _logger.warning("Local config %s must be a mapping; ignoring", path)
         return {}
 
-    autorotate = data.get("autorotate")
-    if isinstance(autorotate, dict) and "patterns" not in autorotate:
-        data["autorotate"] = {"patterns": autorotate}
-
     return _filter_local_overrides(data, path)
 
 

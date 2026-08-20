@@ -230,9 +230,9 @@ if config.general.filter_cameras:
 target_cq = _determine_cq(video_file, use_gpu=config.general.gpu)
 # Checks: CLI override → custom_cq from EXIF → dynamic_quality[pattern].cq → default from encoder args
 
-# Determine rotation (manual or pattern-based)
+# Determine rotation (manual, sidecar, or pattern-based)
 rotation = _determine_rotation(video_file)
-# Checks: manual_rotation → autorotate patterns → None
+# Checks: manual_rotation → enabled .rot sidecar → autorotate patterns → None
 ```
 
 ### Step 8: Create Job & Start

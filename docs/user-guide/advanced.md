@@ -90,6 +90,7 @@ Automatically rotate videos based on filename patterns (useful for GoPro, drone 
 ```yaml
 # conf/vbc.yaml
 autorotate:
+  sidecar: false
   patterns:
     "DJI_.*\\.MP4": 0        # DJI drones - no rotation
     "GOPR\\d+\\.MP4": 180    # GoPro pattern - flip 180°
@@ -100,9 +101,20 @@ autorotate:
 
 ### How It Works
 
-1. **Filename check**: VBC checks each filename against all patterns
-2. **First match**: Uses angle from first matching pattern
-3. **Rotation filter**: Applies FFmpeg transpose/hflip+vflip filters
+1. **Manual override**: A CLI rotation has highest priority
+2. **Sidecar check**: With `sidecar: true`, `video.mp4` reads `video.rot`
+3. **Filename check**: If no sidecar exists, VBC checks filename patterns
+4. **Rotation filter**: Applies FFmpeg transpose/hflip+vflip filters
+
+A sidecar contains one directive, for example:
+
+```text
+--video-rotate=90
+```
+
+The accepted angles are `0`, `90`, `180`, and `270`. Sidecars are ignored
+unless `autorotate.sidecar` is enabled globally or in the applicable
+`VBC.YAML`.
 
 ### Rotation Angles
 

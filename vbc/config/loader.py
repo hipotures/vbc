@@ -38,10 +38,6 @@ def load_config(config_path: Path) -> AppConfig:
     with open(config_path, 'r') as f:
         data = yaml.safe_load(f) or {}
 
-    autorotate = data.get("autorotate")
-    if isinstance(autorotate, dict) and "patterns" not in autorotate:
-        data["autorotate"] = {"patterns": autorotate}
-
     _validate_input_dirs_schema(data)
     
     # Existing vbc.yaml structure has 'general' and 'autorotate' at root

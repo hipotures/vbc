@@ -320,6 +320,13 @@ def _determine_rotation(self, file: VideoFile) -> Optional[int]:
     if self.config.general.manual_rotation is not None:
         return self.config.general.manual_rotation
 
+    # An enabled same-stem .rot sidecar overrides patterns
+    if self.config.autorotate.sidecar:
+        sidecar_path = file.path.with_suffix(".rot")
+        if sidecar_path.is_file():
+            # Parse --video-rotate=<0|90|180|270>
+            ...
+
     # Check filename patterns
     filename = file.path.name
     for pattern, angle in self.config.autorotate.patterns.items():

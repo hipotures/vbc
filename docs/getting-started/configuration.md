@@ -1008,6 +1008,23 @@ root is missing or ambiguous.
 
 ### Auto-Rotation
 
+#### `sidecar`
+- **Type**: Boolean
+- **Default**: `false`
+- **Description**: Read a per-video rotation from a same-stem `.rot` file
+- **Format**: One directive: `--video-rotate=0`, `90`, `180`, or `270`
+- **Example**: `clip.part.mp4` uses `clip.part.rot`
+- **Priority**: Manual CLI rotation → `.rot` sidecar → filename patterns
+
+```yaml
+autorotate:
+  sidecar: true
+  patterns: {}
+```
+
+When disabled, VBC does not inspect `.rot` files. A missing `.rot` file falls
+through to `patterns`; an invalid or unreadable sidecar fails that video job.
+
 #### `patterns`
 - **Type**: Dictionary (regex -> angle)
 - **Default**: `{}`
@@ -1078,6 +1095,14 @@ VBC scans input directories for `VBC.YAML` and applies the **nearest ancestor** 
 **Priority:** Global config → Local `VBC.YAML` → CLI.
 
 **Allowed root keys:** `general`, `gpu_encoder`, `cpu_encoder`, `autorotate`, `cq`.
+
+For example, this local config enables `.rot` sidecars only for videos below its
+directory:
+
+```yaml
+autorotate:
+  sidecar: true
+```
 
 **Allowed `general` keys:** `gpu`, `cpu_fallback`, `ffmpeg_cpu_threads`, `copy_metadata`,
 `use_exif`, `filter_cameras`, `dynamic_quality`, `quality_mode`, `bps`, `minrate`, `maxrate`, `rate_target_max_bps`,

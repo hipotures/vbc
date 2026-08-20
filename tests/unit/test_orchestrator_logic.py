@@ -487,6 +487,82 @@ def test_determine_rotation_no_patterns(orchestrator_basic):
     assert rotation is None
 
 
+def test_determine_rotation_uses_enabled_sidecar(tmp_path, orchestrator_basic):
+    video_path = tmp_path / "clip.part.mp4"
+    video_path.touch()
+    video_path.with_suffix(".rot").write_text(
+        "--video-rotate=90\n",
+        encoding="utf-8",
+    )
+    orchestrator_basic.config.autorotate = AutoRotateConfig(
+        sidecar=True,
+        patterns={r"clip\.part\.mp4": 180},
+    )
+
+    rotation = orchestrator_basic._determine_rotation(
+        VideoFile(path=video_path, size_bytes=1000)
+    )
+
+    assert rotation == 90
+
+
+def test_determine_rotation_falls_back_to_pattern_without_sidecar(
+    tmp_path, orchestrator_basic
+):
+    video_path = tmp_path / "clip.mp4"
+    video_path.touch()
+    orchestrator_basic.config.autorotate = AutoRotateConfig(
+        sidecar=True,
+        patterns={r"clip\.mp4": 180},
+    )
+
+    rotation = orchestrator_basic._determine_rotation(
+        VideoFile(path=video_path, size_bytes=1000)
+    )
+
+    assert rotation == 180
+
+
+def test_determine_rotation_ignores_sidecar_when_disabled(
+    tmp_path, orchestrator_basic
+):
+    video_path = tmp_path / "clip.mp4"
+    video_path.touch()
+    video_path.with_suffix(".rot").write_text(
+        "--video-rotate=90\n",
+        encoding="utf-8",
+    )
+    orchestrator_basic.config.autorotate = AutoRotateConfig(
+        sidecar=False,
+        patterns={r"clip\.mp4": 180},
+    )
+
+    rotation = orchestrator_basic._determine_rotation(
+        VideoFile(path=video_path, size_bytes=1000)
+    )
+
+    assert rotation == 180
+
+
+def test_determine_rotation_rejects_invalid_sidecar(
+    tmp_path, orchestrator_basic
+):
+    video_path = tmp_path / "clip.mp4"
+    video_path.touch()
+    video_path.with_suffix(".rot").write_text(
+        "--video-rotate=45\n",
+        encoding="utf-8",
+    )
+    orchestrator_basic.config.autorotate = AutoRotateConfig(
+        sidecar=True,
+    )
+
+    with pytest.raises(ValueError, match="Invalid rotation sidecar"):
+        orchestrator_basic._determine_rotation(
+            VideoFile(path=video_path, size_bytes=1000)
+        )
+
+
 def test_metadata_caching(orchestrator_basic):
     """Test that metadata is cached to avoid repeated calls."""
     vf = VideoFile(path=Path("test.mp4"), size_bytes=1000)
