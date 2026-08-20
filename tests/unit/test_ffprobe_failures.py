@@ -16,6 +16,12 @@ def ffprobe():
 class TestFFprobeProcessFailures:
     """Test ffprobe subprocess failures."""
 
+    def test_estimate_timeout_has_minimum_for_slow_storage(self, tmp_path):
+        test_file = tmp_path / "test.mp4"
+        test_file.write_bytes(b"x")
+
+        assert FFprobeAdapter._estimate_timeout(test_file) == 30
+
     def test_get_stream_info_timeout(self, ffprobe, tmp_path):
         """Test RuntimeError when ffprobe times out."""
         test_file = tmp_path / "test.mp4"

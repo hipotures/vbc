@@ -114,7 +114,8 @@ A sidecar contains one directive, for example:
 
 The accepted angles are `0`, `90`, `180`, and `270`. Sidecars are ignored
 unless `autorotate.sidecar` is enabled globally or in the applicable
-`VBC.YAML`.
+`VBC.YAML`. An explicit rotation from a sidecar, filename pattern, or CLI
+override ignores embedded input rotation metadata.
 
 ### Rotation Angles
 

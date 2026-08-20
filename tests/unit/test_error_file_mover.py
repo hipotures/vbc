@@ -64,6 +64,37 @@ def test_move_failed_files_moves_multiple_sources(tmp_path):
     assert (errors_dir / "clip.err").exists()
 
 
+def test_move_failed_files_leaves_same_stem_sidecars_in_source(tmp_path):
+    input_dir = tmp_path / "input"
+    output_dir = tmp_path / "input_out"
+    errors_dir = tmp_path / "input_err"
+
+    input_dir.mkdir()
+    output_dir.mkdir()
+
+    source = input_dir / "clip.mp4"
+    sidecar = input_dir / "clip.rot"
+    source.write_bytes(b"x" * 10)
+    sidecar.write_text("--video-rotate=90\n")
+
+    err_file = output_dir / "clip.err"
+    err_file.write_text("ffprobe timed out")
+
+    moved = move_failed_files(
+        [input_dir],
+        {input_dir: output_dir},
+        {input_dir: errors_dir},
+        [".mp4"],
+        logger=None,
+    )
+
+    assert moved == [errors_dir / "clip.mp4"]
+    assert not source.exists()
+    assert sidecar.exists()
+    assert (errors_dir / "clip.mp4").exists()
+    assert not (errors_dir / "clip.rot").exists()
+
+
 def test_collect_error_entries_counts(tmp_path):
     input_dir = tmp_path / "input"
     output_dir = tmp_path / "input_out"

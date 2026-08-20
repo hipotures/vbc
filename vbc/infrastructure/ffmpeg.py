@@ -345,8 +345,10 @@ class FFmpegAdapter:
         cmd.extend([
             "-fflags", "+genpts+igndts",
             "-avoid_negative_ts", "make_zero",
-            "-i", str(input_path or job.source_file.path),
         ])
+        if rotate is not None:
+            cmd.append("-noautorotate")
+        cmd.extend(["-i", str(input_path or job.source_file.path)])
 
         encoder_tokens = _split_args(encoder_args)
         cmd.extend(encoder_tokens)
@@ -400,6 +402,8 @@ class FFmpegAdapter:
         ]
         cmd.extend(["-fflags", "+genpts+igndts", "-avoid_negative_ts", "make_zero"])
         for part in request.parts:
+            if rotate is not None:
+                cmd.append("-noautorotate")
             cmd.extend(["-i", str(part.path)])
 
         video_filters: List[str] = []

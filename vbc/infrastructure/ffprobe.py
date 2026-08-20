@@ -18,7 +18,7 @@ class FFprobeAdapter:
             size_bytes = file_path.stat().st_size
         except OSError:
             return 30
-        return max(1, (size_bytes + rate_bytes - 1) // rate_bytes)
+        return max(30, (size_bytes + rate_bytes - 1) // rate_bytes)
 
     @staticmethod
     def _to_float(value: Any) -> float:

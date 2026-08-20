@@ -1096,6 +1096,7 @@ def test_multipart_ffmpeg_command_normalizes_video_and_synthesizes_silence(tmp_p
     filter_graph = command[command.index("-filter_complex") + 1]
 
     assert command.count("-i") == 2
+    assert "-noautorotate" not in command
     assert command[2:6] == [
         "-filter_buffered_frames",
         "2048",
@@ -1112,6 +1113,21 @@ def test_multipart_ffmpeg_command_normalizes_video_and_synthesizes_silence(tmp_p
     assert "concat=n=2:v=1:a=1" in filter_graph
     assert command[command.index("-fps_mode") + 1] == "passthrough"
     assert command[-1].endswith("recording.tmp")
+
+    rotated_command = adapter._build_command(
+        job,
+        config,
+        select_encoder_args(config, use_gpu=False),
+        use_gpu=False,
+        rotate=0,
+    )
+    input_indices = [
+        index for index, argument in enumerate(rotated_command) if argument == "-i"
+    ]
+    assert len(input_indices) == 2
+    assert all(
+        rotated_command[index - 1] == "-noautorotate" for index in input_indices
+    )
 
 
 def test_repair_multipart_command_drops_audio_without_changing_manifest(tmp_path):

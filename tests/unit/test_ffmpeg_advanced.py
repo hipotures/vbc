@@ -84,6 +84,44 @@ class TestRotationPaths:
         assert '-vf' in cmd
         idx = cmd.index('-vf')
         assert 'transpose=1' in cmd[idx + 1]
+        input_idx = cmd.index('-i')
+        assert cmd[input_idx - 1] == '-noautorotate'
+
+    def test_build_command_without_rotation_uses_input_metadata(
+        self, ffmpeg_adapter, sample_job
+    ):
+        """Test that FFmpeg autorotation remains enabled without an override."""
+        config = AppConfig(general=GeneralConfig(gpu=True))
+        encoder_args = select_encoder_args(config, use_gpu=True)
+
+        cmd = ffmpeg_adapter._build_command(
+            sample_job,
+            config,
+            encoder_args,
+            use_gpu=True,
+            rotate=None,
+        )
+
+        assert '-noautorotate' not in cmd
+
+    def test_build_command_rotation_zero_ignores_input_metadata(
+        self, ffmpeg_adapter, sample_job
+    ):
+        """Test that an explicit zero rotation suppresses metadata rotation."""
+        config = AppConfig(general=GeneralConfig(gpu=True))
+        encoder_args = select_encoder_args(config, use_gpu=True)
+
+        cmd = ffmpeg_adapter._build_command(
+            sample_job,
+            config,
+            encoder_args,
+            use_gpu=True,
+            rotate=0,
+        )
+
+        input_idx = cmd.index('-i')
+        assert cmd[input_idx - 1] == '-noautorotate'
+        assert '-vf' not in cmd
 
     def test_build_command_rotation_270(self, ffmpeg_adapter, sample_job):
         """Test 270° rotation command."""

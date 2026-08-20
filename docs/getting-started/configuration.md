@@ -1024,6 +1024,8 @@ autorotate:
 
 When disabled, VBC does not inspect `.rot` files. A missing `.rot` file falls
 through to `patterns`; an invalid or unreadable sidecar fails that video job.
+When a sidecar supplies a rotation, VBC ignores rotation metadata embedded in
+the input and applies only the sidecar value.
 
 #### `patterns`
 - **Type**: Dictionary (regex -> angle)

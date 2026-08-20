@@ -361,6 +361,7 @@ web_server:
 autorotate:
   # Read rotation from a same-stem .rot file when present.
   # Example: video.mp4 + video.rot containing "--video-rotate=90".
+  # An explicit rotation ignores rotation metadata stored in the video.
   sidecar: false
 
   # Regex pattern -> Rotation angle (0, 90, 180, 270).

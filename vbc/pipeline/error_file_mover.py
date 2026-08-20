@@ -9,10 +9,15 @@ from rich.progress import Progress, BarColumn, SpinnerColumn, TextColumn, TimeRe
 def _find_sources_for_error(
     input_dir: Path,
     rel_err_path: Path,
+    extensions: Iterable[str],
 ) -> List[Path]:
+    video_extensions = {
+        extension.lower() if extension.startswith(".") else f".{extension.lower()}"
+        for extension in extensions
+    }
     output_rel = rel_err_path.with_suffix("")
     direct = input_dir / output_rel
-    if direct.exists():
+    if direct.exists() and direct.suffix.lower() in video_extensions:
         return [direct]
 
     base_parent = direct.parent
@@ -26,6 +31,8 @@ def _find_sources_for_error(
     base_name_core_lower = base_name_core.lower()
     for entry in base_parent.iterdir():
         if not entry.is_file():
+            continue
+        if entry.suffix.lower() not in video_extensions:
             continue
         stem = entry.stem
         stem_lower = stem.lower()
@@ -105,7 +112,7 @@ def move_failed_files(
                 if logger:
                     logger.info(f"Moved error marker: {err_file} -> {dest_err}")
 
-            source_paths = _find_sources_for_error(input_dir, rel_err)
+            source_paths = _find_sources_for_error(input_dir, rel_err, extensions)
             if source_paths:
                 for source_path in source_paths:
                     if not source_path.exists():
