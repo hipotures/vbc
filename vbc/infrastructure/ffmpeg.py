@@ -340,8 +340,6 @@ class FFmpegAdapter:
             "ffmpeg",
             "-y", # Overwrite output files
         ]
-        if use_gpu:
-            cmd.extend(["-vsync", "0"])
         cmd.extend([
             "-fflags", "+genpts+igndts",
             "-avoid_negative_ts", "make_zero",
@@ -352,6 +350,8 @@ class FFmpegAdapter:
 
         encoder_tokens = _split_args(encoder_args)
         cmd.extend(encoder_tokens)
+        if use_gpu:
+            cmd.extend(["-fps_mode", "passthrough"])
 
         # Audio/Metadata settings
         audio_opts, _, _ = self._select_audio_options(job)

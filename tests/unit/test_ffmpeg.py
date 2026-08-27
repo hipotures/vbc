@@ -30,6 +30,8 @@ def test_ffmpeg_command_generation_gpu():
     assert "-c:v" in cmd
     assert "av1_nvenc" in cmd
     assert "input.mp4" in cmd
+    assert cmd[cmd.index("-fps_mode") + 1] == "passthrough"
+    assert "-vsync" not in cmd
     # FFmpeg writes to .tmp file first, then renames to .mp4
     assert "output.tmp" in cmd or any(".tmp" in str(c) for c in cmd)
 
