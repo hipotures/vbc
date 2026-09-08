@@ -499,10 +499,6 @@ class InputDirEntry(BaseModel):
             raise ValueError(
                 "input_dirs.watch with watch_mode: inotify requires metadata: true."
             )
-        if self.watch and self.watch_mode == "polling" and self.metadata:
-            raise ValueError(
-                "input_dirs.watch with watch_mode: polling requires metadata: false."
-            )
         return self
 
 

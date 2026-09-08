@@ -5,7 +5,7 @@ import pytest
 from vbc.domain.events import InputDirsChanged, RefreshRequested
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
-from vbc.infrastructure.video_polling_watcher import VideoPollingWatcher
+from vbc.infrastructure.polling_watcher import PollingWatcher
 
 
 def _watcher(tmp_path, active_dirs=None):
@@ -18,9 +18,12 @@ def _watcher(tmp_path, active_dirs=None):
         refreshed.set()
 
     bus.subscribe(RefreshRequested, on_refresh)
-    watcher = VideoPollingWatcher(
+    scanner = FileScanner([".mp4"], min_size_bytes=0)
+    watcher = PollingWatcher(
         event_bus=bus,
-        file_scanner=FileScanner([".mp4"], min_size_bytes=0),
+        scan_paths=lambda directory: (
+            video.path for video in scanner.scan(directory)
+        ),
         watchable_dirs=[tmp_path],
         active_dirs=[tmp_path] if active_dirs is None else active_dirs,
         poll_interval_seconds=0.01,
@@ -49,6 +52,29 @@ def test_polling_establishes_baseline_without_refreshing_existing_files(tmp_path
     _bus, watcher, _refreshed, _refresh_events = _watcher(tmp_path)
 
     assert watcher._sync_directories() is False
+
+
+def test_metadata_polling_ignores_tmp_then_detects_final_json(tmp_path):
+    bus = EventBus()
+    refresh_events = []
+    bus.subscribe(RefreshRequested, refresh_events.append)
+    watcher = PollingWatcher(
+        event_bus=bus,
+        scan_paths=lambda directory: directory.rglob("*.json"),
+        watchable_dirs=[tmp_path],
+        active_dirs=[tmp_path],
+    )
+    assert watcher._sync_directories() is False
+
+    temporary = tmp_path / "request.tmp"
+    temporary.write_text("{}")
+    watcher._poll_once()
+    assert refresh_events == []
+
+    temporary.rename(tmp_path / "request.json")
+    watcher._poll_once()
+    assert len(refresh_events) == 1
+    assert refresh_events[0].manifest_paths == []
 
 
 def test_polling_follows_active_directory_changes(tmp_path):
@@ -82,9 +108,9 @@ def test_polling_thread_publishes_refresh_and_stops(tmp_path):
 
 def test_polling_rejects_non_positive_interval(tmp_path):
     with pytest.raises(ValueError, match="greater than zero"):
-        VideoPollingWatcher(
+        PollingWatcher(
             event_bus=EventBus(),
-            file_scanner=FileScanner([".mp4"], min_size_bytes=0),
+            scan_paths=lambda directory: directory.rglob("*.mp4"),
             watchable_dirs=[tmp_path],
             active_dirs=[tmp_path],
             poll_interval_seconds=0,

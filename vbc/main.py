@@ -727,30 +727,30 @@ def compress(
                         )
                     )
 
-                polling_dirs_by_interval = {}
+                polling_dirs_by_mode_and_interval = {}
                 for entry in config.input_dirs:
-                    if (
-                        entry.metadata
-                        or not entry.watch
-                        or entry.watch_mode != "polling"
-                    ):
+                    if not entry.watch or entry.watch_mode != "polling":
                         continue
-                    polling_dirs_by_interval.setdefault(
-                        entry.poll_interval_seconds, set()
+                    polling_dirs_by_mode_and_interval.setdefault(
+                        (entry.metadata, entry.poll_interval_seconds), set()
                     ).add(Path(entry.path))
 
-                if polling_dirs_by_interval:
-                    from vbc.infrastructure.video_polling_watcher import (
-                        VideoPollingWatcher,
-                    )
+                if polling_dirs_by_mode_and_interval:
+                    from vbc.infrastructure.polling_watcher import PollingWatcher
 
-                for poll_interval_seconds, polling_dirs in sorted(
-                    polling_dirs_by_interval.items()
+                for (metadata, poll_interval_seconds), polling_dirs in sorted(
+                    polling_dirs_by_mode_and_interval.items()
                 ):
+                    if metadata:
+                        scan_paths = lambda directory: directory.rglob("*.json")
+                    else:
+                        scan_paths = lambda directory: (
+                            video.path for video in scanner.scan(directory)
+                        )
                     watchers.append(
-                        VideoPollingWatcher(
+                        PollingWatcher(
                             event_bus=bus,
-                            file_scanner=scanner,
+                            scan_paths=scan_paths,
                             watchable_dirs=polling_dirs,
                             active_dirs=input_dirs,
                             poll_interval_seconds=poll_interval_seconds,

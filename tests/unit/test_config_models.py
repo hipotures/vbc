@@ -162,19 +162,23 @@ def test_input_dirs_rejects_non_positive_poll_interval():
         )
 
 
-def test_input_dirs_polling_watch_rejects_metadata_mode():
-    with pytest.raises(ValidationError, match="polling requires metadata: false"):
-        AppConfig(
-            general=GeneralConfig(threads=1, extensions=[".mp4"]),
-            input_dirs=[
-                {
-                    "path": "/tmp/in_a",
-                    "metadata": True,
-                    "watch": True,
-                    "watch_mode": "polling",
-                }
-            ],
-        )
+def test_input_dirs_polling_watch_accepts_metadata_mode():
+    config = AppConfig(
+        general=GeneralConfig(threads=1, extensions=[".mp4"]),
+        input_dirs=[
+            {
+                "path": "/tmp/in_a",
+                "metadata": True,
+                "watch": True,
+                "watch_mode": "polling",
+                "poll_interval_seconds": 30,
+            }
+        ],
+    )
+
+    assert config.input_dirs[0].metadata is True
+    assert config.input_dirs[0].watch_mode == "polling"
+    assert config.input_dirs[0].poll_interval_seconds == 30
 
 
 def test_input_dirs_rejects_non_positive_idle_interval():

@@ -205,6 +205,9 @@ When `wait_on_finish: true` (or `--wait` CLI flag) is set, VBC does not exit aut
   (default `1.0`). A match requests the same full refresh as **R**, so this mode
   works on NFS. Files with temporary extensions are ignored until renamed to a
   configured final extension.
+- Metadata directories may also use `watch_mode: polling` when inotify events are
+  unavailable, for example over NFS. Polling detects final `*.json` names and
+  ignores temporary names before requesting a full refresh.
 - Press **S** or **Ctrl+C** to exit VBC
 
 **Use case:** Run VBC repeatedly without restarting the application — for example, processing batches as files arrive.

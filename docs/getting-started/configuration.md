@@ -386,11 +386,11 @@ Dashboard display settings.
   - `watch: true` enables the per-directory watcher; it defaults to `false`.
   - `watch_mode: inotify` (default) watches final `*.json` manifests in metadata
     directories using Linux inotify.
-  - `watch_mode: polling` periodically scans a regular video directory and
-    triggers the same full refresh as the **R** key when a new path matching
-    `general.extensions` appears. It works with NFS; temporary names such as
-    `*.tmp` are ignored, so an atomic rename to `*.mp4` becomes visible only when
-    the final name exists.
+  - `watch_mode: polling` periodically scans an NFS-safe directory and triggers
+    the same full refresh as the **R** key when a new eligible path appears. For
+    regular video directories it matches `general.extensions`; for
+    `metadata: true` directories it matches final `*.json` manifests. Temporary
+    names such as `*.tmp` are ignored until renamed to an eligible final name.
   - `poll_interval_seconds` controls the polling period per directory and must be
     greater than zero; it defaults to `1.0` and is ignored by `inotify`.
   - `idle_interval` enables an automatic re-scan after that many idle seconds when `wait_on_finish: true`; omitted means manual refresh only

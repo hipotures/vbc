@@ -1,22 +1,21 @@
-"""Polling watcher for video directories on filesystems without inotify."""
+"""Polling watcher for filesystems without reliable change notifications."""
 
 import logging
 import threading
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Iterable
 
 from vbc.domain.events import InputDirsChanged, RefreshRequested
 from vbc.infrastructure.event_bus import EventBus
-from vbc.infrastructure.file_scanner import FileScanner
 
 
-class VideoPollingWatcher:
-    """Request a full refresh when polling discovers new video paths."""
+class PollingWatcher:
+    """Request a full refresh when polling discovers new eligible paths."""
 
     def __init__(
         self,
         event_bus: EventBus,
-        file_scanner: FileScanner,
+        scan_paths: Callable[[Path], Iterable[Path]],
         watchable_dirs: Iterable[Path],
         active_dirs: Iterable[Path],
         poll_interval_seconds: float = 1.0,
@@ -24,7 +23,7 @@ class VideoPollingWatcher:
         if poll_interval_seconds <= 0:
             raise ValueError("poll_interval_seconds must be greater than zero")
         self.event_bus = event_bus
-        self.file_scanner = file_scanner
+        self.scan_paths = scan_paths
         self.logger = logging.getLogger(__name__)
         self.poll_interval_seconds = poll_interval_seconds
         self._watchable_dirs = {Path(path) for path in watchable_dirs}
@@ -43,12 +42,12 @@ class VideoPollingWatcher:
         self._sync_directories()
         self._thread = threading.Thread(
             target=self._run,
-            name="vbc-video-polling-watcher",
+            name="vbc-polling-watcher",
             daemon=True,
         )
         self._thread.start()
         self.logger.info(
-            "Video polling watcher started for %s directories",
+            "Polling watcher started for %s directories",
             len(self._known_paths),
         )
 
@@ -57,7 +56,7 @@ class VideoPollingWatcher:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
-        self.logger.info("Video polling watcher stopped")
+        self.logger.info("Polling watcher stopped")
 
     def _on_input_dirs_changed(self, event: InputDirsChanged) -> None:
         active_dirs = {Path(path) for path in event.active_dirs}
@@ -65,7 +64,7 @@ class VideoPollingWatcher:
             self._desired_dirs = active_dirs & self._watchable_dirs
 
     def _scan(self, directory: Path) -> set[Path]:
-        return {video.path for video in self.file_scanner.scan(directory)}
+        return set(self.scan_paths(directory))
 
     def _sync_directories(self) -> bool:
         with self._desired_lock:
@@ -85,7 +84,7 @@ class VideoPollingWatcher:
 
     def _poll_once(self) -> None:
         if self._sync_directories():
-            self.logger.info("Video polling watcher detected new input")
+            self.logger.info("Polling watcher detected new input")
             self.event_bus.publish(RefreshRequested())
 
     def _run(self) -> None:

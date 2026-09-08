@@ -377,6 +377,8 @@ When a new path matching `general.extensions` appears, it publishes a full
 `RefreshRequested`, exactly like the **R** key. Consequently NFS directories work
 without filesystem event delivery, and temporary extensions are ignored until a final
 rename gives the file a configured video extension.
+Metadata directories can use the same polling mechanism when inotify is unavailable;
+their eligible path set contains only final lowercase `*.json` manifests.
 Packet timelines unwrap the 32-bit millisecond timestamp rollover before calculating
 duration. A part whose packet timeline exceeds `metadata.max_duration_seconds` receives
 an exceptional decoded-frame count. If `frames / fps` is within the limit, VBC logs the
