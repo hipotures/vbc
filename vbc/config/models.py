@@ -472,6 +472,7 @@ class InputDirEntry(BaseModel):
     enabled: bool = True
     metadata: bool = False
     watch: bool = False
+    watch_mode: Literal["inotify", "polling"] = "inotify"
     idle_interval: Optional[int] = Field(default=None, gt=0)
 
     @field_validator("path", mode="before")
@@ -486,10 +487,21 @@ class InputDirEntry(BaseModel):
             raise ValueError("input_dirs.path cannot be empty.")
         return cleaned
 
+    @field_validator("watch_mode", mode="before")
+    @classmethod
+    def normalize_watch_mode(cls, v: str) -> str:
+        return str(v).strip().lower()
+
     @model_validator(mode="after")
-    def validate_watch_mode(self):
-        if self.watch and not self.metadata:
-            raise ValueError("input_dirs.watch requires metadata: true.")
+    def validate_watch_configuration(self):
+        if self.watch and self.watch_mode == "inotify" and not self.metadata:
+            raise ValueError(
+                "input_dirs.watch with watch_mode: inotify requires metadata: true."
+            )
+        if self.watch and self.watch_mode == "polling" and self.metadata:
+            raise ValueError(
+                "input_dirs.watch with watch_mode: polling requires metadata: false."
+            )
         return self
 
 

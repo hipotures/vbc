@@ -11,8 +11,10 @@ input_dirs:
     enabled: true
     # false = scan video files (default).
     metadata: false
-    # Incremental inotify watching is available only for metadata directories.
-    watch: false
+    # Poll for new files matching general.extensions. This works on NFS and
+    # triggers the same full refresh as the R key. Other extensions are ignored.
+    watch: true
+    watch_mode: polling
     # null = do not refresh this directory while idle (default).
     idle_interval: null
   - path: /path/to/metadata
@@ -20,14 +22,16 @@ input_dirs:
     # true = scan manifest *.json files, which act as proxies for video inputs.
     metadata: true
     # Watch completed *.json files with Linux inotify. Events are debounced for
-    # one second and trigger the same full refresh as the R key.
+    # one second and trigger an incremental manifest refresh.
     watch: true
+    watch_mode: inotify
     # Optional polling fallback while idle. Normally unnecessary with watch=true.
     idle_interval: null
   - path: /disabled/path
     enabled: false
     metadata: false
     watch: false
+    watch_mode: inotify
     idle_interval: null
 
 # Explicit output directories (one per enabled input directory, in order).

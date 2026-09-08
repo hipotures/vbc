@@ -638,7 +638,7 @@ def compress(
             web_server.start()
 
         exif = None
-        manifest_watcher = None
+        watchers = []
         if demo and demo_config:
             orchestrator = DemoOrchestrator(
                 config=config,
@@ -709,18 +709,43 @@ def compress(
             )
 
             if input_dirs_arg is None:
-                watchable_dirs = {
+                inotify_dirs = {
                     Path(entry.path)
                     for entry in config.input_dirs
-                    if entry.metadata and entry.watch
+                    if entry.metadata
+                    and entry.watch
+                    and entry.watch_mode == "inotify"
                 }
-                if watchable_dirs:
+                if inotify_dirs:
                     from vbc.infrastructure.manifest_watcher import ManifestWatcher
 
-                    manifest_watcher = ManifestWatcher(
-                        event_bus=bus,
-                        watchable_dirs=watchable_dirs,
-                        active_dirs=input_dirs,
+                    watchers.append(
+                        ManifestWatcher(
+                            event_bus=bus,
+                            watchable_dirs=inotify_dirs,
+                            active_dirs=input_dirs,
+                        )
+                    )
+
+                polling_dirs = {
+                    Path(entry.path)
+                    for entry in config.input_dirs
+                    if not entry.metadata
+                    and entry.watch
+                    and entry.watch_mode == "polling"
+                }
+                if polling_dirs:
+                    from vbc.infrastructure.video_polling_watcher import (
+                        VideoPollingWatcher,
+                    )
+
+                    watchers.append(
+                        VideoPollingWatcher(
+                            event_bus=bus,
+                            file_scanner=scanner,
+                            watchable_dirs=polling_dirs,
+                            active_dirs=input_dirs,
+                        )
                     )
         
         keyboard = KeyboardListener(bus, state=ui_state)
@@ -771,8 +796,8 @@ def compress(
 
         keyboard.start()
         try:
-            if manifest_watcher:
-                manifest_watcher.start()
+            for watcher in watchers:
+                watcher.start()
             with dashboard:
                 if demo:
                     orchestrator.run()
@@ -788,8 +813,8 @@ def compress(
                     threading.Event().wait(2.0)
         finally:
             keyboard.stop()
-            if manifest_watcher:
-                manifest_watcher.stop()
+            for watcher in watchers:
+                watcher.stop()
             if web_server:
                 web_server.stop()
             if gpu_monitor:

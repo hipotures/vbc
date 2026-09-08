@@ -371,7 +371,7 @@ Dashboard display settings.
 ### Input/Output
 
 #### `input_dirs`
-- **Type**: List of objects (`{path: string, enabled: bool, metadata?: bool, watch?: bool, idle_interval?: int}`)
+- **Type**: List of objects (`{path: string, enabled: bool, metadata?: bool, watch?: bool, watch_mode?: inotify|polling, idle_interval?: int}`)
 - **Default**: `[]` (empty)
 - **Description**: Ordered input directory entries used when no CLI input is provided
 - **Behavior**:
@@ -383,10 +383,31 @@ Dashboard display settings.
   - Startup fails if no valid directories remain
   - Limits: max 50 enabled directories, max 150 characters per path
   - `metadata: true` scans strict `*.json` compression manifests instead of video extensions
-  - `watch: true` uses Linux inotify to trigger a refresh when a final `*.json`
-    is closed after writing or atomically moved into a metadata directory. It is
-    rejected for regular video directories and defaults to `false`.
+  - `watch: true` enables the per-directory watcher; it defaults to `false`.
+  - `watch_mode: inotify` (default) watches final `*.json` manifests in metadata
+    directories using Linux inotify.
+  - `watch_mode: polling` scans a regular video directory once per second and
+    triggers the same full refresh as the **R** key when a new path matching
+    `general.extensions` appears. It works with NFS; temporary names such as
+    `*.tmp` are ignored, so an atomic rename to `*.mp4` becomes visible only when
+    the final name exists.
   - `idle_interval` enables an automatic re-scan after that many idle seconds when `wait_on_finish: true`; omitted means manual refresh only
+
+#### Watch modes
+
+```yaml
+input_dirs:
+  - path: /mnt/nfs/recordings
+    enabled: true
+    metadata: false
+    watch: true
+    watch_mode: polling
+  - path: /path/to/metadata
+    enabled: true
+    metadata: true
+    watch: true
+    watch_mode: inotify
+```
 
 #### Manifest-driven multipart input
 
@@ -396,6 +417,7 @@ input_dirs:
     enabled: true
     metadata: true
     watch: true
+    watch_mode: inotify
 
 suffix_output_dirs: _out
 suffix_errors_dirs: _err
@@ -433,7 +455,7 @@ stream properties, packet counts, and the normalized video duration derived from
 timestamps; refreshes reuse the cached result. Output stream verification is likewise
 cached, while the post-write VBC-tag check uses ExifTool without probing the video again.
 
-With `watch: true`, completed JSON events are coalesced during a one-second quiet
+With `watch_mode: inotify`, completed JSON events are coalesced during a one-second quiet
 period and then only the reported JSON paths are added to discovery. This works both
 while jobs are active and in **WAITING** mode; it does not preempt jobs already running
 or rescan an existing metadata backlog. Hidden temporary files and all non-JSON names
@@ -971,9 +993,10 @@ root is missing or ambiguous.
 - **Behavior**:
   - `true`: Displays WAITING status; press **R** to restart scan or **S**/**Ctrl+C** to exit
   - With per-directory `idle_interval`, VBC automatically re-scans due directories while WAITING
-  - A metadata directory with `watch: true` triggers refreshes in both ACTIVE and
-    WAITING states. `wait_on_finish: true` is still required to keep an empty VBC
-    process alive for future events.
+  - A directory with `watch: true` triggers refreshes in both ACTIVE and WAITING
+    states. `inotify` performs incremental manifest refreshes; `polling` performs
+    full video-directory refreshes. `wait_on_finish: true` is still required to
+    keep an empty VBC process alive for future events.
   - `false`: VBC exits automatically when processing finishes
 
 #### `bell_on_finish`

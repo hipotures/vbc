@@ -68,7 +68,7 @@ Modern video libraries grow fast. Raw 4K footage from cameras and drones consume
 ### Intelligence & Automation
 - ✅ **Auto-Rotation**: Regex-based filename pattern matching (GoPro, DJI, iPhone patterns)
 - ✅ **Deep Metadata**: EXIF/XMP/GPS preservation + custom VBC tags (original size, quality, encoder, rate-control notes)
-- ✅ **Queue Refresh**: Re-scan manually or ingest completed JSON manifests through Linux inotify
+- ✅ **Queue Refresh**: Re-scan manually, poll NFS video directories, or ingest completed JSON manifests through Linux inotify
 - ✅ **Error Markers**: `.err` files track failures with optional cleanup/retry
 - ✅ **Resume Capability**: Automatically skip already-compressed files
 
@@ -390,10 +390,13 @@ Create configuration file for persistent settings:
 input_dirs:
   - path: /path/to/videos
     enabled: true
+    watch: true
+    watch_mode: polling
   - path: /path/to/metadata
     enabled: false
     metadata: true
     watch: true
+    watch_mode: inotify
   - path: /another/path
     enabled: true
   - path: /disabled/path

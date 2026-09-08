@@ -100,6 +100,7 @@ def test_input_dirs_accepts_object_format():
                 "enabled": True,
                 "metadata": True,
                 "watch": True,
+                "watch_mode": "inotify",
                 "idle_interval": 60,
             },
             {"path": "/tmp/in_b", "enabled": False},
@@ -109,18 +110,46 @@ def test_input_dirs_accepts_object_format():
     assert config.input_dirs[0].enabled is True
     assert config.input_dirs[0].metadata is True
     assert config.input_dirs[0].watch is True
+    assert config.input_dirs[0].watch_mode == "inotify"
     assert config.input_dirs[0].idle_interval == 60
     assert config.input_dirs[1].enabled is False
     assert config.input_dirs[1].metadata is False
     assert config.input_dirs[1].watch is False
+    assert config.input_dirs[1].watch_mode == "inotify"
     assert config.input_dirs[1].idle_interval is None
 
 
-def test_input_dirs_watch_requires_metadata_mode():
-    with pytest.raises(ValidationError, match="watch requires metadata"):
+def test_input_dirs_inotify_watch_requires_metadata_mode():
+    with pytest.raises(ValidationError, match="inotify requires metadata"):
         AppConfig(
             general=GeneralConfig(threads=1, extensions=[".mp4"]),
             input_dirs=[{"path": "/tmp/in_a", "watch": True}],
+        )
+
+
+def test_input_dirs_polling_watch_accepts_video_mode():
+    config = AppConfig(
+        general=GeneralConfig(threads=1, extensions=[".mp4"]),
+        input_dirs=[
+            {"path": "/tmp/in_a", "watch": True, "watch_mode": "POLLING"}
+        ],
+    )
+
+    assert config.input_dirs[0].watch_mode == "polling"
+
+
+def test_input_dirs_polling_watch_rejects_metadata_mode():
+    with pytest.raises(ValidationError, match="polling requires metadata: false"):
+        AppConfig(
+            general=GeneralConfig(threads=1, extensions=[".mp4"]),
+            input_dirs=[
+                {
+                    "path": "/tmp/in_a",
+                    "metadata": True,
+                    "watch": True,
+                    "watch_mode": "polling",
+                }
+            ],
         )
 
 
@@ -456,6 +485,7 @@ input_dirs:
     metadata: true
     idle_interval: 60
     watch: true
+    watch_mode: inotify
 """
     )
     from vbc.config.loader import save_dirs_config
@@ -470,5 +500,6 @@ input_dirs:
             "metadata": True,
             "idle_interval": 60,
             "watch": True,
+            "watch_mode": "inotify",
         }
     ]
