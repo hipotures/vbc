@@ -473,6 +473,7 @@ class InputDirEntry(BaseModel):
     metadata: bool = False
     watch: bool = False
     watch_mode: Literal["inotify", "polling"] = "inotify"
+    poll_interval_seconds: float = Field(default=1.0, gt=0)
     idle_interval: Optional[int] = Field(default=None, gt=0)
 
     @field_validator("path", mode="before")

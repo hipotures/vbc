@@ -13,18 +13,20 @@ from vbc.infrastructure.file_scanner import FileScanner
 class VideoPollingWatcher:
     """Request a full refresh when polling discovers new video paths."""
 
-    _POLL_INTERVAL_SECONDS = 1.0
-
     def __init__(
         self,
         event_bus: EventBus,
         file_scanner: FileScanner,
         watchable_dirs: Iterable[Path],
         active_dirs: Iterable[Path],
+        poll_interval_seconds: float = 1.0,
     ) -> None:
+        if poll_interval_seconds <= 0:
+            raise ValueError("poll_interval_seconds must be greater than zero")
         self.event_bus = event_bus
         self.file_scanner = file_scanner
         self.logger = logging.getLogger(__name__)
+        self.poll_interval_seconds = poll_interval_seconds
         self._watchable_dirs = {Path(path) for path in watchable_dirs}
         self._desired_dirs = {
             Path(path) for path in active_dirs if Path(path) in self._watchable_dirs
@@ -87,5 +89,5 @@ class VideoPollingWatcher:
             self.event_bus.publish(RefreshRequested())
 
     def _run(self) -> None:
-        while not self._stop_event.wait(self._POLL_INTERVAL_SECONDS):
+        while not self._stop_event.wait(self.poll_interval_seconds):
             self._poll_once()

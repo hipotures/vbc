@@ -15,6 +15,7 @@ input_dirs:
     # triggers the same full refresh as the R key. Other extensions are ignored.
     watch: true
     watch_mode: polling
+    poll_interval_seconds: 10
     # null = do not refresh this directory while idle (default).
     idle_interval: null
   - path: /path/to/metadata

@@ -101,6 +101,7 @@ def test_input_dirs_accepts_object_format():
                 "metadata": True,
                 "watch": True,
                 "watch_mode": "inotify",
+                "poll_interval_seconds": 2.5,
                 "idle_interval": 60,
             },
             {"path": "/tmp/in_b", "enabled": False},
@@ -111,11 +112,13 @@ def test_input_dirs_accepts_object_format():
     assert config.input_dirs[0].metadata is True
     assert config.input_dirs[0].watch is True
     assert config.input_dirs[0].watch_mode == "inotify"
+    assert config.input_dirs[0].poll_interval_seconds == 2.5
     assert config.input_dirs[0].idle_interval == 60
     assert config.input_dirs[1].enabled is False
     assert config.input_dirs[1].metadata is False
     assert config.input_dirs[1].watch is False
     assert config.input_dirs[1].watch_mode == "inotify"
+    assert config.input_dirs[1].poll_interval_seconds == 1.0
     assert config.input_dirs[1].idle_interval is None
 
 
@@ -131,11 +134,32 @@ def test_input_dirs_polling_watch_accepts_video_mode():
     config = AppConfig(
         general=GeneralConfig(threads=1, extensions=[".mp4"]),
         input_dirs=[
-            {"path": "/tmp/in_a", "watch": True, "watch_mode": "POLLING"}
+            {
+                "path": "/tmp/in_a",
+                "watch": True,
+                "watch_mode": "POLLING",
+                "poll_interval_seconds": 10,
+            }
         ],
     )
 
     assert config.input_dirs[0].watch_mode == "polling"
+    assert config.input_dirs[0].poll_interval_seconds == 10
+
+
+def test_input_dirs_rejects_non_positive_poll_interval():
+    with pytest.raises(ValidationError):
+        AppConfig(
+            general=GeneralConfig(threads=1, extensions=[".mp4"]),
+            input_dirs=[
+                {
+                    "path": "/tmp/in_a",
+                    "watch": True,
+                    "watch_mode": "polling",
+                    "poll_interval_seconds": 0,
+                }
+            ],
+        )
 
 
 def test_input_dirs_polling_watch_rejects_metadata_mode():
@@ -486,6 +510,7 @@ input_dirs:
     idle_interval: 60
     watch: true
     watch_mode: inotify
+    poll_interval_seconds: 2.5
 """
     )
     from vbc.config.loader import save_dirs_config
@@ -501,5 +526,6 @@ input_dirs:
             "idle_interval": 60,
             "watch": True,
             "watch_mode": "inotify",
+            "poll_interval_seconds": 2.5,
         }
     ]

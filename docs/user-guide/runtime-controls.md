@@ -200,10 +200,11 @@ When `wait_on_finish: true` (or `--wait` CLI flag) is set, VBC does not exit aut
   falls back to a full refresh. `wait_on_finish: true` is required if VBC should
   remain alive with an empty queue.
 - Regular video directories configured with `watch: true` and
-  `watch_mode: polling` are scanned once per second for new paths matching
-  `general.extensions`. A match requests the same full refresh as **R**, so this
-  mode works on NFS. Files with temporary extensions are ignored until renamed to
-  a configured final extension.
+  `watch_mode: polling` are periodically scanned for new paths matching
+  `general.extensions`. `poll_interval_seconds` sets the period per directory
+  (default `1.0`). A match requests the same full refresh as **R**, so this mode
+  works on NFS. Files with temporary extensions are ignored until renamed to a
+  configured final extension.
 - Press **S** or **Ctrl+C** to exit VBC
 
 **Use case:** Run VBC repeatedly without restarting the application — for example, processing batches as files arrive.

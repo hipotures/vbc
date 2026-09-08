@@ -392,6 +392,7 @@ input_dirs:
     enabled: true
     watch: true
     watch_mode: polling
+    poll_interval_seconds: 10
   - path: /path/to/metadata
     enabled: false
     metadata: true

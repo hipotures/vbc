@@ -371,8 +371,8 @@ Discovery and queue ownership therefore remain in the orchestrator without repea
 walking a large metadata backlog. `InputDirsChanged` keeps watches aligned with runtime
 directory selection. Queue overflow emits a UI warning and forces a full refresh, while
 deletion, movement, or unmounting of a watched directory emits a watch-loss warning.
-Regular video directories can instead use `watch_mode: polling`. The polling service
-walks active configured directories once per second using the normal video scanner.
+Regular video directories can instead use `watch_mode: polling`. At each directory's
+`poll_interval_seconds`, the polling service walks it using the normal video scanner.
 When a new path matching `general.extensions` appears, it publishes a full
 `RefreshRequested`, exactly like the **R** key. Consequently NFS directories work
 without filesystem event delivery, and temporary extensions are ignored until a final

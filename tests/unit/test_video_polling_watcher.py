@@ -1,5 +1,7 @@
 import threading
 
+import pytest
+
 from vbc.domain.events import InputDirsChanged, RefreshRequested
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.file_scanner import FileScanner
@@ -21,6 +23,7 @@ def _watcher(tmp_path, active_dirs=None):
         file_scanner=FileScanner([".mp4"], min_size_bytes=0),
         watchable_dirs=[tmp_path],
         active_dirs=[tmp_path] if active_dirs is None else active_dirs,
+        poll_interval_seconds=0.01,
     )
     return bus, watcher, refreshed, refresh_events
 
@@ -61,7 +64,6 @@ def test_polling_follows_active_directory_changes(tmp_path):
 
 def test_polling_thread_publishes_refresh_and_stops(tmp_path):
     _bus, watcher, refreshed, refresh_events = _watcher(tmp_path)
-    watcher._POLL_INTERVAL_SECONDS = 0.01
     watcher.start()
     try:
         temporary = tmp_path / "recording.tmp"
@@ -76,3 +78,14 @@ def test_polling_thread_publishes_refresh_and_stops(tmp_path):
         watcher.stop()
 
     assert watcher._thread is None
+
+
+def test_polling_rejects_non_positive_interval(tmp_path):
+    with pytest.raises(ValueError, match="greater than zero"):
+        VideoPollingWatcher(
+            event_bus=EventBus(),
+            file_scanner=FileScanner([".mp4"], min_size_bytes=0),
+            watchable_dirs=[tmp_path],
+            active_dirs=[tmp_path],
+            poll_interval_seconds=0,
+        )

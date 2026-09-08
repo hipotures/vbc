@@ -727,24 +727,33 @@ def compress(
                         )
                     )
 
-                polling_dirs = {
-                    Path(entry.path)
-                    for entry in config.input_dirs
-                    if not entry.metadata
-                    and entry.watch
-                    and entry.watch_mode == "polling"
-                }
-                if polling_dirs:
+                polling_dirs_by_interval = {}
+                for entry in config.input_dirs:
+                    if (
+                        entry.metadata
+                        or not entry.watch
+                        or entry.watch_mode != "polling"
+                    ):
+                        continue
+                    polling_dirs_by_interval.setdefault(
+                        entry.poll_interval_seconds, set()
+                    ).add(Path(entry.path))
+
+                if polling_dirs_by_interval:
                     from vbc.infrastructure.video_polling_watcher import (
                         VideoPollingWatcher,
                     )
 
+                for poll_interval_seconds, polling_dirs in sorted(
+                    polling_dirs_by_interval.items()
+                ):
                     watchers.append(
                         VideoPollingWatcher(
                             event_bus=bus,
                             file_scanner=scanner,
                             watchable_dirs=polling_dirs,
                             active_dirs=input_dirs,
+                            poll_interval_seconds=poll_interval_seconds,
                         )
                     )
         
