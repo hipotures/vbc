@@ -98,6 +98,30 @@ def test_perform_discovery_counts_and_skips(tmp_path):
     assert [vf.path.name for vf in files] == ["good.mp4"]
 
 
+def test_perform_discovery_skips_empty_file_when_min_size_is_zero(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (tmp_path / "input_out").mkdir()
+    (input_dir / "empty.mp4").touch()
+
+    config = _make_config(min_size_bytes=0, extensions=[".mp4"], use_exif=False)
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=EventBus(),
+        file_scanner=FileScanner(config.general.extensions, 0),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=MagicMock(),
+    )
+
+    files, stats = orchestrator._perform_discovery(input_dir)
+
+    assert files == []
+    assert stats["files_found"] == 0
+    assert stats["files_to_process"] == 0
+    assert stats["ignored_small"] == 1
+
+
 def test_perform_discovery_hw_cap_err_cleared_with_cpu_fallback(tmp_path):
     input_dir = tmp_path / "input"
     input_dir.mkdir()
@@ -479,6 +503,50 @@ def test_process_file_success_ratio_keeps_original(tmp_path):
     assert source.exists()
     orchestrator._write_vbc_tags.assert_not_called()
     ffprobe.get_stream_info.assert_not_called()
+
+
+def test_process_file_rejects_zero_recorded_input_size_before_ratio(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    source = input_dir / "video.mp4"
+    source.write_bytes(b"source")
+
+    config = _make_config(use_exif=False, copy_metadata=False)
+    bus = EventBus()
+    failed_events = []
+    bus.subscribe(JobFailed, lambda event: failed_events.append(event))
+
+    def fake_compress(job, *_args, **_kwargs):
+        job.output_path.write_bytes(b"output")
+        job.status = JobStatus.COMPLETED
+
+    ffmpeg = MagicMock()
+    ffmpeg.compress.side_effect = fake_compress
+    orchestrator = Orchestrator(
+        config=config,
+        event_bus=bus,
+        file_scanner=FileScanner([".mp4"], 0),
+        exif_adapter=MagicMock(),
+        ffprobe_adapter=MagicMock(),
+        ffmpeg_adapter=ffmpeg,
+    )
+    orchestrator._check_and_fix_color_space = MagicMock(return_value=(source, None))
+    video_file = VideoFile(
+        path=source,
+        size_bytes=0,
+        metadata=VideoMetadata(
+            width=1920,
+            height=1080,
+            codec="h264",
+            fps=30.0,
+        ),
+    )
+
+    orchestrator._process_file(video_file, input_dir)
+
+    assert failed_events
+    assert failed_events[0].job.status == JobStatus.FAILED
+    assert "Input file size must be greater than zero" in failed_events[0].error_message
 
 
 def test_process_file_success_ratio_keeps_original_skips_metadata_copy(tmp_path):

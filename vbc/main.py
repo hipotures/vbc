@@ -114,6 +114,21 @@ def compress(
 
     try:
         config = load_config(config_path)
+        if threads is not None and threads <= 0:
+            typer.secho(
+                "Error: --threads must be greater than 0.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        if min_size is not None and min_size < 0:
+            typer.secho(
+                "Error: --min-size must be non-negative.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
         # Validate queue_sort first if provided
         validated_queue_sort = None
         if queue_sort is not None:
@@ -192,7 +207,7 @@ def compress(
         )
 
         # Apply CLI overrides to global config
-        if threads:
+        if threads is not None:
             config.general.threads = threads
         if validated_quality_mode is not None:
             config.general.quality_mode = validated_quality_mode

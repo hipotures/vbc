@@ -268,7 +268,7 @@ class GeneralConfig(BaseModel):
     extensions: List[str] = Field(
         default_factory=lambda: [".mp4", ".mov", ".avi", ".flv", ".webm"]
     )
-    min_size_bytes: int = Field(default=1048576)
+    min_size_bytes: int = Field(default=1048576, ge=0)
     clean_errors: bool = False
     verify_fail_action: Literal["false", "log", "pause", "exit"] = "false"
     source_policy: Literal["keep", "delete_after_success"] = "keep"

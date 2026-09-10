@@ -2,7 +2,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 from vbc.config.models import AppConfig, AutoRotateConfig, GeneralConfig
-from vbc.config.overrides import merge_local_config
+from vbc.config.overrides import CliConfigOverrides, merge_local_config
 
 
 def test_valid_config():
@@ -58,6 +58,42 @@ def test_invalid_threads():
             extensions=[".mp4"],
             min_size_bytes=0,
         )
+
+
+def test_min_size_bytes_must_be_non_negative():
+    with pytest.raises(ValidationError):
+        GeneralConfig(min_size_bytes=-1)
+
+    assert GeneralConfig(min_size_bytes=0).min_size_bytes == 0
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        CliConfigOverrides(threads=0),
+        CliConfigOverrides(threads=-1),
+        CliConfigOverrides(min_size=-1),
+    ],
+)
+def test_cli_overrides_revalidate_effective_config(overrides):
+    config = AppConfig(general=GeneralConfig(threads=2, min_size_bytes=10))
+
+    with pytest.raises(ValidationError):
+        overrides.apply(config)
+
+    assert config.general.threads == 2
+    assert config.general.min_size_bytes == 10
+
+
+def test_cli_overrides_return_validated_copy():
+    config = AppConfig(general=GeneralConfig(threads=2, min_size_bytes=10))
+
+    updated = CliConfigOverrides(threads=3, min_size=0).apply(config)
+
+    assert updated.general.threads == 3
+    assert updated.general.min_size_bytes == 0
+    assert config.general.threads == 2
+    assert config.general.min_size_bytes == 10
 
 
 def test_config_defaults():

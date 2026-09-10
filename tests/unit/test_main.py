@@ -1,4 +1,6 @@
 from unittest.mock import MagicMock
+
+import pytest
 from typer.testing import CliRunner
 
 from vbc.config.models import AppConfig, GeneralConfig, AutoRotateConfig
@@ -47,6 +49,31 @@ def test_main_rejects_invalid_verify_fail_action(monkeypatch):
 
     assert result.exit_code == 1
     assert "--verify-fail-action must be one of: false, log, pause, exit" in result.output
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (["--threads", "0"], "--threads must be greater than 0"),
+        (["--threads", "-1"], "--threads must be greater than 0"),
+        (["--min-size", "-1"], "--min-size must be non-negative"),
+    ],
+)
+def test_main_rejects_invalid_numeric_overrides(monkeypatch, args, message):
+    runner = CliRunner()
+
+    def fake_load_config(_path):
+        return AppConfig(
+            general=GeneralConfig(threads=1, extensions=[".mp4"]),
+            autorotate=AutoRotateConfig(patterns={}),
+        )
+
+    monkeypatch.setattr(vbc_main, "load_config", fake_load_config)
+
+    result = runner.invoke(vbc_main.app, args)
+
+    assert result.exit_code == 1
+    assert message in result.output
 
 
 def test_general_config_auto_repair_errors_defaults_true():

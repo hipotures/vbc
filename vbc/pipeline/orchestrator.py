@@ -2547,7 +2547,10 @@ class Orchestrator:
                     except OSError:
                         continue
 
-                    if file_stat.st_size < self.file_scanner.min_size_bytes:
+                    if (
+                        file_stat.st_size <= 0
+                        or file_stat.st_size < self.file_scanner.min_size_bytes
+                    ):
                         folder_ignored_small += 1
                         continue
 
@@ -3606,6 +3609,8 @@ class Orchestrator:
                 if job.output_path.exists():
                     out_size = job.output_path.stat().st_size
                     in_size = video_file.size_bytes
+                    if in_size <= 0:
+                        raise ValueError("Input file size must be greater than zero")
                     ratio = out_size / in_size
                     kept_original = ratio > (
                         1.0 - job_config.general.min_compression_ratio

@@ -34,7 +34,7 @@ class FileScanner:
                 # Check size
                 try:
                     file_stat = file_path.stat()
-                    if file_stat.st_size < self.min_size_bytes:
+                    if file_stat.st_size <= 0 or file_stat.st_size < self.min_size_bytes:
                         continue
                         
                     yield VideoFile(

@@ -85,7 +85,8 @@ class CliConfigOverrides:
             )
         ) or any((self.clean_errors, self.skip_av1, self.debug, self.rotate_180))
 
-    def apply(self, config: AppConfig) -> None:
+    def apply(self, config: AppConfig) -> AppConfig:
+        config = config.model_copy(deep=True)
         if self.threads is not None:
             config.general.threads = self.threads
         if self.quality_mode is not None:
@@ -125,6 +126,7 @@ class CliConfigOverrides:
             config.general.debug = True
         if self.rotate_180:
             config.general.manual_rotation = 180
+        return AppConfig.model_validate(config.model_dump())
 
 
 def normalize_extensions(extensions: List[str]) -> List[str]:
@@ -168,7 +170,7 @@ def merge_local_config(
         config.cpu_encoder.advanced_args = replace_quality_value(config.cpu_encoder.advanced_args, cq_override)
 
     if cli_overrides:
-        cli_overrides.apply(config)
+        config = cli_overrides.apply(config)
     return config
 
 
@@ -297,7 +299,7 @@ def build_job_config(
 
     # Apply CLI overrides (highest priority)
     if cli_overrides and cli_overrides.has_overrides:
-        cli_overrides.apply(config)
+        config = cli_overrides.apply(config)
         source = ConfigSource.CLI
 
     return config, source

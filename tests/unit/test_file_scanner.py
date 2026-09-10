@@ -36,6 +36,16 @@ def test_file_scanner_min_size(tmp_path):
     assert "large.mp4" in paths
     assert "small.mp4" not in paths
 
+
+def test_file_scanner_skips_empty_file_when_min_size_is_zero(tmp_path):
+    empty = tmp_path / "empty.mp4"
+    empty.touch()
+
+    scanner = FileScanner(extensions=[".mp4"], min_size_bytes=0)
+
+    assert list(scanner.scan(tmp_path)) == []
+
+
 def test_file_scanner_ignore_out_dir(tmp_path):
     (tmp_path / "video.mp4").write_text("data")
     out_dir = tmp_path / "videos_out"
