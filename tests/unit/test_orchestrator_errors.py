@@ -105,17 +105,103 @@ class TestColorSpaceFixErrors:
 class TestDeepMetadataCopyErrors:
     """Test deep metadata copy error paths."""
 
-    def test_copy_deep_metadata_timeout(self, orchestrator, tmp_path):
+    def test_exiftool_timeout_uses_minimum_for_small_output(
+        self, orchestrator, tmp_path
+    ):
+        """Use the minimum timeout for outputs smaller than one minute of work."""
+        source = tmp_path / "source.mp4"
+        dest = tmp_path / "dest.mp4"
+        err_path = tmp_path / "test.err"
+        source.write_text("source")
+        dest.touch()
+        with dest.open("r+b") as output_file:
+            output_file.truncate(14 * 1024 * 1024)
+
+        with patch("subprocess.run") as mock_run:
+            orchestrator._copy_deep_metadata(
+                source,
+                dest,
+                err_path,
+                quality_label="45",
+                original_bitrate_label="35.9 Mbps",
+                encoder="av1_nvenc",
+                original_size=1000,
+                finished_at="2025-01-01 12:00:00",
+            )
+
+        assert mock_run.call_args.kwargs["timeout"] == 60
+
+    def test_exiftool_timeout_scales_with_large_output(self, orchestrator, tmp_path):
+        """Allow roughly one second per MiB for large outputs."""
+        source = tmp_path / "source.mp4"
+        dest = tmp_path / "dest.mp4"
+        source.write_text("source")
+        dest.touch()
+        with dest.open("r+b") as output_file:
+            output_file.truncate(274_000_000)
+
+        with patch("subprocess.run") as mock_run:
+            orchestrator._write_vbc_tags(
+                source,
+                dest,
+                quality_label="45",
+                original_bitrate_label="35.9 Mbps",
+                encoder="av1_nvenc",
+                original_size=1000,
+                finished_at="2025-01-01 12:00:00",
+            )
+
+        assert mock_run.call_args.kwargs["timeout"] == 262
+
+    def test_failed_exiftool_write_removes_partial_temp_file(
+        self, orchestrator, tmp_path
+    ):
+        """Remove ExifTool's partial output after a failed write."""
+        source = tmp_path / "source.mp4"
+        dest = tmp_path / "dest.mp4"
+        stale_tmp = tmp_path / "dest.mp4_exiftool_tmp"
+        source.write_text("source")
+        dest.write_text("dest")
+
+        def fail_after_creating_temp(*_args, **_kwargs):
+            stale_tmp.write_text("partial")
+            raise subprocess.CalledProcessError(
+                returncode=1,
+                cmd=["exiftool"],
+                stderr="Error: write failed",
+            )
+
+        with patch("subprocess.run", side_effect=fail_after_creating_temp):
+            orchestrator._write_vbc_tags(
+                source,
+                dest,
+                quality_label="45",
+                original_bitrate_label="35.9 Mbps",
+                encoder="av1_nvenc",
+                original_size=1000,
+                finished_at="2025-01-01 12:00:00",
+            )
+
+        assert not stale_tmp.exists()
+
+    @pytest.mark.parametrize("debug, attempts", [(False, 1), (True, 2)])
+    def test_copy_deep_metadata_timeout(self, orchestrator, tmp_path, debug, attempts):
         """Test timeout during exiftool metadata copy."""
+        orchestrator.config.general.debug = debug
         source = tmp_path / "source.mp4"
         dest = tmp_path / "dest.mp4"
         err_path = tmp_path / "test.err"
         source.write_text("source")
         dest.write_text("dest")
+        stale_tmp = tmp_path / "dest.mp4_exiftool_tmp"
 
         with patch('subprocess.run') as mock_run:
             # Simulate timeout
-            mock_run.side_effect = subprocess.TimeoutExpired(cmd=['exiftool'], timeout=30)
+            def timeout_after_creating_temp(*_args, **_kwargs):
+                stale_tmp.write_text("partial")
+                raise subprocess.TimeoutExpired(cmd=['exiftool'], timeout=60)
+
+            mock_run.side_effect = timeout_after_creating_temp
 
             # Should not raise, just log error
             orchestrator._copy_deep_metadata(
@@ -126,8 +212,9 @@ class TestDeepMetadataCopyErrors:
                 original_size=1000, finished_at="2025-01-01 12:00:00"
             )
 
-            # Verify exiftool was called
-            assert mock_run.called
+            assert mock_run.call_count == attempts
+            assert all(call.kwargs["timeout"] == 60 for call in mock_run.call_args_list)
+        assert not stale_tmp.exists()
 
     def test_copy_deep_metadata_failed(self, orchestrator, tmp_path):
         """Test failed exiftool metadata copy."""

@@ -90,6 +90,8 @@ _REQUIRED_VBC_VERIFY_TAGS = {
     "vbcfinishedat",
 }
 _MANIFEST_SETTLE_SECONDS = 1.0
+_EXIFTOOL_WRITE_RATE_BYTES = 1024 * 1024
+_EXIFTOOL_WRITE_MIN_TIMEOUT_SECONDS = 60
 
 
 class VerificationAbortError(RuntimeError):
@@ -1218,19 +1220,8 @@ class Orchestrator:
         exiftool_cmd.extend(["-unsafe", "-overwrite_original", str(output_path)])
 
         filename = source_path.name
-        rate_bytes = 10 * 1024 * 1024  # 10 MiB/s
-        size_bytes = None
-        try:
-            size_bytes = output_path.stat().st_size
-        except OSError:
-            try:
-                size_bytes = source_path.stat().st_size
-            except OSError:
-                size_bytes = None
-        if size_bytes is None:
-            timeout_s = 30
-        else:
-            timeout_s = max(1, (size_bytes + rate_bytes - 1) // rate_bytes)
+        size_bytes = self._exiftool_write_size(output_path, source_path)
+        timeout_s = self._exiftool_write_timeout(size_bytes)
 
         if self.config.general.debug:
             self.logger.info(
@@ -1271,7 +1262,10 @@ class Orchestrator:
                         f"EXIF_COPY_TIMEOUT: {filename} attempt {attempt}/{max_attempts} "
                         f"elapsed={exif_elapsed:.2f}s"
                     )
+                    if attempt == max_attempts:
+                        self._cleanup_failed_exiftool_write(output_path)
                 except subprocess.CalledProcessError as e:
+                    self._cleanup_failed_exiftool_write(output_path)
                     exif_elapsed = time.monotonic() - exif_start
                     stderr = (e.stderr or "").strip()
                     stdout = (e.stdout or "").strip()
@@ -1286,6 +1280,7 @@ class Orchestrator:
                     timed_out = False
                     break
                 except Exception as e:
+                    self._cleanup_failed_exiftool_write(output_path)
                     exif_elapsed = time.monotonic() - exif_start
                     self.logger.warning(
                         f"EXIF_COPY_ERROR: {filename} attempt {attempt}/{max_attempts} "
@@ -1319,10 +1314,12 @@ class Orchestrator:
                     timeout=timeout_s,
                 )
             except subprocess.TimeoutExpired:
+                self._cleanup_failed_exiftool_write(output_path)
                 self.logger.warning(
                     f"ExifTool metadata copy timed out after {timeout_s}s for {filename}"
                 )
             except subprocess.CalledProcessError as e:
+                self._cleanup_failed_exiftool_write(output_path)
                 stderr = (e.stderr or "").strip()
                 stdout = (e.stdout or "").strip()
                 self.logger.warning(
@@ -1330,6 +1327,7 @@ class Orchestrator:
                     f"stderr={stderr!r} stdout={stdout!r}"
                 )
             except Exception as e:
+                self._cleanup_failed_exiftool_write(output_path)
                 self.logger.warning(f"Failed to copy deep metadata for {filename}: {e}")
 
     def _write_vbc_tags(
@@ -1370,15 +1368,8 @@ class Orchestrator:
         )
         exiftool_cmd.append(str(output_path))
         try:
-            rate_bytes = 10 * 1024 * 1024  # 10 MiB/s
-            try:
-                size_bytes = output_path.stat().st_size
-            except OSError:
-                size_bytes = None
-            if size_bytes is None:
-                timeout_s = 30
-            else:
-                timeout_s = max(1, (size_bytes + rate_bytes - 1) // rate_bytes)
+            size_bytes = self._exiftool_write_size(output_path)
+            timeout_s = self._exiftool_write_timeout(size_bytes)
             remove_exiftool_tmp_for_target(output_path, self.logger)
             subprocess.run(
                 exiftool_cmd,
@@ -1388,10 +1379,12 @@ class Orchestrator:
                 timeout=timeout_s,
             )
         except subprocess.TimeoutExpired:
+            self._cleanup_failed_exiftool_write(output_path)
             self.logger.warning(
                 f"ExifTool tag write timed out after {timeout_s}s for {output_path.name}"
             )
         except subprocess.CalledProcessError as e:
+            self._cleanup_failed_exiftool_write(output_path)
             stderr = (e.stderr or "").strip()
             stdout = (e.stdout or "").strip()
             self.logger.warning(
@@ -1399,7 +1392,42 @@ class Orchestrator:
                 f"stderr={stderr!r} stdout={stdout!r}"
             )
         except Exception as e:
+            self._cleanup_failed_exiftool_write(output_path)
             self.logger.warning(f"Failed to write VBC tags for {output_path.name}: {e}")
+
+    @staticmethod
+    def _exiftool_write_size(
+        output_path: Path, fallback_path: Optional[Path] = None
+    ) -> Optional[int]:
+        """Return the size used to estimate an ExifTool write timeout."""
+        for path in (output_path, fallback_path):
+            if path is None:
+                continue
+            try:
+                return path.stat().st_size
+            except OSError:
+                continue
+        return None
+
+    @staticmethod
+    def _exiftool_write_timeout(size_bytes: Optional[int]) -> int:
+        """Estimate an ExifTool write timeout from the target size."""
+        if size_bytes is None:
+            return _EXIFTOOL_WRITE_MIN_TIMEOUT_SECONDS
+        return max(
+            _EXIFTOOL_WRITE_MIN_TIMEOUT_SECONDS,
+            (size_bytes + _EXIFTOOL_WRITE_RATE_BYTES - 1)
+            // _EXIFTOOL_WRITE_RATE_BYTES,
+        )
+
+    def _cleanup_failed_exiftool_write(self, output_path: Path) -> None:
+        """Remove a partial ExifTool temp file after a failed write."""
+        try:
+            remove_exiftool_tmp_for_target(output_path, self.logger)
+        except Exception as exc:
+            self.logger.warning(
+                f"Failed to clean ExifTool temp file for {output_path.name}: {exc}"
+            )
 
     @staticmethod
     def _normalize_exif_tag_name(tag_key: str) -> str:
