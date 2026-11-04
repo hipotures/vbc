@@ -86,6 +86,7 @@ nav:
       - Overview: architecture/overview.md
       - Event System: architecture/events.md
       - Pipeline Flow: architecture/pipeline.md
+      - Service Split Plan: architecture/service-split.md
   - User Guide:
       - CLI Reference: user-guide/cli.md
       - Runtime Controls: user-guide/runtime-controls.md
