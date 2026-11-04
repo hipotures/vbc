@@ -135,6 +135,52 @@ Config changes made outside the API (e.g. a manual YAML edit followed by
 refresh) bump a `config_rev` that is included in `/state`. Clients refetch
 `/config` only when `config_rev` changes.
 
+## Paths and storage roots
+
+Once the server runs elsewhere (another host, container, VM), every path shown
+in the Dirs/IO tabs means **a path in the server's filesystem**, not the
+client's. Three places depend on this:
+
+* `input_dirs` (e.g. `/srv/producer/metadata/`, `/data/videos`);
+* suffix-mode outputs are **siblings** of the input (`/data/videos` →
+  `/data/videos_out`, `/data/videos_err`), so mounting only the input directory
+  is not enough;
+* metadata manifests written by producers contain **absolute**
+  `inputs` and `output_path` (`CompressionManifest.validate_paths`), resolved
+  by the server as-is.
+
+Recommended approach, in order:
+
+1. **Identity mounts (deployment rule, no code change).** Mount every storage
+   root at the *same* path on the server as on the host where producers write
+   (`/srv/producer` → `/srv/producer`, `/data/videos` + `T_out` + `T_err`, or their common
+   parent). Manifests, suffix outputs and existing configs keep working
+   unchanged. Alternatively use explicit `output_dirs`/`errors_dirs` inside the
+   mounted tree instead of suffix mode.
+2. **Declared storage roots (server config + API).** New config section, e.g.:
+
+   ```yaml
+   storage:
+     roots:
+       - {name: tk, path: /srv/producer}
+       - {name: videos, path: /data/videos}
+   ```
+
+   * `PUT /api/v1/dirs` rejects (`422`) any path, and its derived output/error
+     dir, that is not inside a declared root. Without this, any API client
+     could make the server read and write anywhere it has permissions.
+   * `GET /api/v1/roots` and `GET /api/v1/fs?root=&path=` (directories only,
+     no files, no symlinks escaping the root) let clients **pick** a directory
+     on the server instead of typing a path that only makes sense on the
+     client.
+   * `/io` and `/dirs` report per-directory `exists`/`writable`, so a missing
+     mount is visible in the window instead of failing at the first job.
+3. **Path mapping (only if identity mounts are impossible).** Optional
+   `storage.path_map: {"/srv/producer": "/data/ai"}` applied to manifest `inputs` and
+   `output_path` on load (and reversed in anything reported back to the
+   producer). Kept as a fallback because it adds a second set of names for the
+   same files.
+
 ## API (v1)
 
 All responses carry `schema_version`, `rev` and `server_time` (epoch ms, used by
