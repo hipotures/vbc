@@ -104,6 +104,37 @@ files and proxies `/api/*` to the server, injecting the bearer token
 | last_action (+time), session_error_logs | |
 | config_lines, io_* stats, queue sort/seed, log_path, debug, dirs_config_entries | |
 
+## Configuration window (Settings / IO / Dirs tabs)
+
+The split is **data on the server, window on the client**.
+
+Today `main.py:574-627` formats the effective config into display strings
+(`ui_state.config_lines`), and `ui/modern_overlays.py:145`
+(`parse_config_lines`) parses those strings back into a dict to render them.
+Only the server knows the effective values (YAML + local `vbc.yaml` overrides
++ CLI flags + detected encoder), so it must produce them, but as structured data
+instead of text:
+
+| Part | Owner | Notes |
+|---|---|---|
+| Effective config values (threads, prefetch, encoder/preset, quality + dynamic quality, camera filter, metadata method, autorotate rule count, manual rotation, extensions → suffix, queue sort/seed, CPU fallback, min size, skip AV1, verify action, auto repair, clean errors, debug, session start, demo parameters) | Server | `GET /api/v1/config` returns typed fields grouped by section (`general`, `encoder`, `quality`, `filters`, `metadata`, `queue`, `errors`, `demo?`), plus `source` per field (`default`/`global`/`local`/`cli`) where it is known. No preformatted strings. |
+| IO data (input dir stats, output/error dirs, suffixes, log path) | Server | `GET /api/v1/io`. |
+| Dirs list (ordered paths + enabled) and saving it | Server | `GET /api/v1/dirs`, `PUT /api/v1/dirs` with `If-Match` (see Commands). Validation, `save_dirs_config`, `InputDirsChanged` all server-side. |
+| The window itself: tabs, layout, labels, units, size/bitrate formatting, which fields are shown | Client | Each client renders the same JSON its own way (Rich panel, HTML table). |
+| Dirs editor interaction: cursor, add-mode input buffer, staged toggles/removes/reorder, inline error | Client | Staged locally, sent as one full ordered list on save; a `412` or `422` from the server is shown inline. |
+| `strip_unicode_display` | Client (with server default) | A display preference: the server exposes the configured default in `/config`, each client may override it locally. |
+
+The configuration window stays **read-only** except for Dirs, as today.
+Runtime changes that already exist (threads, refresh, shutdown) go through the
+command endpoints rather than through the config window. Editing other config
+fields over the API is a separate future feature: it needs validation, decisions
+about persistence (global vs local YAML) and a rule for whether running jobs are
+affected.
+
+Config changes made outside the API (e.g. a manual YAML edit followed by
+refresh) bump a `config_rev` that is included in `/state`. Clients refetch
+`/config` only when `config_rev` changes.
+
 ## API (v1)
 
 All responses carry `schema_version`, `rev` and `server_time` (epoch ms, used by
