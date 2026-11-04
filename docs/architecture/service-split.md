@@ -181,6 +181,45 @@ Recommended approach, in order:
    producer). Kept as a fallback because it adds a second set of names for the
    same files.
 
+## Logs
+
+Two different things are called "logs" today, and both become server data:
+
+| | Today | API |
+|---|---|---|
+| **Session error log** (Logs tab) | `SessionErrorEntry` list in `UIState` (`ui/state.py:15`): path, size, width/height, fps, codec, audio codec, duration, `error_message`, `created_at`; in memory only, lost on exit | `GET /api/v1/errors?since=<id>&limit=` |
+| **Application log** | `logging.FileHandler(log_file, mode="w")` in `infrastructure/logging.py:64`; overwritten on every start; path shown in Settings | `GET /api/v1/logs?since=<seq>&limit=&level=` |
+
+Session error log (`/errors`):
+
+* Entries get a monotonic `id`; clients ask `since=<last id>` and append.
+  `/state` carries `errors_count` and `errors_last_id`, so clients know when to
+  fetch more without polling `/errors` separately.
+* Structured, not preformatted: the TUI line
+  `name • 712.5MB • 640x1280 • 25fps • h264 • 21m 37s` and the red error line
+  are rendered by the client from fields.
+* Add fields the server already knows but the UI drops today:
+  `stage` (`discovery` / `manifest_preflight` / `encode` / `verification` /
+  `repair`), `exit_code` (for `ffmpeg exited with code …`), `manifest_request_id`
+  when the job came from a manifest, `job_id`, and the **full** error message.
+  Truncation (`…` in the TUI) is the client's job.
+* Bounded in memory (e.g. last 1000 entries; `410` if `since` is older than the
+  buffer, so the client refetches from the start). Optional persistence
+  (JSONL next to the log file) if errors must survive a server restart; the
+  `.err` markers on disk remain the durable per-file record either way.
+
+Application log (`/logs`):
+
+* An in-memory ring buffer handler attached to the root logger, next to the
+  existing file handler: `seq`, `ts`, `level`, `logger`, `message`, optional
+  `job_id`. Same `since` paging as `/errors`.
+* `PUT /api/v1/runtime/log-level {"level": "DEBUG"}` replaces restarting with
+  `--debug` (pattern from mypowers).
+* The log file stays as is. Switching `mode="w"` to append/rotation is
+  worth doing for a long-running server, but it is an independent change.
+* Live tail uses the same long-poll mechanism (`wait=` parameter); no separate
+  streaming protocol.
+
 ## API (v1)
 
 All responses carry `schema_version`, `rev` and `server_time` (epoch ms, used by
@@ -193,7 +232,8 @@ Read:
 | `GET /api/v1/state?since=<rev>&wait=<s>` | Main snapshot (run status, counters, bytes, throughput anchors, active jobs with progress anchors, last N recent jobs, queue count). Long-poll: returns immediately if `rev > since`, otherwise holds up to `wait` (≤30 s) and returns `304`. `ETag: rev` for plain polling. |
 | `GET /api/v1/queue?offset&limit` | Pending files (can be 10k+, never inside the snapshot). |
 | `GET /api/v1/jobs/recent?limit` | Longer activity history (bounded ring, e.g. 500). |
-| `GET /api/v1/errors?offset&limit` | Session error log entries. |
+| `GET /api/v1/errors?since&limit` | Session error log entries (see Logs). |
+| `GET /api/v1/logs?since&limit&level&wait` | Application log ring buffer (see Logs). |
 | `GET /api/v1/config` | Effective config (today's Settings tab lines, structured). |
 | `GET /api/v1/io` | Input dir stats, output/error dirs, queue sort/seed, log path. |
 | `GET /api/v1/dirs` | Ordered `[{path, enabled}]` + `dirs_rev`. |
@@ -206,6 +246,7 @@ Commands (absolute and idempotent where possible):
 | `PUT /api/v1/threads {"target": n}` | New `SetThreadCount` event (orchestrator clamps; replaces client-side ±1) |
 | `POST /api/v1/refresh` | `RefreshRequested` (also "R" in waiting/paused state) |
 | `POST /api/v1/shutdown {"mode": "graceful"\|"interrupt"}` | `RequestShutdown` / `InterruptRequested` |
+| `PUT /api/v1/runtime/log-level {"level": …}` | Adjust root logger level at runtime |
 | `PUT /api/v1/dirs` + `If-Match: <dirs_rev>` | Validate → `save_dirs_config` → `InputDirsChanged` + `RefreshRequested`; `412` on stale rev |
 
 Security: bind `127.0.0.1` by default; bearer token from a 0600 file,
