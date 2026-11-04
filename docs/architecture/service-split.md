@@ -74,7 +74,7 @@ New package `vbc/service/`:
 |---|---|
 | `service/state_store.py` | Subscribes to domain events, maintains the read model (the business half of today's `UIState` + `UIManager` handlers), bumps `rev`, computes rates/ETA anchors (see below). Bus callbacks only mutate memory under a lock and notify; no I/O. |
 | `service/commands.py` | `CommandService`: validates client commands, persists config (`save_dirs_config` moves here), publishes domain events. |
-| `service/api.py` | HTTP app (FastAPI + uvicorn, same stack as mypowers; OpenAPI for free). Thin: translate HTTP ↔ StateStore/CommandService. |
+| `service/api.py` | HTTP app (FastAPI + uvicorn — **decided**; same stack as mypowers, OpenAPI for free). Thin: translate HTTP ↔ StateStore/CommandService. |
 | `service/bootstrap.py` | Headless composition root extracted from `main.py`: config, bus, adapters, orchestrator, StateStore, CommandService. Reused by local mode and `serve`. |
 | `vbc/contracts/` | Transport-only Pydantic DTOs with `schema_version`. The only module clients may share. `docs/api/openapi.json` generated from it and verified by a test. |
 
@@ -245,11 +245,13 @@ Every step leaves the test suite green and `vbc <dirs>` working.
 7. **Docs.** `docs/architecture/` (this page → final design), API reference,
    user guide for `serve`/`vbc-web`; README dependency notes (FastAPI, uvicorn).
 
+## Decisions
+
+* HTTP framework: **FastAPI + uvicorn** (decided). New runtime dependencies,
+  to be documented in `README.md` and `docs/getting-started/` when step 5 lands.
+
 ## Open decisions
 
-* FastAPI + uvicorn (new dependencies, OpenAPI out of the box, matches
-  mypowers) vs. extending the stdlib `http.server` already used. Recommended:
-  FastAPI.
 * Web client: vanilla JS (zero build) vs. keeping Jinja/HTMX fragments rendered
   by `vbc-web` from API data. Recommended: vanilla JS, because HTMX polling
   cannot extrapolate counters.
