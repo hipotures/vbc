@@ -1,0 +1,23 @@
+schema: 3
+service: vbc
+inputs:
+  - id: storage_roots
+    label: Storage roots
+    description: Comma-separated absolute paths inside the container under which input folders and their _out/_err siblings may live (e.g. the external media mounts). Required because the API listens on the LAN.
+    type: string
+    required: true
+    min_length: 2
+    max_length: 2000
+    regex: '^/[^,]*(,/[^,]*)*$'
+    target:
+      type: environment
+      variable: VBC_STORAGE_ROOTS
+  - id: allowed_hosts
+    label: Allowed host names
+    description: Comma-separated extra host names accepted in Host/Origin headers (the service DNS name if it is not the container's FQDN, a Pangolin subdomain). IP addresses are always accepted.
+    type: string
+    required: false
+    max_length: 1000
+    target:
+      type: environment
+      variable: VBC_ALLOWED_HOSTS

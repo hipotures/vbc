@@ -1,0 +1,15 @@
+schema: 3
+service: vbc
+# Measured on the built image (deploy/container/README.md): idle server
+# ~75 MiB; two parallel 1080p SVT-AV1 (CPU fallback) jobs peak at 2.7 GiB
+# anonymous memory. NVENC jobs need far less RAM; not measured here.
+resources:
+  cores: 4
+  memory: 4G
+  swap: 0M
+  rootfs: 2G
+deployment:
+  hostname: vbc
+  instances: 1
+  placement: single
+  state_model: local
