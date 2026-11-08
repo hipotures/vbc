@@ -9,16 +9,22 @@ runtime:
     - name: http
       port: 8080
       protocol: tcp
+  # GPU (NVENC): NVIDIA device nodes. See deploy/container/README.md (GPU).
+  devices:
+    dev0:
+      path: /dev/nvidia0
+    dev1:
+      path: /dev/nvidiactl
+    dev2:
+      path: /dev/nvidia-uvm
+    dev3:
+      path: /dev/nvidia-uvm-tools
   healthcheck:
     type: http
     port: http
     path: /health/ready
     expected_status: 200
     heartbeat_seconds: 60
-# GPU (NVENC): runtime.devices (dev0..dev3 = /dev/nvidia0, nvidiactl, nvidia-uvm,
-# nvidia-uvm-tools) only once HomeStack attaches devices itself; HomeStack
-# refuses updates while declared devices are not attached in Proxmox.
-# See deploy/container/README.md (GPU).
 # Config (incl. the Dirs list saved through the API) and state live on the
 # home volume; media trees are external mounts (pending HomeStack feature).
 persistence:
