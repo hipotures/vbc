@@ -82,7 +82,10 @@ clients) is described in `docs/architecture/service-split.md`.
 ### Directory Structure
 ```
 vbc/                     # new tree (being built)
-└── cli.py               # Typer app: peer subcommands (`run` for now)
+├── cli.py               # Typer app: peer subcommands (`serve`, `run`)
+├── contracts/           # API DTOs (the only module clients may share)
+├── service/             # state_store, commands, bootstrap, api, log_buffer
+└── domain/ config/ infrastructure/ pipeline/ utils/   # core copied from legacy
 vbc_legacy/              # frozen, today's application
 ├── main.py              # legacy Typer command (`vbc run`)
 ├── config/              # Pydantic models + YAML loader
@@ -133,6 +136,8 @@ VBC dependencies:
 - `pyyaml` - Config loading
 - `pyexiftool` - Metadata extraction/copying
 - `typer` - CLI framework
+- `fastapi`, `uvicorn` - HTTP API of `vbc serve`
+- `httpx` - HTTP client (heartbeat, client commands)
 - System: `ffmpeg`, `exiftool` binaries
 
 Optional dependency extras:
@@ -157,8 +162,7 @@ For major VBC changes, update relevant docs in `docs/` alongside code.
 ## Testing
 
 **No unit tests.** The old unit/integration suite was removed. New code is
-covered only by a small black-box end-to-end suite in `tests/e2e/` (created
-from step 5 of the plan). The suite starts real processes with real
+covered only by a small black-box end-to-end suite in `tests/e2e/`. The suite starts real processes with real
 ffmpeg/exiftool, uses media fixtures generated at test time (nothing binary in
 git) and checks only externally visible results. See "Testing strategy" in
 `docs/architecture/service-split.md`.

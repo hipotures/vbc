@@ -17,9 +17,16 @@ the [service split](../architecture/service-split.md).
 
 ## The end-to-end suite
 
-Location: `tests/e2e/`. It is created during the service split, from step 5
-(the first `vbc serve` scenario). Until then, changes are checked by running
-`vbc run` on a small set of media by hand.
+Location: `tests/e2e/`. Current scenarios (`test_serve.py`):
+
+* **full pass matches legacy** – `vbc serve` over the generated media
+  reproduces `expected/legacy_run.json` on disk, the counters and the error
+  log, and a refresh (second pass) changes nothing;
+* **commands and health** – `serve --demo`: thread clamping and idempotence,
+  `PUT /dirs` 428/412/422, long-poll `204`, Host/Origin guard, health and
+  HomeStack telemetry, idempotent shutdown and cancel, SIGTERM exit code 0.
+
+Legacy `vbc run` (until it is deleted) is checked by hand as below.
 
 Rules:
 
@@ -61,7 +68,7 @@ uv run pytest            # runs tests/e2e
 
 System requirements: `ffmpeg`, `ffprobe` and `exiftool` on `PATH`.
 
-## Manual check (until the suite exists)
+## Manual check of legacy `vbc run`
 
 ```bash
 mkdir -p /tmp/vbc-smoke/in

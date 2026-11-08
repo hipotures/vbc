@@ -151,6 +151,7 @@ class StateStore:
         self._discovery_error_keys: set[Tuple[Path, str]] = set()
         self._gpu: Deque[dto.GpuSample] = deque(maxlen=GPU_SAMPLES_KEPT)
         self._gpu_seq = 0
+        self._failure: Optional[Tuple[dto.RunStatus, str]] = None
         self._subscribe(bus)
 
     # ── wiring ──────────────────────────────────────────────────────────────
@@ -572,6 +573,23 @@ class StateStore:
                 last_seq=self._gpu_seq, samples=[g for g in self._gpu if g.seq > since],
             )
 
+    def set_failure(self, status: dto.RunStatus, message: str) -> None:
+        """The orchestrator thread ended abnormally (verification abort, crash)."""
+        def fn(st: _State, now: float) -> bool:
+            self._failure = (status, message)
+            st.status_message = message
+            return True
+
+        self._mutate(fn)
+
+    def set_idle(self) -> None:
+        """A pass ended without a following wait (demo mode)."""
+        def fn(st: _State, now: float) -> bool:
+            st.waiting_for_input = True
+            return True
+
+        self._mutate(fn)
+
     # ── revisions owned by other services ───────────────────────────────────
 
     def bump_config_rev(self) -> None:
@@ -608,12 +626,15 @@ class StateStore:
             return "shutting_down"
         if s.error_paused:
             return "verification_abort" if s.pause_reason == "verification_abort" else "paused_on_error"
+        if self._failure is not None:
+            return self._failure[0]
         if s.waiting_for_input:
-            return "waiting_for_input"
+            # `vbc serve` waits for the next refresh after every pass: idle.
+            # This is the only reliable end-of-pass signal: ProcessingFinished
+            # (s.finished) comes before the auto-repair / error-move step.
+            return "idle"
         if s.repair.active:
             return "repairing"
-        if s.finished:
-            return "idle"
         if not s.discovery.finished:
             return "discovering"
         return "running"
@@ -715,6 +736,10 @@ class StateStore:
                     for v in items
                 ],
             )
+
+    def pending_files(self) -> list:
+        with self._lock:
+            return list(self._s.pending)
 
     def recent_jobs(self, limit: int = 100) -> dto.RecentJobsPage:
         with self._lock:

@@ -598,7 +598,23 @@ allowed to fail and be repeated:
 
 ## Migration steps
 
-Progress: baseline tag `service-split-baseline`; **steps 1–4 done**.
+Progress: baseline tag `service-split-baseline`; **steps 1–5 done**.
+Step 5 notes: `vbc serve` = `vbc/service/bootstrap.py` (`VbcServer`: config +
+env overrides `VBC_SERVER_HOST/PORT`, `VBC_ALLOWED_HOSTS`,
+`VBC_STORAGE_ROOTS`; refuses a non-loopback host without `storage.roots`;
+logs to stdout + `/logs` ring buffer + optional `--log-file`; orchestrator in
+its own thread with `wait_on_finish` forced on) and `vbc/service/api.py`
+(FastAPI app, uvicorn with VBC's own signal handling: first SIGTERM/SIGINT =
+graceful stop with `server.stop_timeout_s`, second SIGINT = interrupt, exit
+code 0). Config sections `server` (host 127.0.0.1, port 8770, allowed_hosts,
+stop_timeout_s) and `storage.roots`; legacy ignores them. Host/Origin policy:
+IP literals and own/loopback names always pass, other names only from
+`server.allowed_hosts`. **`idle` = the orchestrator's `WaitingForInput`**:
+`ProcessingFinished` is published *before* the auto-repair / error-move step,
+so using it for `idle` let a client see an idle server while it was still
+moving a failed file (caught by the first e2e scenario). OpenAPI:
+`scripts/export-openapi.py` → `docs/api/openapi.json`. E2E suite
+(`tests/e2e/test_serve.py`, ~20 s) also runs in CI.
 Step 4 notes: `vbc/contracts/` (state, queue, recent jobs, errors, GPU, dirs,
 command bodies, `Problem`), `vbc/service/state_store.py` and
 `vbc/service/commands.py`. Of the 35 legacy `UIManager` subscriptions, the 18
@@ -612,9 +628,7 @@ value. `put_dirs`: 428 without `If-Match`, 412 on a stale `dirs_rev`, 422
 with per-entry errors (absolute path, length, duplicates, storage roots incl.
 derived `_out`/`_err`, existence/readability of enabled dirs). Left for step 5:
 config/IO/logs DTOs with their endpoints, per-directory IO stats (legacy
-`io_input_dir_stats`), and setting `idle` when `orchestrator.run()` returns —
-neither legacy nor the new core publishes `ProcessingFinished` at the end of
-a normal pass.
+`io_input_dir_stats`).
 Step 3 notes: the copied core (`vbc/`, no Rich, no UI imports) run headless
 on the e2e media reproduces `expected/legacy_run.json` exactly (both passes).
 `job_id` lives on `VideoFile` (set when a worker starts an attempt) and

@@ -434,6 +434,32 @@ class WebServerConfig(BaseModel):
     host: str = "0.0.0.0"
 
 
+class ServerConfig(BaseModel):
+    """`vbc serve` HTTP API settings (docs/architecture/service-split.md).
+
+    Attributes:
+        host: Listen address; 127.0.0.1 by default, 0.0.0.0 or an interface IP
+            for access from other hosts (then storage.roots is mandatory).
+        port: TCP port of the API (8765 is used by the legacy --web dashboard).
+        allowed_hosts: Extra host names accepted in Host/Origin headers (service
+            DNS name, Pangolin subdomain). IP literals and loopback/own host
+            names are always accepted.
+        stop_timeout_s: After SIGTERM, how long a graceful shutdown may wait for
+            running jobs before they are interrupted.
+    """
+
+    host: str = "127.0.0.1"
+    port: int = Field(default=8770, ge=1, le=65535)
+    allowed_hosts: List[str] = Field(default_factory=list)
+    stop_timeout_s: float = Field(default=600.0, ge=0)
+
+
+class StorageConfig(BaseModel):
+    """Directories the API may point the server at (input dirs and their _out/_err)."""
+
+    roots: List[str] = Field(default_factory=list)
+
+
 class MetadataErrorPolicyConfig(BaseModel):
     """Optional global overrides for manifest error handling."""
 
@@ -542,6 +568,8 @@ class AppConfig(BaseModel):
     ui: UiConfig = Field(default_factory=UiConfig)
     web_server: WebServerConfig = Field(default_factory=WebServerConfig)
     metadata: MetadataConfig = Field(default_factory=MetadataConfig)
+    server: ServerConfig = Field(default_factory=ServerConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
 
     @field_validator("suffix_output_dirs")
     @classmethod

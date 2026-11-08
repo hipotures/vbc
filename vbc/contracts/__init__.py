@@ -9,7 +9,7 @@ without streaming every tick").
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +25,7 @@ RunStatus = Literal[
     "shutting_down",
     "interrupted",
     "idle",
+    "failed",
 ]
 
 
@@ -213,6 +214,52 @@ class GpuPage(Envelope):
     samples: List[GpuSample]
 
 
+class LogEntry(_Dto):
+    seq: int
+    ts: int
+    level: str
+    logger: str
+    message: str
+
+
+class LogsPage(Envelope):
+    last_seq: int
+    entries: List[LogEntry]
+
+
+# ── configuration window ────────────────────────────────────────────────────
+
+
+class ConfigView(Envelope):
+    """Effective configuration, structured per section (no preformatted text)."""
+
+    config_rev: int
+    sections: Dict[str, Dict[str, Any]]
+
+
+class IoDir(_Dto):
+    path: str
+    enabled: bool
+    metadata: bool = False
+    exists: bool
+    readable: bool
+    output_dir: Optional[str] = None
+    errors_dir: Optional[str] = None
+    output_writable: Optional[bool] = None
+    pending_count: int = 0
+    pending_bytes: int = 0
+
+
+class IoView(Envelope):
+    dirs: List[IoDir]
+    suffix_output_dirs: Optional[str] = None
+    suffix_errors_dirs: Optional[str] = None
+    log_path: Optional[str] = None
+    queue_sort: str
+    queue_seed: Optional[int] = None
+    storage_roots: List[str] = Field(default_factory=list)
+
+
 # ── dirs ────────────────────────────────────────────────────────────────────
 
 
@@ -248,6 +295,16 @@ class PutDirsRequest(_Dto):
 
 class LogLevelRequest(_Dto):
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR"]
+
+
+class Ack(Envelope):
+    """Response of a command that was accepted (effects show up in /state)."""
+
+    accepted: bool = True
+
+
+class ThreadsResult(Envelope):
+    threads: Threads
 
 
 class Problem(_Dto):

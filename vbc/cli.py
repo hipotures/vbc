@@ -1,12 +1,15 @@
 """VBC command line: one Typer app whose subcommands are all peers.
 
-Planned commands (docs/architecture/service-split.md): ``serve``, ``tui``,
-``run`` and the one-shot API commands (``status``, ``threads``, ...). For now
-only ``run`` exists; it hands its arguments unchanged to the legacy
-application (today's ``vbc <dirs>``).
+Commands (docs/architecture/service-split.md): ``serve`` (headless server),
+``run`` (legacy in-process TUI, today's ``vbc <dirs>``; arguments pass through
+unchanged). Planned: ``tui`` and the one-shot API commands (``status``,
+``threads``, ...).
 """
 
 from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional
 
 import click
 import typer
@@ -37,6 +40,33 @@ app = typer.Typer(
 @app.callback()
 def _root() -> None:
     """VBC (Video Batch Compression)."""
+
+
+@app.command()
+def serve(
+    config: Path = typer.Option(Path("conf/vbc.yaml"), "--config", "-c", help="Path to YAML config"),
+    host: Optional[str] = typer.Option(None, help="Listen address (default server.host, 127.0.0.1)"),
+    port: Optional[int] = typer.Option(None, help="Listen port (default server.port, 8770)"),
+    demo: bool = typer.Option(False, "--demo", help="Simulated processing, no file IO"),
+    demo_config: Path = typer.Option(Path("conf/demo.yaml"), "--demo-config", help="Demo YAML config"),
+    log_file: Optional[Path] = typer.Option(None, "--log-file", help="Also append logs to this file"),
+) -> None:
+    """Run the headless server: HTTP API on server.host:server.port, logs on stdout."""
+    from vbc.service.api import run_server
+    from vbc.service.bootstrap import ServerConfigError, VbcServer
+
+    if not config.exists():
+        typer.echo(f"vbc serve: config file not found: {config}", err=True)
+        raise typer.Exit(code=2)
+    try:
+        server = VbcServer(
+            config, demo=demo, demo_config_path=demo_config if demo else None,
+            log_file=log_file, host=host, port=port,
+        )
+    except ServerConfigError as exc:
+        typer.echo(f"vbc serve: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    raise typer.Exit(code=run_server(server))
 
 
 @app.command(

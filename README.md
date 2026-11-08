@@ -1176,6 +1176,8 @@ The codebase is being split into a server (`vbc serve`) and clients
 (`vbc tui`, one-shot API commands); see
 [docs/architecture/service-split.md](docs/architecture/service-split.md).
 Until then the application runs from `vbc_legacy/` as `vbc run <dirs>`.
+The headless server already runs: `vbc serve --config conf/vbc.yaml`
+(HTTP API on `127.0.0.1:8770`, OpenAPI in `docs/api/openapi.json`).
 
 ### Running Tests
 
@@ -1284,6 +1286,8 @@ VBC is built with excellent open-source tools:
 - [Typer](https://typer.tiangolo.com/) - CLI framework
 - [PyExifTool](https://github.com/sylikc/pyexiftool) - ExifTool Python wrapper
 - [inotify-simple](https://github.com/chrisjbillington/inotify_simple) - Linux manifest-directory events
+- [FastAPI](https://fastapi.tiangolo.com/) + [uvicorn](https://www.uvicorn.org/) - HTTP API of `vbc serve`
+- [HTTPX](https://www.python-httpx.org/) - HTTP client (server heartbeat, client commands)
 - [uv](https://github.com/astral-sh/uv) - Fast Python package manager
 
 ---

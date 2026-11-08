@@ -1,0 +1,2242 @@
+{
+  "components": {
+    "schemas": {
+      "Ack": {
+        "additionalProperties": false,
+        "description": "Response of a command that was accepted (effects show up in /state).",
+        "properties": {
+          "accepted": {
+            "default": true,
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time"
+        ],
+        "title": "Ack",
+        "type": "object"
+      },
+      "ActiveJob": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input_bytes": {
+            "title": "Input Bytes",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "part_count": {
+            "default": 1,
+            "title": "Part Count",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProgressAnchor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "path",
+          "status",
+          "started_at",
+          "input_bytes"
+        ],
+        "title": "ActiveJob",
+        "type": "object"
+      },
+      "ConfigView": {
+        "additionalProperties": false,
+        "description": "Effective configuration, structured per section (no preformatted text).",
+        "properties": {
+          "config_rev": {
+            "title": "Config Rev",
+            "type": "integer"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sections": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Sections",
+            "type": "object"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "config_rev",
+          "sections"
+        ],
+        "title": "ConfigView",
+        "type": "object"
+      },
+      "Counters": {
+        "additionalProperties": false,
+        "properties": {
+          "cam_skipped": {
+            "default": 0,
+            "title": "Cam Skipped",
+            "type": "integer"
+          },
+          "completed": {
+            "default": 0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "completed_at_last_discovery": {
+            "default": 0,
+            "title": "Completed At Last Discovery",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "failed_at_last_discovery": {
+            "default": 0,
+            "title": "Failed At Last Discovery",
+            "type": "integer"
+          },
+          "hw_cap": {
+            "default": 0,
+            "title": "Hw Cap",
+            "type": "integer"
+          },
+          "ignored_av1": {
+            "default": 0,
+            "title": "Ignored Av1",
+            "type": "integer"
+          },
+          "interrupted": {
+            "default": 0,
+            "title": "Interrupted",
+            "type": "integer"
+          },
+          "min_ratio_skip": {
+            "default": 0,
+            "title": "Min Ratio Skip",
+            "type": "integer"
+          },
+          "session_completed_base": {
+            "default": 0,
+            "title": "Session Completed Base",
+            "type": "integer"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "title": "Counters",
+        "type": "object"
+      },
+      "DirEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "enabled"
+        ],
+        "title": "DirEntry",
+        "type": "object"
+      },
+      "DirStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "exists": {
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "readable": {
+            "title": "Readable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "enabled",
+          "exists",
+          "readable"
+        ],
+        "title": "DirStatus",
+        "type": "object"
+      },
+      "DirsState": {
+        "additionalProperties": false,
+        "properties": {
+          "dirs_rev": {
+            "title": "Dirs Rev",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DirStatus"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "dirs_rev",
+          "entries"
+        ],
+        "title": "DirsState",
+        "type": "object"
+      },
+      "Discovery": {
+        "additionalProperties": false,
+        "properties": {
+          "already_compressed": {
+            "default": 0,
+            "title": "Already Compressed",
+            "type": "integer"
+          },
+          "files_found": {
+            "default": 0,
+            "title": "Files Found",
+            "type": "integer"
+          },
+          "files_to_process": {
+            "default": 0,
+            "title": "Files To Process",
+            "type": "integer"
+          },
+          "finished": {
+            "default": false,
+            "title": "Finished",
+            "type": "boolean"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "ignored_err": {
+            "default": 0,
+            "title": "Ignored Err",
+            "type": "integer"
+          },
+          "ignored_small": {
+            "default": 0,
+            "title": "Ignored Small",
+            "type": "integer"
+          },
+          "source_folders_count": {
+            "default": 1,
+            "title": "Source Folders Count",
+            "type": "integer"
+          }
+        },
+        "title": "Discovery",
+        "type": "object"
+      },
+      "ErrorEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "audio_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Codec"
+          },
+          "codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codec"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "integer"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "error_message": {
+            "title": "Error Message",
+            "type": "string"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "fps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "manifest_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Request Id"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "path",
+          "error_message"
+        ],
+        "title": "ErrorEntry",
+        "type": "object"
+      },
+      "ErrorsPage": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "last_id": {
+            "title": "Last Id",
+            "type": "integer"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "last_id",
+          "entries"
+        ],
+        "title": "ErrorsPage",
+        "type": "object"
+      },
+      "GpuPage": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "last_seq": {
+            "title": "Last Seq",
+            "type": "integer"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/GpuSample"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "enabled",
+          "last_seq",
+          "samples"
+        ],
+        "title": "GpuPage",
+        "type": "object"
+      },
+      "GpuSample": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "integer"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "fan_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fan Pct"
+          },
+          "gpu_util_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gpu Util Pct"
+          },
+          "mem_util_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mem Util Pct"
+          },
+          "power_w": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Power W"
+          },
+          "raw": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "temp_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temp C"
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "available"
+        ],
+        "title": "GpuSample",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IoDir": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "errors_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors Dir"
+          },
+          "exists": {
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "metadata": {
+            "default": false,
+            "title": "Metadata",
+            "type": "boolean"
+          },
+          "output_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Dir"
+          },
+          "output_writable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Writable"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "pending_bytes": {
+            "default": 0,
+            "title": "Pending Bytes",
+            "type": "integer"
+          },
+          "pending_count": {
+            "default": 0,
+            "title": "Pending Count",
+            "type": "integer"
+          },
+          "readable": {
+            "title": "Readable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "enabled",
+          "exists",
+          "readable"
+        ],
+        "title": "IoDir",
+        "type": "object"
+      },
+      "IoView": {
+        "additionalProperties": false,
+        "properties": {
+          "dirs": {
+            "items": {
+              "$ref": "#/components/schemas/IoDir"
+            },
+            "title": "Dirs",
+            "type": "array"
+          },
+          "log_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Path"
+          },
+          "queue_seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Seed"
+          },
+          "queue_sort": {
+            "title": "Queue Sort",
+            "type": "string"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          },
+          "storage_roots": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Storage Roots",
+            "type": "array"
+          },
+          "suffix_errors_dirs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suffix Errors Dirs"
+          },
+          "suffix_output_dirs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suffix Output Dirs"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "dirs",
+          "queue_sort"
+        ],
+        "title": "IoView",
+        "type": "object"
+      },
+      "LastAction": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "at"
+        ],
+        "title": "LastAction",
+        "type": "object"
+      },
+      "LogEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "logger": {
+            "title": "Logger",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "level",
+          "logger",
+          "message"
+        ],
+        "title": "LogEntry",
+        "type": "object"
+      },
+      "LogLevelRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "enum": [
+              "DEBUG",
+              "INFO",
+              "WARNING",
+              "ERROR"
+            ],
+            "title": "Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level"
+        ],
+        "title": "LogLevelRequest",
+        "type": "object"
+      },
+      "LogsPage": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/LogEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "last_seq": {
+            "title": "Last Seq",
+            "type": "integer"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "last_seq",
+          "entries"
+        ],
+        "title": "LogsPage",
+        "type": "object"
+      },
+      "Problem": {
+        "additionalProperties": false,
+        "description": "Error body for 4xx responses (field errors for 422).",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "title"
+        ],
+        "title": "Problem",
+        "type": "object"
+      },
+      "ProgressAnchor": {
+        "additionalProperties": false,
+        "description": "Client predicts ``min(percent + rate * (now - at) / 1000, 99.5)``.",
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "integer"
+          },
+          "percent": {
+            "title": "Percent",
+            "type": "number"
+          },
+          "rate": {
+            "description": "percent per second",
+            "title": "Rate",
+            "type": "number"
+          }
+        },
+        "required": [
+          "percent",
+          "at",
+          "rate"
+        ],
+        "title": "ProgressAnchor",
+        "type": "object"
+      },
+      "PutDirsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DirEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "title": "PutDirsRequest",
+        "type": "object"
+      },
+      "QueueItem": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "part_count": {
+            "default": 1,
+            "title": "Part Count",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "name",
+          "size_bytes"
+        ],
+        "title": "QueueItem",
+        "type": "object"
+      },
+      "QueuePage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "offset",
+          "total",
+          "items"
+        ],
+        "title": "QueuePage",
+        "type": "object"
+      },
+      "QueueSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "default": 0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "title": "QueueSummary",
+        "type": "object"
+      },
+      "RecentJob": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "finished_at": {
+            "title": "Finished At",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input_bytes": {
+            "title": "Input Bytes",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "output_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Bytes"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "path",
+          "status",
+          "finished_at",
+          "input_bytes"
+        ],
+        "title": "RecentJob",
+        "type": "object"
+      },
+      "RecentJobsPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecentJob"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "items"
+        ],
+        "title": "RecentJobsPage",
+        "type": "object"
+      },
+      "Repair": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "default": false,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "candidates": {
+            "default": 0,
+            "title": "Candidates",
+            "type": "integer"
+          },
+          "repaired": {
+            "default": 0,
+            "title": "Repaired",
+            "type": "integer"
+          }
+        },
+        "title": "Repair",
+        "type": "object"
+      },
+      "SetThreadsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "title": "Target",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "SetThreadsRequest",
+        "type": "object"
+      },
+      "ShutdownRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "graceful",
+            "enum": [
+              "graceful",
+              "interrupt"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "ShutdownRequest",
+        "type": "object"
+      },
+      "StateSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "active_jobs": {
+            "items": {
+              "$ref": "#/components/schemas/ActiveJob"
+            },
+            "title": "Active Jobs",
+            "type": "array"
+          },
+          "config_rev": {
+            "default": 0,
+            "title": "Config Rev",
+            "type": "integer"
+          },
+          "counters": {
+            "$ref": "#/components/schemas/Counters"
+          },
+          "dirs_rev": {
+            "default": 0,
+            "title": "Dirs Rev",
+            "type": "integer"
+          },
+          "discovery": {
+            "$ref": "#/components/schemas/Discovery"
+          },
+          "errors_count": {
+            "default": 0,
+            "title": "Errors Count",
+            "type": "integer"
+          },
+          "errors_last_id": {
+            "default": 0,
+            "title": "Errors Last Id",
+            "type": "integer"
+          },
+          "eta_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta At"
+          },
+          "gpu_last_seq": {
+            "default": 0,
+            "title": "Gpu Last Seq",
+            "type": "integer"
+          },
+          "interrupt_requested": {
+            "default": false,
+            "title": "Interrupt Requested",
+            "type": "boolean"
+          },
+          "last_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "processing_started_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Started At"
+          },
+          "queue": {
+            "$ref": "#/components/schemas/QueueSummary"
+          },
+          "recent_jobs": {
+            "items": {
+              "$ref": "#/components/schemas/RecentJob"
+            },
+            "title": "Recent Jobs",
+            "type": "array"
+          },
+          "repair": {
+            "$ref": "#/components/schemas/Repair"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "run_status": {
+            "enum": [
+              "discovering",
+              "running",
+              "repairing",
+              "paused_on_error",
+              "waiting_for_input",
+              "verification_abort",
+              "shutting_down",
+              "interrupted",
+              "idle",
+              "failed"
+            ],
+            "title": "Run Status",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          },
+          "shutdown_requested": {
+            "default": false,
+            "title": "Shutdown Requested",
+            "type": "boolean"
+          },
+          "status_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Message"
+          },
+          "threads": {
+            "$ref": "#/components/schemas/Threads"
+          },
+          "throughput": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Throughput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total_input_bytes": {
+            "default": 0,
+            "title": "Total Input Bytes",
+            "type": "integer"
+          },
+          "total_output_bytes": {
+            "default": 0,
+            "title": "Total Output Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "run_status",
+          "counters",
+          "discovery",
+          "threads",
+          "repair",
+          "active_jobs",
+          "recent_jobs",
+          "queue"
+        ],
+        "title": "StateSnapshot",
+        "type": "object"
+      },
+      "Threads": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "integer"
+          },
+          "maximum": {
+            "title": "Maximum",
+            "type": "integer"
+          },
+          "minimum": {
+            "title": "Minimum",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "current",
+          "minimum",
+          "maximum"
+        ],
+        "title": "Threads",
+        "type": "object"
+      },
+      "ThreadsResult": {
+        "additionalProperties": false,
+        "properties": {
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          },
+          "threads": {
+            "$ref": "#/components/schemas/Threads"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "threads"
+        ],
+        "title": "ThreadsResult",
+        "type": "object"
+      },
+      "Throughput": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "integer"
+          },
+          "bytes_per_s": {
+            "title": "Bytes Per S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "bytes_per_s",
+          "at"
+        ],
+        "title": "Throughput",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Control plane of vbc serve: status and commands, never media.",
+    "title": "VBC API",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/.well-known/homestack/status": {
+      "get": {
+        "operationId": "homestack_status__well_known_homestack_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Homestack Status"
+      }
+    },
+    "/api/v1/config": {
+      "get": {
+        "operationId": "get_config_api_v1_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Config"
+      }
+    },
+    "/api/v1/dirs": {
+      "get": {
+        "operationId": "get_dirs_api_v1_dirs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirsState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Dirs"
+      },
+      "put": {
+        "operationId": "put_dirs_api_v1_dirs_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutDirsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirsState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Put Dirs"
+      }
+    },
+    "/api/v1/errors": {
+      "get": {
+        "operationId": "get_errors_api_v1_errors_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Errors"
+      }
+    },
+    "/api/v1/gpu": {
+      "get": {
+        "operationId": "get_gpu_api_v1_gpu_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GpuPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Gpu"
+      }
+    },
+    "/api/v1/io": {
+      "get": {
+        "operationId": "get_io_api_v1_io_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IoView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Io"
+      }
+    },
+    "/api/v1/jobs/recent": {
+      "get": {
+        "operationId": "get_recent_api_v1_jobs_recent_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentJobsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recent"
+      }
+    },
+    "/api/v1/logs": {
+      "get": {
+        "operationId": "get_logs_api_v1_logs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(DEBUG|INFO|WARNING|ERROR)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wait",
+            "required": false,
+            "schema": {
+              "default": 0.0,
+              "maximum": 30.0,
+              "minimum": 0.0,
+              "title": "Wait",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Logs"
+      }
+    },
+    "/api/v1/queue": {
+      "get": {
+        "operationId": "get_queue_api_v1_queue_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Queue"
+      }
+    },
+    "/api/v1/refresh": {
+      "post": {
+        "operationId": "post_refresh_api_v1_refresh_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Post Refresh"
+      }
+    },
+    "/api/v1/runtime/log-level": {
+      "put": {
+        "operationId": "put_log_level_api_v1_runtime_log_level_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogLevelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Log Level"
+      }
+    },
+    "/api/v1/shutdown": {
+      "delete": {
+        "operationId": "delete_shutdown_api_v1_shutdown_delete",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete Shutdown"
+      },
+      "post": {
+        "operationId": "post_shutdown_api_v1_shutdown_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShutdownRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Shutdown"
+      }
+    },
+    "/api/v1/state": {
+      "get": {
+        "operationId": "get_state_api_v1_state_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wait",
+            "required": false,
+            "schema": {
+              "default": 0.0,
+              "maximum": 30.0,
+              "minimum": 0.0,
+              "title": "Wait",
+              "type": "number"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "long-poll timeout, nothing changed"
+          },
+          "304": {
+            "description": "If-None-Match matches the current rev"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get State"
+      }
+    },
+    "/api/v1/threads": {
+      "put": {
+        "operationId": "put_threads_api_v1_threads_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetThreadsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadsResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Threads"
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "health_live_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Live"
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "health_ready_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Ready"
+      }
+    }
+  }
+}
