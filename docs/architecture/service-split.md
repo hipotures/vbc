@@ -431,8 +431,12 @@ Server, inside `StateStore` on each `JobProgressUpdated`:
 
 * update an EWMA of `rate` (%/s) per job;
 * compute what a client currently predicts from the last published anchor;
-* bump `rev` only if `|predicted - actual| > 2 p.p.`, or the rate changed by more
-  than ~20 %, or 30 s passed since the last anchor (cap on staleness);
+* bump `rev` only if `|predicted - actual| > 2 p.p.`, or the rate changed enough
+  to drift more than 2 p.p. within 10 s (`|Δrate| × 10 s > 2 p.p.`; a relative
+  "20 %" rule re-anchored on every noisy sample at low speeds), or 30 s passed
+  since the last anchor (cap on staleness). Measured with a simulated clock:
+  a 3-minute encode with 360 progress lines produces 7–12 snapshots and the
+  client's extrapolation stays within ~2 p.p.;
 * always bump on discrete changes: job start/finish/fail, counter changes,
   status changes, queue count, thread count, dirs.
 
@@ -594,7 +598,23 @@ allowed to fail and be repeated:
 
 ## Migration steps
 
-Progress: baseline tag `service-split-baseline`; **steps 1–3 done**.
+Progress: baseline tag `service-split-baseline`; **steps 1–4 done**.
+Step 4 notes: `vbc/contracts/` (state, queue, recent jobs, errors, GPU, dirs,
+command bodies, `Problem`), `vbc/service/state_store.py` and
+`vbc/service/commands.py`. Of the 35 legacy `UIManager` subscriptions, the 18
+business ones are ported to `StateStore`; the rest (overlay tabs, dim level,
+sparkline preset/palette/metric, logs page, Dirs editor keystrokes) are client
+view state for step 7. Checked by running legacy core + `UIManager`/`UIState`
+and the new core + `StateStore` on the e2e media, two passes: every business
+field is identical (counters, discovery, bytes, errors, repair, queue, recent
+jobs). The orchestrator now publishes `ThreadCountChanged` with the clamped
+value. `put_dirs`: 428 without `If-Match`, 412 on a stale `dirs_rev`, 422
+with per-entry errors (absolute path, length, duplicates, storage roots incl.
+derived `_out`/`_err`, existence/readability of enabled dirs). Left for step 5:
+config/IO/logs DTOs with their endpoints, per-directory IO stats (legacy
+`io_input_dir_stats`), and setting `idle` when `orchestrator.run()` returns —
+neither legacy nor the new core publishes `ProcessingFinished` at the end of
+a normal pass.
 Step 3 notes: the copied core (`vbc/`, no Rich, no UI imports) run headless
 on the e2e media reproduces `expected/legacy_run.json` exactly (both passes).
 `job_id` lives on `VideoFile` (set when a worker starts an attempt) and

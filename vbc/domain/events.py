@@ -122,6 +122,14 @@ class SetThreadCount(Event):
     target: int
 
 
+class ThreadCountChanged(Event):
+    """Published by the orchestrator with the effective (clamped) thread count."""
+
+    current: int
+    minimum: int
+    maximum: int
+
+
 class SetShutdownRequested(Event):
     """Request (``True``) or cancel (``False``) a graceful shutdown.
 

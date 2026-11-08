@@ -27,6 +27,7 @@ from vbc.domain.events import (
     RefreshRequested,
     RefreshFinished,
     SetThreadCount,
+    ThreadCountChanged,
 )
 from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
 from vbc.infrastructure.event_bus import EventBus
@@ -154,6 +155,9 @@ class DemoOrchestrator:
         with self._thread_lock:
             self._current_max_threads = max(low, min(high, event.target))
             self._thread_lock.notify_all()
+        self.event_bus.publish(
+            ThreadCountChanged(current=self._current_max_threads, minimum=low, maximum=high)
+        )
         if self._current_max_threads != old_val:
             self.event_bus.publish(
                 ActionMessage(

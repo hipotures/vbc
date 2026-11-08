@@ -75,6 +75,7 @@ from vbc.domain.events import (
     RefreshFinished,
     SetShutdownRequested,
     SetThreadCount,
+    ThreadCountChanged,
     InterruptRequested,
 )
 from vbc.pipeline.error_file_mover import collect_error_entries, move_failed_files
@@ -285,6 +286,9 @@ class Orchestrator:
         with self._thread_lock:
             self._current_max_threads = max(low, min(high, event.target))
             self._thread_lock.notify_all()
+        self.event_bus.publish(
+            ThreadCountChanged(current=self._current_max_threads, minimum=low, maximum=high)
+        )
         from vbc.domain.events import ActionMessage
 
         if self._current_max_threads != old_val:
