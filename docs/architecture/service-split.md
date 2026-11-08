@@ -70,12 +70,58 @@ Layer leaks that block the split:
 | No job identity | `VideoFile` / `CompressionJob` have no id; jobs are identified by path | `/state`, `/errors` and `/logs` need a stable `job_id` |
 | View code reads business state | `KeyboardListener` reads `UIState` to route keys while the Dirs tab is active | After the split it must read view state, not `StateStore` |
 
+## Code strategy: legacy package + new tree
+
+The whole current package moves to `vbc_legacy/` (`git mv`, absolute imports
+rewritten `vbc.` → `vbc_legacy.`), its tests to `tests/legacy/`. The new
+`vbc/` is built from scratch next to it, **taking over from legacy only what
+is needed**, by copying whole files (`cp`) or cutting out fragments. When the
+new clients reach parity, `vbc_legacy/` and `tests/legacy/` are deleted in one
+commit, so no old code survives that was not deliberately carried over.
+
+```
+vbc_legacy/      # frozen copy of today's vbc/ — `vbc <dirs>` runs from here during migration
+tests/legacy/    # today's tests, imports switched to vbc_legacy
+vbc/             # new: domain, config, infrastructure, pipeline, service, contracts, clients
+tests/unit/, tests/integration/   # tests for the new tree
+```
+
+Rules:
+
+* **Legacy is frozen.** No features; a critical bug fix is made in both trees.
+* **Two separate packages.** Legacy and new code never import each other;
+  the only bridge is the characterisation-test scenario run against both.
+* **Copy almost whole, then modify:** `domain/`, `config/`, the FFmpeg /
+  FFprobe / ExifTool adapters, watchers, `event_bus`, `logging`,
+  `pipeline/orchestrator.py`, `pipeline/repair.py`,
+  `pipeline/error_file_mover.py`. This code does not depend on the UI;
+  rewriting it piecemeal risks losing edge cases (hardware-capability
+  detection, CPU fallback, manifests, repair, verification, rotation,
+  metadata, colour remux). The layer leaks listed above are fixed in the copy.
+* **Cut out fragments:** `UIManager` handlers → `service/state_store.py`,
+  `on_dirs_apply_changes` → `service/commands.py`, wiring from `compress()`
+  → `service/bootstrap.py`, Rich panels / overlays / `format_*` helpers →
+  `clients/tui/`.
+* **Write new:** `contracts/`, `service/api.py`, `clients/api_client.py`,
+  `clients/ctl/`.
+* **Not carried over:** `UIState`, `UIManager`, `infrastructure/web_server.py`,
+  `parse_config_lines`, the `Dirs*` domain events, the delta/toggle command
+  events. They disappear with `vbc_legacy/`.
+* **Tests travel with code.** Copying a module copies (and adapts) its tests
+  from `tests/legacy/`.
+* **Provenance.** A commit that copies code names its source
+  (`from vbc_legacy/<path>@<sha>`); pre-copy history stays reachable with
+  `git blame -C -C` / `git log --follow`.
+* **Keep phase 1 short.** Two copies of the orchestrator are acceptable only
+  while legacy is frozen and the migration is moving.
+
 ## Responsibility split
 
 ### Server (`vbc serve`)
 
-Stays as is: `domain/`, `config/`, `infrastructure/` (ffmpeg, ffprobe,
-exif_tool, manifest_watcher, logging, event_bus), `pipeline/`.
+Copied from legacy into the new tree (see Code strategy): `domain/`,
+`config/`, `infrastructure/` (ffmpeg, ffprobe, exif_tool, manifest_watcher,
+polling_watcher, gpu_monitor, logging, event_bus), `pipeline/`.
 
 New package `vbc/service/`:
 
@@ -84,7 +130,7 @@ New package `vbc/service/`:
 | `service/state_store.py` | Subscribes to domain events, maintains the read model (the business half of today's `UIState` + `UIManager` handlers), bumps `rev`, computes rates/ETA anchors (see below). Events arrive synchronously from orchestrator worker threads and from every parsed FFmpeg progress line, so bus callbacks only mutate memory under one lock and notify; no I/O, and never `publish()` while holding the lock. Also holds the latest GPU sample written by `GpuMonitor`. |
 | `service/commands.py` | `CommandService`: validates client commands, persists config (`save_dirs_config` moves here), publishes domain events. |
 | `service/api.py` | HTTP app (FastAPI + uvicorn — **decided**; same stack as mypowers, OpenAPI for free). Thin: translate HTTP ↔ StateStore/CommandService. |
-| `service/bootstrap.py` | Headless composition root extracted from `main.py`: config, bus, adapters, orchestrator, StateStore, CommandService. Reused by local mode and `serve`. |
+| `service/bootstrap.py` | Headless composition root, wiring cut out of legacy `compress()`: config, bus, adapters, orchestrator, StateStore, CommandService. Used by `serve` (and by the future local mode, see Open decisions). |
 | `vbc/contracts/` | Transport-only Pydantic DTOs with `schema_version`. The only module clients may share. `docs/api/openapi.json` generated from it and verified by a test. |
 
 ### Clients
@@ -117,7 +163,7 @@ subcommand per endpoint: `status` (one-shot or `--watch`), `threads N`,
 static files and proxies `/api/*` to the server, injecting the bearer token
 (backend-for-frontend: no CORS, token never reaches the browser). Replaces
 `infrastructure/web_server.py` and the `--web` flag; until it exists, the
-current `--web` keeps working in local mode.
+legacy `vbc <dirs> --web` keeps working.
 
 ## Classification of today's `UIState`
 
@@ -373,7 +419,7 @@ mechanism without changing the read model.
 | `vbc tui --api http://host:port --token-file …` | TUI client only (phase 1). |
 | `vbc ctl --api … --token-file … <subcommand>` | CLI client (phase 1). `--api`/`--token-file` also from env (`VBC_API`, `VBC_TOKEN_FILE`) or client config. |
 | `vbc-web --api … --token-file …` | Web client only (later). |
-| `vbc <dirs>` (today) | Kept during migration: same `bootstrap` + current TUI subscribed in-process. See Open decisions for replacing it with "local server + `vbc tui`". |
+| `vbc <dirs>` (today) | During migration: runs unchanged from `vbc_legacy/`. Deleted with legacy; see Open decisions for what replaces it. |
 
 `vbc serve` lifecycle:
 
@@ -391,57 +437,63 @@ mechanism without changing the read model.
 
 ## Migration steps
 
-Every step leaves the test suite green and `vbc <dirs>` working.
+Every step leaves both test suites green (`tests/legacy/` and the new tests)
+and `vbc <dirs>` (legacy) working.
 
-1. **Characterisation tests.** Drive a scripted event sequence (or
-   `DemoOrchestrator`) and assert the resulting `UIState` business fields. This
-   is the parity oracle for steps 2–3 and must cover all `UIManager`
-   subscriptions (35 today), not only the counters.
-2. **Remove layer leaks.**
-   * `pipeline/repair.py`, `pipeline/error_file_mover.py`: replace Rich output
-     with events/logging (CLI utilities can render them).
-   * Move `save_dirs_config` + `InputDirsChanged` publishing from
-     `UIManager.on_dirs_apply_changes` into `service/commands.py`; the TUI calls
-     the command service.
-   * Move the `Dirs*` events from `domain/events.py` to `ui/` (next to the
-     overlay events in `ui/keyboard.py`).
-   * Add `SetThreadCount(target)`; keep `ThreadControlEvent` as a TUI-side
-     convenience translated to an absolute target. Move the `1..8` limit to
-     config.
-   * Add `SetShutdownRequested(bool)`; keep `RequestShutdown` as the TUI
-     toggle translated to it.
+1. **Move to legacy.** `git mv vbc vbc_legacy`, `git mv` today's tests to
+   `tests/legacy/`, rewrite imports `vbc.` → `vbc_legacy.`, point the `vbc`
+   entry point at `vbc_legacy.main:app`. Pure mechanical commit; the full
+   legacy suite must pass unchanged.
+2. **Characterisation tests (on legacy).** A scripted event sequence and a
+   `DemoOrchestrator` run, asserting the resulting legacy `UIState` business
+   fields. Written as a scenario + expected values that can be run against
+   any read model, so the same scenario later checks the new `StateStore`.
+   Must cover all `UIManager` subscriptions (35 today), not only counters.
+3. **Copy the core into `vbc/`, fixing leaks in the copy.** `domain/`,
+   `config/`, `infrastructure/` adapters and watchers, `event_bus`,
+   `logging`, `pipeline/` (with their tests), then:
+   * `pipeline/repair.py`, `pipeline/error_file_mover.py`: Rich output →
+     events/logging; `config/input_dirs.py`: plain text, no Rich markup.
+   * Drop the `Dirs*` events from `domain/events.py` (they belong to the TUI
+     client).
+   * Replace `ThreadControlEvent(change)` with `SetThreadCount(target)`;
+     move the `1..8` limit to config.
+   * Replace the `RequestShutdown` toggle with `SetShutdownRequested(bool)`.
    * Introduce `job_id`: assigned when a job starts and carried by every
      `Job*` event (and by session error entries).
-   * `config/input_dirs.py`: return plain text, let the UI escape markup.
-3. **Split `UIState`.** Introduce `service/state_store.py` with the business
-   fields and the handlers moved from `UIManager`. Keep `ui/view_state.py` for
-   the view-only fields. Dashboard reads both; `KeyboardListener` reads only
-   view state. `GpuMonitor` writes its samples and bounded history into
-   `StateStore`. `infrastructure/web_server.py` reads `StateStore`
-   (temporary, deleted in step 8).
-4. **Contracts + anchors.** `vbc/contracts/` DTOs, `rev`, rate EWMA,
-   dead-reckoning thresholds, ETA anchor. Unit tests for the threshold logic
-   (deterministic clock injected).
-5. **API + `vbc serve`.** Extract `service/bootstrap.py` from `main.py`; FastAPI
-   app with the endpoints above, long-poll via `asyncio.Event` set with
-   `loop.call_soon_threadsafe` from the bus callback; auth, health, OpenAPI
-   artifact + drift test. Integration test: `serve --demo` + HTTP client.
+   * `GpuMonitor` writes to a small sink interface instead of `UIState`.
+4. **`StateStore`, `CommandService`, contracts, anchors.** Read model built
+   from handlers cut out of legacy `UIManager`; Dirs saving cut out of
+   `on_dirs_apply_changes`; `vbc/contracts/` DTOs, `rev`, rate EWMA,
+   dead-reckoning thresholds, ETA anchor, GPU sample history. The step-2
+   scenario passes against `StateStore`; threshold logic unit-tested with an
+   injected clock.
+5. **API + `vbc serve`.** `service/bootstrap.py` (wiring cut out of legacy
+   `compress()`); FastAPI app with the endpoints above, long-poll via
+   `asyncio.Event` set with `loop.call_soon_threadsafe` from the bus
+   callback; auth, health, OpenAPI artifact + drift test; lifecycle and
+   signals as in Process model. Integration test: `serve --demo` + HTTP
+   client.
 6. **`vbc ctl`.** `clients/api_client.py` + CLI subcommands. Comes before the
    TUI because it is small and exercises every endpoint end to end
    (integration tests against `serve --demo`).
-7. **`vbc tui`.** Dashboard and overlays rendered from a client-side
-   snapshot (DTOs + `ui/view_state.py`) instead of `UIState`; long-poll
-   thread, local extrapolation ticker, key → command mapping. Parity check:
-   the same `serve --demo` session rendered by in-process `vbc --demo` and by
-   `vbc tui` shows the same panels. Phase 1 ends here (docs for `serve`,
-   `ctl`, `tui` land with it).
+7. **`vbc tui`.** Panels, overlays and `format_*` helpers copied from
+   `vbc_legacy/ui/` into `clients/tui/`, data source switched from `UIState`
+   to the client-side snapshot (DTOs + client view state); long-poll thread,
+   local extrapolation ticker, key → command mapping. Parity check: the same
+   demo session in legacy `vbc --demo` and in `serve --demo` + `vbc tui`
+   shows the same panels. Phase 1 ends here (docs for `serve`, `ctl`, `tui`
+   land with it).
 8. **Web client (later).** `frontends/web/` (own entry point `vbc-web`):
    static page + small JS client (long-poll loop + local ticker for
-   extrapolation) + proxy. Reach parity with the HTMX dashboard, then delete
-   `infrastructure/web_server.py` and `--web`.
-9. **Docs.** `docs/architecture/` (this page → final design), API reference,
-   user guide for `serve`/`ctl`/`tui` (phase 1) and `vbc-web` (later); README
-   dependency notes (FastAPI, uvicorn, httpx).
+   extrapolation) + proxy, reaching parity with the legacy HTMX dashboard.
+9. **Delete legacy.** Once `vbc <dirs>` has its replacement (see Open
+   decisions) and the web client exists: remove `vbc_legacy/` and
+   `tests/legacy/` in one commit. If the web client is still far off, legacy
+   may be deleted after step 7 and `--web` dropped until step 8 lands.
+10. **Docs.** `docs/architecture/` (this page → final design), API reference,
+    user guide for `serve`/`ctl`/`tui` (phase 1) and `vbc-web` (later);
+    README dependency notes (FastAPI, uvicorn, httpx).
 
 ## Decisions
 
@@ -449,7 +501,10 @@ Every step leaves the test suite green and `vbc <dirs>` working.
   (`vbc tui`, `vbc ctl`, `vbc-web`). No Rust rewrite; mypowers is referenced
   only for its API conventions, not its implementation stack.
 * Delivery order: **server + `vbc ctl` + `vbc tui` first** (phase 1, steps
-  1–7), web client later (step 8).
+  1–7), web client later (step 8), legacy deleted in step 9.
+* Code strategy: **legacy package + new tree** (decided): today's code moves
+  to `vbc_legacy/`, the new `vbc/` takes over only what it needs, legacy is
+  deleted at the end.
 * HTTP framework: **FastAPI + uvicorn** (decided); HTTP client for `ctl`/`tui`:
   **httpx**. New runtime dependencies, to be documented in `README.md` and
   `docs/getting-started/` when steps 5–6 land.
@@ -459,11 +514,10 @@ Every step leaves the test suite green and `vbc <dirs>` working.
 * Web client: vanilla JS (zero build) vs. keeping Jinja/HTMX fragments rendered
   by `vbc-web` from API data. Recommended: vanilla JS, because HTMX polling
   cannot extrapolate counters.
-* Whether `vbc <dirs>` should, once `vbc tui` reaches parity, always start a
-  local server and attach `vbc tui` over HTTP (single code path, the
-  in-process dashboard wiring is deleted) or keep the in-process mode.
-  Recommended: single code path, because otherwise every TUI change has to be
-  made twice.
+* What replaces `vbc <dirs>` when legacy is deleted. Recommended: a thin
+  launcher that starts `vbc serve` on loopback with a temporary token and
+  attaches `vbc tui` (single code path; no in-process dashboard is carried
+  over). Alternative: drop `vbc <dirs>` and document `serve` + `tui`.
 * GPU metrics: v1 needs the latest sample **and** a bounded history, because
   the TUI sparkline shows history today and `vbc tui` is in phase 1:
   `GET /api/v1/gpu?since=<seq>` returns new samples (ring buffer, `410` when
