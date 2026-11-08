@@ -15,8 +15,20 @@ runtime:
     path: /health/ready
     expected_status: 200
     heartbeat_seconds: 60
-# GPU (NVENC): /dev/nvidia* are attached manually in Proxmox first, then
-# declared here as runtime.devices; see deploy/container/README.md (GPU).
+  # GPU (NVENC). Attached in Proxmox first (HomeStack verifies, cannot attach):
+  #   pct set <id> -dev0 /dev/nvidia0 -dev1 /dev/nvidiactl -dev2 /dev/nvidia-uvm -dev3 /dev/nvidia-uvm-tools
+  # Host driver libraries (not expressible here, kept by updates):
+  #   pct set <id> -mp3 /usr/lib/x86_64-linux-gnu,mp=/opt/host-lib,ro=1
+  # See deploy/container/README.md (GPU).
+  devices:
+    dev0:
+      path: /dev/nvidia0
+    dev1:
+      path: /dev/nvidiactl
+    dev2:
+      path: /dev/nvidia-uvm
+    dev3:
+      path: /dev/nvidia-uvm-tools
 # Config (incl. the Dirs list saved through the API) and state live on the
 # home volume; media trees are external mounts (pending HomeStack feature).
 persistence:
