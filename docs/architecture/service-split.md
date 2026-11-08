@@ -606,8 +606,13 @@ trixie's 7.1 lacks `-filter_buffered_frames`, Alpine has no NVENC/glibc,
 Ubuntu 26.10 has 8.1.2 — owner chose testing to match the dev host), schema-3
 manifest `.homestack/services/vbc/`, `scripts/tag-image.py`,
 `scripts/image-admission.sh`, `.github/workflows/image.yml`; image e2e
-passes. Open: GPU in the LXC (devices + host driver libraries), real
-deployment test on Proxmox, first release. Post-phase-1 fixes from the owner's first run: long-polls are
+passes. Published 2026-11-08: manifest on `main` (`.homestack/services/vbc/`,
+commit 7c220ba; HomeStack reads manifests only from the default branch),
+image `ghcr.io/hipotures/vbc:0.1.0` from tag `vbc-0.1.0` (abe408a), pullable
+anonymously; the image e2e passes on the published image. Open: GPU in the
+LXC (devices + host driver libraries), real deployment test on Proxmox,
+HomeStack external mounts for media. While the migration stays on this
+branch, a manifest change must also be copied to `main`. Post-phase-1 fixes from the owner's first run: long-polls are
 released when the server stops (no 3 s hang / traceback); `/shutdown` became
 `/stop` (processing only, server keeps running, refresh resumes —
 `reset_after_stop()` in both orchestrators, statuses `stopping`/`stopped`,
