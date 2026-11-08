@@ -174,6 +174,10 @@ class StateSnapshot(Envelope):
     config_rev: int = 0
     dirs_rev: int = 0
     gpu_last_seq: int = 0
+    # Encoder chosen at server start: "gpu" (NVENC works) or "cpu"; with CPU,
+    # encoder_note says why the GPU is not used.
+    encoder: Optional[Literal["gpu", "cpu"]] = None
+    encoder_note: Optional[str] = None
 
 
 # ── paginated reads ─────────────────────────────────────────────────────────

@@ -162,6 +162,8 @@ class ClientState:
         self.gpu_history_mem: deque = deque(maxlen=60)
         self.gpu_history_fan: deque = deque(maxlen=60)
         self.gpu_enabled = False
+        self.encoder: Optional[str] = None       # "gpu" | "cpu" (server's choice at start)
+        self.encoder_note: Optional[str] = None  # why not GPU
 
         # Logs tab (current session only)
         self.logs_page_size: int = 10
@@ -258,6 +260,8 @@ class ClientState:
             self.config_rev = snap.config_rev
             self.errors_last_id = snap.errors_last_id
             self.gpu_last_seq = snap.gpu_last_seq
+            self.encoder = snap.encoder
+            self.encoder_note = snap.encoder_note
 
     def apply_queue(self, page: dto.QueuePage) -> None:
         with self._lock:

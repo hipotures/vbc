@@ -122,6 +122,10 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
         ready = http.get("/health/ready")
         assert ready.status_code == 200, ready.text
         assert ready.json()["checks"]["storage:/media-ro"][0]["status"] == "warn"
+        state = http.get("/api/v1/state").json()
+        assert state["encoder"] == "cpu" and state["encoder_note"], state["encoder_note"]
+        gpu = http.get("/api/v1/gpu").json()  # no GPU: the metrics panel gets CPU graphs
+        assert gpu["enabled"] and gpu["samples"][-1]["raw"]["device_name"].startswith("CPU"), gpu
         telemetry = http.get("/.well-known/homestack/status").json()
         assert telemetry["schema"] == 3 and telemetry["status"] == "pass"
 
@@ -165,5 +169,15 @@ def test_image_gpu_from_host_libraries(tmp_path):
             time.sleep(0.5)
         assert "NVIDIA libraries from the host" in text, text
         assert "GPU encoding: av1_nvenc available" in text, text
+        state = httpx.get(f"http://127.0.0.1:{port}/api/v1/state", timeout=10).json()
+        assert state["encoder"] == "gpu", state
+        deadline = time.monotonic() + 30  # the metrics panel gets GPU graphs (nvtop)
+        while True:
+            samples = httpx.get(f"http://127.0.0.1:{port}/api/v1/gpu", timeout=10).json()["samples"]
+            if samples and samples[-1]["raw"]:
+                break
+            assert time.monotonic() < deadline, samples
+            time.sleep(1)
+        assert "NVIDIA" in samples[-1]["raw"]["device_name"], samples[-1]
     finally:
         _run("rm", "-f", name, check=False)

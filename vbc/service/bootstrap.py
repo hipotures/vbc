@@ -208,6 +208,9 @@ class VbcServer:
                 config.general.gpu = False
         self.bus = EventBus()
         self.store = StateStore(self.bus, config)
+        if not demo:
+            self.store.set_encoder("gpu" if config.general.gpu else "cpu",
+                                   None if config.general.gpu else (self.gpu_probe or "disabled in the config"))
         self.commands = CommandService(
             self.bus, self.store, config, config_path,
             storage_roots=self.storage_roots,
@@ -333,6 +336,11 @@ class VbcServer:
     def _build_gpu_monitor(self) -> None:
         gpu_cfg = self.config.gpu_config
         if not (gpu_cfg.enabled and self.config.general.gpu):
+            # No GPU encoding: the metrics panel shows CPU graphs instead.
+            if not self.demo:
+                from vbc.infrastructure.cpu_monitor import CpuMonitor
+
+                self._gpu_monitor = CpuMonitor(self.store, refresh_rate=max(1, int(gpu_cfg.sample_interval_s)))
             return
         from vbc.infrastructure.gpu_monitor import GpuMonitor
 

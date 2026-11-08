@@ -861,7 +861,8 @@ class Dashboard:
                 fan_display = fan_raw if re.search(r'\d', str(fan_raw)) else '-'
                 fan_str = f"[{f_col}]fan {safe_markup(fan_display)}[/]"
                 pwr_str = f"[{p_col}]pwr {safe_markup(g.get('power_draw', '??'))}[/]"
-                gpu_str = f"[{gu_col}]gpu {safe_markup(g.get('gpu_util', '??'))}[/]"
+                util_label = "cpu" if str(g.get("device_name", "")).startswith("CPU") else "gpu"
+                gpu_str = f"[{gu_col}]{util_label} {safe_markup(g.get('gpu_util', '??'))}[/]"
                 mem_str = f"[{mu_col}]mem {safe_markup(g.get('mem_util', '??'))}[/]"
 
                 # Apply reverse to selected metric (order: temp → fan → pwr → gpu → mem)
@@ -890,6 +891,14 @@ class Dashboard:
                     if spark_cfg.metrics:
                         metric = spark_cfg.metrics[metric_idx]
                         history = getattr(self.state, metric.history_attr)
+                        # CPU graphs (no GPU): a metric without readings (fan, power,
+                        # often temperature) falls back to CPU utilisation.
+                        if util_label == "cpu" and not any(v is not None for v in history):
+                            fallback = next((m for m in spark_cfg.metrics
+                                             if m.history_attr == "gpu_history_gpu"), None)
+                            if fallback is not None:
+                                metric = fallback
+                                history = getattr(self.state, metric.history_attr)
                     else:
                         metric = None
                         history = []

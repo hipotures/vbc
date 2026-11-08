@@ -166,6 +166,8 @@ class StateStore:
         self._rev = 1
         self._config_rev = 1
         self._dirs_rev = 1
+        self._encoder: Optional[str] = None
+        self._encoder_note: Optional[str] = None
         self._s = _State()
         general = config.general
         maximum = max(general.max_threads, general.threads)
@@ -651,6 +653,12 @@ class StateStore:
             rev = self._changed_unlocked()
         self._notify(rev)
 
+    def set_encoder(self, encoder: str, note: Optional[str] = None) -> None:
+        with self._lock:
+            self._encoder, self._encoder_note = encoder, note
+            rev = self._changed_unlocked()
+        self._notify(rev)
+
     def set_dirs_rev(self, dirs_rev: int) -> None:
         with self._lock:
             if dirs_rev == self._dirs_rev:
@@ -778,6 +786,8 @@ class StateStore:
                 config_rev=self._config_rev,
                 dirs_rev=self._dirs_rev,
                 gpu_last_seq=self._gpu_seq,
+                encoder=self._encoder,
+                encoder_note=self._encoder_note,
             )
 
     def queue(self, offset: int = 0, limit: int = 100) -> dto.QueuePage:
