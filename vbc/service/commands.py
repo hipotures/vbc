@@ -240,10 +240,10 @@ class CommandService:
                 for candidate in self._mount_candidates(roots.exclude):
                     if str(candidate) in discovered or candidate in listed:
                         continue
-                    discovered.append(str(candidate))
-                    if len(new_dirs) >= MAX_INPUT_DIRS:
+                    if len(new_dirs) >= MAX_INPUT_DIRS:  # offered by a later scan, once there is room
                         logger.warning(f"{candidate} not offered: the list already has {MAX_INPUT_DIRS} folders")
                         continue
+                    discovered.append(str(candidate))
                     new_dirs.append(self._complete(dto.DirEntry(path=str(candidate), enabled=False), None))
                     added.append(str(candidate))
                 if discovered != self._config.storage.discovered:
