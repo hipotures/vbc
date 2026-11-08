@@ -137,3 +137,33 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
     finally:
         http.close()
         _run("rm", "-f", name, check=False)
+
+
+GPU_LIBS = os.environ.get("VBC_E2E_GPU_LIBS")  # host directory with libcuda.so.*, e.g. /usr/lib
+
+
+@pytest.mark.skipif(not GPU_LIBS, reason="set VBC_E2E_GPU_LIBS (host NVIDIA library dir) on a machine with a GPU")
+def test_image_gpu_from_host_libraries(tmp_path):
+    """The host's NVIDIA libraries, mounted read-only, make NVENC work with any
+    host driver version (the bundled ones match only the owner's host)."""
+    volume = tmp_path / "volume"
+    volume.mkdir()
+    port = free_port()
+    name = f"vbc-e2e-gpu-{port}"
+    devices = [arg for dev in ("/dev/nvidia0", "/dev/nvidiactl", "/dev/nvidia-uvm", "/dev/nvidia-uvm-tools")
+               for arg in ("--device", dev)]
+    _run("run", "-d", "--name", name, *devices, "-p", f"127.0.0.1:{port}:8080",
+         "-v", f"{volume}:/home/app", "-v", f"{GPU_LIBS}:/opt/host-lib:ro", IMAGE)
+    try:
+        deadline = time.monotonic() + 60
+        while True:
+            logs = _run("logs", name, check=False)
+            text = logs.stdout + logs.stderr
+            if "VBC server started" in text:
+                break
+            assert time.monotonic() < deadline, text
+            time.sleep(0.5)
+        assert "NVIDIA libraries from the host" in text, text
+        assert "GPU encoding: av1_nvenc available" in text, text
+    finally:
+        _run("rm", "-f", name, check=False)

@@ -12,8 +12,13 @@
 #     bound memory (Debian trixie's 7.1 rejects it, exit code 8).
 #   * NVENC needs glibc: the NVIDIA driver libraries (libcuda,
 #     libnvidia-encode) loaded at run time are glibc-only, so Alpine/musl
-#     cannot encode on the GPU. Those libraries are NOT in the image: they come
-#     from the host driver (see README.md, GPU).
+#     cannot encode on the GPU.
+# NVIDIA user-space libraries of ONE driver version (NVIDIA_DRIVER_VERSION, the
+# owner's Proxmox host) are bundled in /opt/nvidia/lib from NVIDIA's official
+# installer (SHA-256 pinned). They must match the host's kernel module exactly;
+# the entrypoint uses them only when the runtime did not provide its own (the
+# NVIDIA container toolkit injects the host's), and `vbc serve` probes NVENC
+# at start, falling back to CPU on any mismatch.
 # nvtop feeds the GPU panel (`nvtop -s`); Debian gives it cap_perfmon, which an
 # unprivileged container cannot grant, so the copy without file capabilities
 # is installed. NVIDIA_* tell the NVIDIA container toolkit (Docker/Podman in a
@@ -32,6 +37,32 @@ RUN apt-get update \
  && ffprobe -version >/dev/null \
  && exiftool -ver >/dev/null
 
+FROM runtime-base AS nvidia
+ARG NVIDIA_DRIVER_VERSION=620.70.06
+ARG NVIDIA_DRIVER_SHA256=20894d898b83622e385dcfb934dbd656471f09e38822770cf4c9fea4112990f3
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl xz-utils binutils \
+ && rm -rf /var/lib/apt/lists/*
+RUN set -eu; v="$NVIDIA_DRIVER_VERSION"; run="NVIDIA-Linux-x86_64-$v-no-compat32.run"; \
+    curl -fsSL -o "/tmp/$run" "https://download.nvidia.com/XFree86/Linux-x86_64/$v/$run"; \
+    echo "$NVIDIA_DRIVER_SHA256  /tmp/$run" | sha256sum -c -; \
+    sh "/tmp/$run" --extract-only --target /tmp/driver >/dev/null; \
+    mkdir -p /opt/nvidia/lib; \
+    for lib in libcuda libnvidia-encode libnvcuvid libnvidia-ml libnvidia-ptxjitcompiler; do \
+        cp "/tmp/driver/$lib.so.$v" /opt/nvidia/lib/; \
+        ln -s "$lib.so.$v" "/opt/nvidia/lib/$lib.so.1"; \
+    done; \
+    ln -s libcuda.so.1 /opt/nvidia/lib/libcuda.so; \
+    for f in /opt/nvidia/lib/*.so.$v; do \
+        for need in $(objdump -p "$f" | awk '/NEEDED/ {print $2}'); do \
+            case "$need" in libnvidia-*|libcuda*) \
+                [ -e "/opt/nvidia/lib/$need" ] || { cp "/tmp/driver/${need%.so*}.so.$v" /opt/nvidia/lib/ \
+                    && ln -sf "${need%.so*}.so.$v" "/opt/nvidia/lib/$need"; } ;; \
+            esac; \
+        done; \
+    done; \
+    echo "$v" > /opt/nvidia/VERSION; ls -l /opt/nvidia/lib; rm -rf /tmp/driver "/tmp/$run"
+
 FROM runtime-base AS build
 COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:c7db1d63057f268a8b6da8af9077850a60461f98d23db23c676a82089a050c91 /uv /usr/local/bin/uv
 WORKDIR /opt/vbc
@@ -49,6 +80,7 @@ WORKDIR /opt/vbc
 COPY --from=build /opt/vbc/.venv /opt/vbc/.venv
 COPY --from=build /opt/vbc/conf /opt/vbc/conf
 COPY --from=build /opt/vbc/vbc /opt/vbc/vbc
+COPY --from=nvidia /opt/nvidia /opt/nvidia
 COPY --chmod=0755 deploy/container/entrypoint.sh /usr/local/bin/vbc-entrypoint
 # The persistent home volume (mp0) is mounted here by HomeStack; it must stay a
 # real, empty directory in the image.

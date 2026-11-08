@@ -22,7 +22,7 @@ Python dependencies come from `uv.lock` (`uv sync --frozen --no-dev`).
   ships at build time, so the build fails unless `-filter_buffered_frames`,
   `libsvtav1` and `av1_nvenc` are present.
 
-Unpacked size: about 490 MB.
+Unpacked size: about 670 MB (about 180 MB of it the bundled NVIDIA libraries).
 
 ## Process, ports, state
 
@@ -69,21 +69,35 @@ manifests carry absolute paths.
 
 ## GPU (NVENC)
 
-The image contains FFmpeg with NVENC but **no NVIDIA driver libraries**. To
-encode on the GPU inside the LXC:
+FFmpeg in the image has NVENC. `vbc serve` (with the image default
+`VBC_GPU=auto`) encodes a few test frames with `av1_nvenc` at every start and
+uses the GPU when that works, else SVT-AV1 on the CPU (logged either way).
 
-1. Attach `/dev/nvidia0`, `/dev/nvidiactl`, `/dev/nvidia-uvm` and
-   `/dev/nvidia-uvm-tools` to the container in Proxmox, then declare them as
-   `runtime.devices` in `service.yaml`. HomeStack refuses new deployments with
-   devices it would have to attach itself.
-2. Provide `libcuda.so.1` and `libnvidia-encode.so.1` in the exact version
-   of the host driver. The options are a HomeStack external mount of the
-   host's driver library directory (pending feature) or an image variant that
-   installs that driver version.
-3. Set `general.gpu: true` in `/home/app/config/vbc.yaml`.
+The container needs the GPU device nodes and NVIDIA user-space libraries of
+the host driver's exact version. Libraries, first that applies:
 
-Without these the server encodes on the CPU (SVT-AV1), which is correct but
-very slow for real footage.
+1. **Runtime-provided**: the NVIDIA container toolkit (Docker/Podman with
+   `--gpus all`) injects the host's; the image sets `NVIDIA_DRIVER_CAPABILITIES`
+   incl. `video`.
+2. **Host directory, read-only** (recommended on Proxmox LXC): mount the
+   host's library directory at `/opt/host-lib` (`VBC_HOST_LIBS`), e.g.
+   `pct set <id> -mp3 /usr/lib/x86_64-linux-gnu,mp=/opt/host-lib,ro=1`. Only
+   `libcuda*`, `libnvidia-*` and `libnvcuvid*` are linked. A host driver
+   update then needs a container restart, not a new image.
+3. **Bundled**: `/opt/nvidia/lib` holds the libraries of one driver version
+   (`NVIDIA_DRIVER_VERSION` build argument, the owner's host, 620.70.06), from
+   NVIDIA's installer with a pinned SHA-256. After a host driver update they
+   no longer match: the server encodes on CPU until the image is rebuilt with
+   the new version (or option 2 is used).
+
+Devices: `/dev/nvidia0`, `/dev/nvidiactl`, `/dev/nvidia-uvm`,
+`/dev/nvidia-uvm-tools` attached to the container in Proxmox, then declared as
+`runtime.devices` in `service.yaml` (HomeStack refuses deployments with
+devices it would have to attach itself).
+
+Test with a local GPU: `VBC_E2E_IMAGE=vbc:dev VBC_E2E_GPU_LIBS=/usr/lib uv run
+pytest tests/e2e/test_image.py` (host libraries of a different driver version
+than the bundled ones prove option 2).
 
 ## Measurements (evidence for `defaults.yaml`)
 
@@ -103,7 +117,7 @@ Health/telemetry:    /health/live, /health/ready 200 with heartbeat checks;
                      telemetry schema 3 with process_rss_bytes (tests/e2e/test_image.py)
 Restart/fresh root:  refuses without a mounted /home/app; first start creates the config,
                      later starts keep it; SIGTERM exit 0 within seconds
-Not tested:          Proxmox LXC replacement; NVENC (no GPU in the test runtime);
+Not tested:          Proxmox LXC replacement; NVENC inside an LXC (tested with podman --device on an RTX 4070 Ti);
                      4K CPU encoding memory; a stalled main path turning health to 503
 ```
 
