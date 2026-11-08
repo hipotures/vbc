@@ -368,6 +368,24 @@ network:
   **mandatory** and the server refuses to start without it, so that anyone on
   the network can at most point the server at directories inside the
   declared roots via `PUT /dirs`.
+* **Threat model (why this is enough).** The API is a control plane only:
+  a caller can make the server work or stop, change threads, add / remove /
+  enable folders inside `storage.roots`, and read status. It cannot read,
+  download, upload or delete media, and cannot change encoding or source
+  policies. The worst disclosure is the file list and its metadata (names,
+  sizes, codecs, server paths, error messages); file names are typically a
+  date and a counter. The worst disruption is stopping or pausing work.
+* **Source policies stay server-side.** Files are deleted or moved only by
+  policies the API cannot change: `general.source_policy`
+  (`delete_after_success`), per-folder `vbc.yaml` overrides, producer
+  manifests (`delete_after_success` / `move_after_success` / `move_all`) and
+  `metadata.audio_only: delete`. Adding a folder through the API applies the
+  policy that folder already has (default `keep`).
+* **Access paths.** Desktop: `vbc tui` and the one-shot commands over plain
+  HTTP in the LAN. From outside (phone, other networks): the web client
+  later, published through Pangolin, which provides HTTPS and its own
+  password; `/.well-known/homestack/status` is never routed publicly. No
+  application-level tokens in either path.
 * Exposing the server beyond a trusted network is the deployment's job
   (firewall, SSH tunnel `ssh -L`, WireGuard/Tailscale), not VBC's. Built-in
   TLS + token can be added later as a separate feature if ever needed.
