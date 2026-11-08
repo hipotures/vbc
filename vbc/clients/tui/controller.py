@@ -376,8 +376,14 @@ class TuiController:
             try:
                 result = self.client.scan_dirs()
             except ApiError as exc:
+                if exc.status == 404:
+                    text = "This server cannot scan mounts (it needs VBC image 0.1.2 or newer)"
+                elif exc.problem is not None:
+                    text = exc.problem.detail or exc.problem.title
+                else:
+                    text = f"Mount scan failed (HTTP {exc.status})"
                 with self.state._lock:
-                    self.state.dirs_error_msg = str(exc)
+                    self.state.dirs_error_msg = text
                 return
             except ApiUnavailable as exc:
                 self.state.set_disconnected(exc.reason)

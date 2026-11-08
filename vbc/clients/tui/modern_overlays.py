@@ -1216,10 +1216,10 @@ class DirsOverlay:
             footer_hint = Text.from_markup(
                 f"[{COLORS['dim']}]"
                 f"[white on {COLORS['border']}] ↑↓ [/] navigate  "
-                f"[white on {COLORS['border']}] Shift+↑↓ [/] swap dirs  "
-                f"[white on {COLORS['border']}] Space [/] toggle  "
+                f"[white on {COLORS['border']}] Shift+↑↓ [/] move  "
+                f"[white on {COLORS['border']}] Space [/] on/off  "
                 f"[white on {COLORS['border']}] A [/] add  "
-                f"[white on {COLORS['border']}] R [/] scan mounts  "
+                f"[white on {COLORS['border']}] R [/] scan  "
                 f"[white on {COLORS['border']}] Del [/] remove  "
                 f"{apply_badge} apply"
                 f"[/]",
