@@ -261,7 +261,10 @@ actions to offer: `discovering`, `running`, `paused_on_error`,
 `waiting_for_input` (`wait_on_finish`), `verification_abort`,
 `shutting_down`, `interrupted`, `idle` (see Process model).
 
-Security: bind `127.0.0.1` by default; bearer token from a 0600 file,
+Security: the listen address is configurable (`vbc serve --host <ip>
+--port <n>`, or `server.host` / `server.port` in config; `0.0.0.0` or a
+specific interface IP for access from other hosts) and defaults to
+`127.0.0.1`. Bearer token from a 0600 file,
 constant-time compare; Host/Origin allowlist (same model as mypowers). When
 bound to anything other than loopback, `storage.roots` (see Paths) is
 **mandatory** and the server refuses to start without it, because otherwise
@@ -340,7 +343,7 @@ mechanism without changing the read model.
 
 | Command | What runs |
 |---|---|
-| `vbc serve [--config]` | `bootstrap` + API, headless, no Rich, no keyboard. Input dirs from config (positional args optional). `--demo` uses `DemoOrchestrator`. |
+| `vbc serve [--config] [--host] [--port]` | `bootstrap` + API, headless, no Rich, no keyboard. Input dirs from config (positional args optional). `--demo` uses `DemoOrchestrator`. |
 | `vbc-web --api http://host:port --token-file …` | Web client only. |
 | `vbc <dirs>` (today) | Kept during migration: same `bootstrap` + current TUI subscribed in-process. Converting the TUI into an API client is out of scope. |
 
@@ -405,6 +408,9 @@ Every step leaves the test suite green and `vbc <dirs>` working.
 
 ## Decisions
 
+* Language: **Python stays** (decided) for the server and for the clients
+  (`vbc-web`, the TUI). No Rust rewrite; mypowers is referenced only for its
+  API conventions, not its implementation stack.
 * HTTP framework: **FastAPI + uvicorn** (decided). New runtime dependencies,
   to be documented in `README.md` and `docs/getting-started/` when step 5 lands.
 
