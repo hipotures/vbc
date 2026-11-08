@@ -12,6 +12,7 @@ from __future__ import annotations
 import ipaddress
 import logging
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -68,6 +69,26 @@ def apply_env_overrides(config: AppConfig, env: Mapping[str, str]) -> None:
         config.server.allowed_hosts = [h.strip() for h in env["VBC_ALLOWED_HOSTS"].split(",") if h.strip()]
     if env.get("VBC_STORAGE_ROOTS"):
         config.storage.roots = [r.strip() for r in env["VBC_STORAGE_ROOTS"].split(",") if r.strip()]
+
+
+def probe_nvenc(timeout_s: float = 30.0) -> tuple[bool, str]:
+    """Encode a few frames with av1_nvenc: is GPU encoding usable right now?
+
+    Covers every way it can be missing: no card, no device nodes in the
+    container, driver libraries not injected, an older GPU without AV1 NVENC.
+    """
+    command = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+        "-i", "color=c=black:s=1280x720:r=30:d=0.2", "-c:v", "av1_nvenc", "-f", "null", "-",
+    ]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout_s)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    if result.returncode == 0:
+        return True, "av1_nvenc works"
+    lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+    return False, (lines[-1] if lines else f"ffmpeg exit code {result.returncode}")[:300]
 
 
 def configure_logging(debug: bool, log_file: Optional[Path]) -> LogBuffer:
@@ -154,6 +175,17 @@ class VbcServer:
             )
 
         self.log_buffer = configure_logging(config.general.debug, log_file)
+        # general.gpu means "GPU if it works here": probe once, else encode on CPU,
+        # instead of failing every job (and marking files as errors) without a GPU.
+        self.gpu_probe: Optional[str] = None
+        if config.general.gpu and not demo:
+            usable, reason = probe_nvenc()
+            self.gpu_probe = reason
+            if usable:
+                logger.info("GPU encoding: av1_nvenc available")
+            else:
+                logger.warning(f"GPU encoding unavailable ({reason}); encoding on CPU (SVT-AV1)")
+                config.general.gpu = False
         self.bus = EventBus()
         self.store = StateStore(self.bus, config)
         self.commands = CommandService(
@@ -406,6 +438,7 @@ class VbcServer:
             "general": {k: v for k, v in dump["general"].items() if k not in ("dynamic_quality",)},
             "encoder": {
                 "gpu": general.gpu,
+                "gpu_probe": self.gpu_probe,
                 "label": infer_encoder_label(encoder_args, general.gpu),
                 "preset": extract_preset(encoder_args),
                 "output_suffix": output_extension_for_args(encoder_args),

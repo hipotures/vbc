@@ -14,12 +14,18 @@
 #     libnvidia-encode) loaded at run time are glibc-only, so Alpine/musl
 #     cannot encode on the GPU. Those libraries are NOT in the image: they come
 #     from the host driver (see README.md, GPU).
+# nvtop feeds the GPU panel (`nvtop -s`); Debian gives it cap_perfmon, which an
+# unprivileged container cannot grant, so the copy without file capabilities
+# is installed. NVIDIA_* tell the NVIDIA container toolkit (Docker/Podman in a
+# VM with the GPU) to inject the driver libraries incl. NVENC ("video").
 # The build checks what VBC needs and fails otherwise.
 FROM docker.io/library/debian:testing-slim@sha256:4bac5c4908af3ecf8b87241323e19df0e93818ccf4efd652926efb831ee6a0da AS runtime-base
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg libimage-exiftool-perl python3 ca-certificates \
+ && apt-get install -y --no-install-recommends ffmpeg libimage-exiftool-perl python3 ca-certificates nvtop \
  && rm -rf /var/lib/apt/lists/* \
+ && cp /usr/bin/nvtop /usr/bin/nvtop.copy && mv /usr/bin/nvtop.copy /usr/bin/nvtop \
+ && nvtop --version >/dev/null \
  && ffmpeg -hide_banner -h full 2>/dev/null | grep -q -- '-filter_buffered_frames' \
  && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libsvtav1 \
  && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q av1_nvenc \
@@ -52,7 +58,9 @@ ENV PATH=/opt/vbc/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     VBC_HOME=/home/app \
     VBC_SERVER_HOST=0.0.0.0 \
-    VBC_SERVER_PORT=8080
+    VBC_SERVER_PORT=8080 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
 EXPOSE 8080
 # Runs as container root: an unprivileged LXC maps it to an unprivileged host user.
 ENTRYPOINT ["/usr/local/bin/vbc-entrypoint"]

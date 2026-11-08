@@ -43,6 +43,7 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
     # Operator-edited config on the volume: the media tree (incl. the manifest dir).
     config = yaml.safe_load(media_tree["config"].read_text())
     config["general"]["log_path"] = None
+    config["general"]["gpu"] = True  # no GPU in the test runtime: must fall back to CPU
     config["server"] = {"host": "0.0.0.0", "port": 8080}
     (volume / "config" / "vbc.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     before = record_legacy.snapshot(root)
@@ -88,6 +89,7 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
         assert state["ExitCode"] == 0, _run("logs", name, check=False).stdout
         logs = _run("logs", name).stdout + _run("logs", name).stderr
         assert "Traceback" not in logs
+        assert "GPU encoding unavailable" in logs and "encoding on CPU" in logs
         assert (volume / "config" / "vbc.yaml").exists()
     finally:
         http.close()
