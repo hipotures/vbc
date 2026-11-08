@@ -1,9 +1,12 @@
 # Service Split Plan (server / API / clients)
 
-Status: **proposal**. Scope: VBC only. Deployment target (container, VM, LXC)
-and GPU device handling are explicitly out of scope; everything below assumes
-the server and the clients run as ordinary local processes that may later live
-on different hosts.
+Status: **proposal**. Scope: VBC only. Phase 1 assumes the server and the
+clients run as ordinary local processes that may later live on different
+hosts. The final deployment target is **HomeStack** (an unprivileged Proxmox
+LXC built from an OCI image, like the owner's other services); its
+requirements are collected in [Deployment: HomeStack](#deployment-homestack)
+and shape the server from step 5 on. GPU device handling inside the container
+is out of scope for now.
 
 Order of delivery (decided): **server + CLI client + TUI client first**, the
 web client later. The existing Rich TUI is reused as an API client (same
@@ -304,8 +307,9 @@ Application log (`/logs`):
   `job_id`. Same `since` paging as `/errors`.
 * `PUT /api/v1/runtime/log-level {"level": "DEBUG"}` replaces restarting with
   `--debug` (pattern from mypowers).
-* The log file stays as is. Switching `mode="w"` to append/rotation is
-  worth doing for a long-running server, but it is an independent change.
+* `vbc serve` logs to stdout/stderr (the container convention); the log
+  file becomes optional (`--log-file`), kept for local runs. Switching
+  `mode="w"` to append/rotation for that file is an independent change.
 * Live tail uses the same long-poll mechanism (`wait=` parameter); no separate
   streaming protocol.
 
@@ -327,7 +331,8 @@ Read:
 | `GET /api/v1/config` | Effective config (today's Settings tab lines, structured). |
 | `GET /api/v1/io` | Input dir stats, output/error dirs, queue sort/seed, log path. |
 | `GET /api/v1/dirs` | Ordered `[{path, enabled}]` + `dirs_rev`. |
-| `GET /health/live`, `GET /health/ready` | Liveness / readiness. |
+| `GET /health/live`, `GET /health/ready` | Liveness / readiness in the HomeStack format (`application/health+json`, heartbeat checks; see Deployment: HomeStack). |
+| `GET /.well-known/homestack/status` | HomeStack telemetry schema 3: `status` + `process_rss_bytes`. Never routed publicly. |
 
 Commands (absolute and idempotent where possible):
 
@@ -435,6 +440,28 @@ WebSocket is an HTTP upgrade.) Long-poll on `rev` gives near-immediate updates
 without a second protocol. SSE can be added later on top of the same `rev`
 mechanism without changing the read model.
 
+## Deployment: HomeStack
+
+Final target: VBC is deployed by HomeStack exactly like the owner's other
+services, following the `homestack-service` skill
+(`~/DEV/homestack/.agents/skills/homestack-service/`). What that contract
+requires from VBC:
+
+| Area | Requirement | Consequence for this plan |
+|---|---|---|
+| Container | One `linux/amd64` OCI image, `ENTRYPOINT` = `vbc serve`, unprivileged LXC, disposable root | Containerfile in the repo; base chosen per the skill's image preflight (Python + ffmpeg + exiftool: Debian slim rather than Alpine/musl unless proven to work). |
+| Network | Plain HTTP inside the LAN; Pangolin terminates public HTTPS and remote auth; clients use the DNS name `<hostname>.<domain>`, never an IP | Matches the no-token/no-TLS decision. In the container `vbc serve` binds `0.0.0.0` (env, e.g. `VBC_SERVER_HOST`). The Host/Origin allowlist must be **configurable** and include the service DNS name and, if exposed, the Pangolin subdomain. `exposure:` empty at first (LAN only). |
+| Health | `/health/live` and `/health/ready` in `application/health+json` (draft-inadarei); heartbeat every `HOMESTACK_HEARTBEAT_SECONDS` (default 60) through the main serving path; both return `503` after three missed beats; checks `heartbeat:age`, `heartbeat:count` | Heartbeat = a request to the server's own listener on a light route that reads `StateStore` (same workers and lock as `/state`). `/health/ready` adds dependency checks: `ffmpeg`/`ffprobe`/`exiftool` executable, every storage root mounted and writable, orchestrator thread alive. `paused_on_error` or `idle` is a business state and stays ready. |
+| Telemetry | `GET /.well-known/homestack/status` → `{"schema":3,"status":…,"process_rss_bytes":…}`, `VmRSS` read per request, no sampler | Small handler in `service/api.py`; RSS covers the server process only (FFmpeg children are measured by the PVE agent at container level). |
+| Persistence | Exactly one volume at `/home/app` (`persistence.mount`); everything durable lives there | VBC config incl. the Dirs list written by `PUT /dirs` → `/home/app/config/vbc.yaml`; optional session-error JSONL → `/home/app/state/`. The image keeps `/home/app` a real empty dir and refuses to start when it is not mounted. `state_model: local`, `instances: 1`, `placement: single`. |
+| Media storage | HomeStack today attaches only `mp0`; its update review refuses extra/bind mounts. **External mounts are planned in HomeStack** (owner: simple to add later) | The media trees are mounted by HomeStack as external mounts; the identity-mount rule from Paths applies to them, and `storage.roots` lists exactly those mount points. Until the feature exists, the container can be tested only with media on a test volume. Not a blocker for steps 1–7. |
+| Settings | Operator-selected values via schema-3 `inputs.yaml` (environment delivery); no secrets or host-specific values in repo/image/manifest | Env overrides for host/port, allowed hosts, storage roots; the rest from the config file on `/home/app`. |
+| Stop / update | Image replacement and container stop send SIGTERM; root is replaced | SIGTERM → graceful shutdown with a bounded deadline (`server.stop_timeout`), then `InterruptRequested`, so a long encode cannot outlive the Proxmox stop timeout. Interrupted jobs must leave no half-written output that a restart treats as done. |
+| Resources | Cores, memory, swap, rootfs measured on the built image under a real encode workload, recorded next to the runtime contract | Measured in step 8, not guessed. |
+| Manifest | Schema 3: `.homestack/services/vbc/{service,defaults,inputs}.yaml`, `runtime.telemetry: homestack`, healthcheck `http` on `/health/ready` expecting `200` | Written in step 8. |
+| Release | Annotated tags `vbc-X.Y.Z` from `scripts/tag-image.py` (clean pushed HEAD, `--dry-run`), CI publishes `ghcr.io/hipotures/vbc:X.Y.Z` (public, immutable), manual `dev-<commit>` builds, ordinary pushes only run checks | CI workflow + tagging script in step 8; the "does this change the image?" release rule recorded in `AGENTS.md`. |
+| GPU | Schema 3 `runtime.devices` (`/dev/nvidia*`, `/dev/dri/*`), attached manually in Proxmox first; node-local | Out of scope for now; CPU encoding works without devices. NVENC/VAAPI in the container needs matching userspace libraries in the image. |
+
 ## Process model
 
 | Command | What runs |
@@ -501,7 +528,9 @@ and `vbc run <dirs>` (legacy) working.
 5. **API + `vbc serve`.** `service/bootstrap.py` (wiring cut out of legacy
    `compress()`); FastAPI app with the endpoints above, long-poll via
    `asyncio.Event` set with `loop.call_soon_threadsafe` from the bus
-   callback; Host/Origin allowlist, health, OpenAPI artifact + drift test; lifecycle and
+   callback; configurable Host/Origin allowlist, health with heartbeat and
+   HomeStack telemetry endpoint (already in the HomeStack format), stdout
+   logging, OpenAPI artifact + drift test; lifecycle and
    signals as in Process model. Integration test: `serve --demo` + HTTP
    client.
 6. **One-shot commands.** `clients/api_client.py` + `vbc status`/`threads`/
@@ -516,15 +545,22 @@ and `vbc run <dirs>` (legacy) working.
    shows the same panels. Phase 1 ends here (docs for `serve`, `tui`, `run` and the
    one-shot commands
    land with it).
-8. **Web client (later).** `frontends/web/` (own entry point `vbc-web`):
+8. **HomeStack packaging.** Containerfile, entrypoint, `/home/app` layout,
+   heartbeat + health/telemetry endpoints verified on the built image (short
+   `HOMESTACK_HEARTBEAT_SECONDS`, stalled main path → `503`), resource
+   measurement under a real encode, schema-3 manifest, tagging script and
+   release CI. Real deployment with media waits for HomeStack external
+   mounts.
+9. **Web client (later).** `frontends/web/` (own entry point `vbc-web`):
    static page + small JS client (long-poll loop + local ticker for
    extrapolation) + proxy, reaching parity with the legacy HTMX dashboard.
-9. **Delete legacy.** Once `vbc run <dirs>` has its replacement (see Open
+10. **Delete legacy.** Once `vbc run <dirs>` has its replacement (see Open
    decisions) and the web client exists: remove `vbc_legacy/` and
    `tests/legacy/` in one commit. If the web client is still far off, legacy
-   may be deleted after step 7 and `--web` dropped until step 8 lands.
-10. **Docs.** `docs/architecture/` (this page → final design), API reference,
-    user guide for `serve`/`tui`/`run`/one-shot commands (phase 1) and `vbc-web` (later);
+   may be deleted after step 8 and `--web` dropped until step 9 lands.
+11. **Docs.** `docs/architecture/` (this page → final design), API reference,
+    user guide for `serve`/`tui`/`run`/one-shot commands (phase 1), HomeStack
+    runtime contract (step 8) and `vbc-web` (later);
     README dependency notes (FastAPI, uvicorn, httpx).
 
 ## Decisions
@@ -539,10 +575,13 @@ and `vbc run <dirs>` (legacy) working.
   `vbc shutdown`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config`. No
   `ctl` group.
 * Delivery order: **server + one-shot commands + `vbc tui` first** (phase 1, steps
-  1–7), web client later (step 8), legacy deleted in step 9.
+  1–7), HomeStack packaging (step 8), web client later (step 9), legacy
+  deleted in step 10.
 * Code strategy: **legacy package + new tree** (decided): today's code moves
   to `vbc_legacy/`, the new `vbc/` takes over only what it needs, legacy is
   deleted at the end.
+* Deployment target: **HomeStack** (decided), see Deployment: HomeStack;
+  external mounts for media are a pending HomeStack feature.
 * HTTP framework: **FastAPI + uvicorn** (decided); HTTP client for the client commands:
   **httpx**. New runtime dependencies, to be documented in `README.md` and
   `docs/getting-started/` when steps 5–6 land.
