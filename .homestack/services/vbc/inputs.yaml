@@ -14,7 +14,7 @@ inputs:
       variable: VBC_STORAGE_ROOTS
   - id: allowed_hosts
     label: Allowed host names
-    description: Comma-separated extra host names accepted in Host/Origin headers (the service DNS name if it is not the container's FQDN, a Pangolin subdomain). IP addresses are always accepted.
+    description: Usually empty. The server already accepts its host name, <hostname>.<domain> and IP addresses; add only other names clients use to reach it (e.g. a Pangolin subdomain), comma-separated.
     type: string
     required: false
     max_length: 1000
