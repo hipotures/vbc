@@ -44,6 +44,8 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
     config = yaml.safe_load(media_tree["config"].read_text())
     # Only the video folder: the manifest folder is added later through the API.
     config["input_dirs"] = [e for e in config["input_dirs"] if not e["metadata"]]
+    # A hand-edit typo must not stop the server: that folder is kept disabled.
+    config["input_dirs"].append({"path": str(root / "typo"), "enabled": "flase"})
     config["general"]["log_path"] = None
     # An old volume config says CPU; the image's VBC_GPU=auto still probes NVENC.
     # No GPU in the test runtime: it must fall back to CPU.
@@ -77,6 +79,10 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
             response = http.get("/api/v1/state", params={"since": snapshot["rev"], "wait": 10})
             if response.status_code == 200:
                 snapshot = response.json()
+
+        typo = next(e for e in http.get("/api/v1/dirs").json()["entries"] if e["path"] == str(root / "typo"))
+        assert typo["enabled"] is False
+        assert "folder kept disabled" in _run("logs", name).stdout + _run("logs", name).stderr
 
         # Storage roots come from the mounts. A mount scan offers the mount's media
         # folders disabled (manifests detected); enabling one starts its work.

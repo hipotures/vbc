@@ -71,6 +71,9 @@ def serve(
     except ServerConfigError as exc:
         typer.echo(f"vbc serve: {exc}", err=True)
         raise typer.Exit(code=2) from exc
+    except ValueError as exc:  # pydantic ValidationError included: a setting outside input_dirs
+        typer.echo(f"vbc serve: invalid config {config}:\n{exc}", err=True)
+        raise typer.Exit(code=2) from exc
     raise typer.Exit(code=run_server(server))
 
 

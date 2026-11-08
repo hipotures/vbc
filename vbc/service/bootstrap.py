@@ -96,7 +96,11 @@ def probe_nvenc(timeout_s: float = 30.0) -> tuple[bool, str]:
     if result.returncode == 0:
         return True, "av1_nvenc works"
     lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
-    return False, (lines[-1] if lines else f"ffmpeg exit code {result.returncode}")[:300]
+    # The first error is the cause (no libcuda, no device, unsupported GPU);
+    # later lines are consequences ("Nothing was written into output file").
+    keys = ("libcuda", "nvenc", "cuda", "Cannot", "No NVENC", "not supported", "OpenEncodeSessionEx")
+    cause = next((line for line in lines if any(key in line for key in keys)), None)
+    return False, (cause or (lines[0] if lines else f"ffmpeg exit code {result.returncode}"))[:300]
 
 
 def configure_logging(debug: bool, log_file: Optional[Path]) -> LogBuffer:
@@ -164,7 +168,8 @@ class VbcServer:
         self.started_at = time.time()
         self.demo = demo
         self.demo_config_path = demo_config_path
-        config = load_config(config_path)
+        config_problems: List[str] = []
+        config = load_config(config_path, problems=config_problems)
         apply_env_overrides(config, env)
         if host is not None:
             config.server.host = host
@@ -188,6 +193,8 @@ class VbcServer:
             )
 
         self.log_buffer = configure_logging(config.general.debug, log_file)
+        for problem in config_problems:
+            logger.error(f"Config {config_path}: {problem}")
         # general.gpu means "GPU if it works here": probe once, else encode on CPU,
         # instead of failing every job (and marking files as errors) without a GPU.
         self.gpu_probe: Optional[str] = None

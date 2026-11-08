@@ -1,7 +1,9 @@
 import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from .models import AppConfig, DemoConfig, MetadataConfig
+from pydantic import ValidationError
+
+from .models import AppConfig, DemoConfig, InputDirEntry, MetadataConfig
 
 
 def _validate_input_dirs_schema(data: Dict[str, Any]) -> None:
@@ -32,14 +34,53 @@ def _validate_input_dirs_schema(data: Dict[str, Any]) -> None:
         )
 
 
-def load_config(config_path: Path) -> AppConfig:
-    """Loads YAML config and parses it into AppConfig Pydantic model."""
+def _salvage_input_dirs(data: Dict[str, Any], problems: List[str]) -> None:
+    """Keep the server running despite a broken input_dirs entry: an entry that
+    does not validate is kept *disabled* (path known) or dropped (no path), and
+    the reason goes to ``problems``. Never enables anything."""
+    raw = data.get("input_dirs")
+    if raw is None:
+        return
+    if not isinstance(raw, list):
+        problems.append(f"input_dirs is not a list ({type(raw).__name__}); no input folders loaded")
+        data["input_dirs"] = []
+        return
+    kept: List[Dict[str, Any]] = []
+    for index, entry in enumerate(raw):
+        if isinstance(entry, str):
+            entry = {"path": entry, "enabled": False}
+            problems.append(f"input_dirs[{index}] {entry['path']!r}: plain string entry; kept disabled")
+        if not isinstance(entry, dict) or not entry.get("path"):
+            problems.append(f"input_dirs[{index}]: no path; entry ignored")
+            continue
+        try:
+            InputDirEntry.model_validate(entry)
+            kept.append(entry)
+        except ValidationError as exc:
+            reasons = "; ".join(
+                f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']} (got {err.get('input')!r})"
+                for err in exc.errors()
+            )
+            problems.append(f"input_dirs[{index}] {entry['path']!r}: {reasons}; folder kept disabled")
+            kept.append({"path": str(entry["path"]), "enabled": False})
+    data["input_dirs"] = kept
+
+
+def load_config(config_path: Path, problems: Optional[List[str]] = None) -> AppConfig:
+    """Loads YAML config and parses it into AppConfig Pydantic model.
+
+    With ``problems`` (the server), broken input_dirs entries are disabled
+    instead of failing the whole load; their reasons are appended there.
+    """
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
     
     with open(config_path, 'r') as f:
         data = yaml.safe_load(f) or {}
 
+    if problems is not None:
+        data.pop("disabled_input_dirs", None)
+        _salvage_input_dirs(data, problems)
     _validate_input_dirs_schema(data)
     
     # Existing vbc.yaml structure has 'general' and 'autorotate' at root
