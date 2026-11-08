@@ -1,0 +1,249 @@
+import logging
+from pathlib import Path
+from typing import Dict, List, Optional, Union
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn, DownloadColumn
+from rich.console import Console
+from vbc.utils.flv_repair import repair_flv_file
+from vbc.utils.reencode_repair import repair_via_reencode
+
+
+def _is_metadata_verification_failure(error_text: str) -> bool:
+    normalized = error_text.lower()
+    return "verification failed: missing vbc tags" in normalized
+
+
+def process_repairs(
+    input_dirs: List[Path],
+    errors_dir_map: Dict[Path, Path],
+    extensions: List[str],
+    logger: Optional[logging.Logger] = None,
+    target_files: Optional[List[Path]] = None,
+    return_repaired_files: bool = False,
+    auto_repair: bool = False,
+) -> Union[int, tuple[int, List[Path]]]:
+    """
+    Scans error directories for corrupted files and attempts to repair them.
+    Strategy 1: Text prefix removal (for FLV/MP4 stream dumps) as a pre-clean step.
+    Strategy 2: Fast re-encode to MKV (final output for all repairs).
+
+    Args:
+        input_dirs: List of source input directories.
+        errors_dir_map: Mapping from input_dir to errors_dir.
+        extensions: List of video extensions to scan for.
+        logger: Logger instance.
+        target_files: Optional list of specific files to repair.
+        auto_repair: When True, this pass is part of the automatic in-session
+            repair flow — repaired files are queued for compression in the
+            same run, so the "re-run VBC" notice is suppressed.
+
+    Returns:
+        Number of successfully repaired files. When return_repaired_files=True,
+        returns (count, repaired_file_paths).
+    """
+    console = Console()
+    total_repaired = 0
+    repaired_paths: List[Path] = []
+    candidates_to_repair = []
+
+    # 1. Scan for candidates first
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True,
+        console=console
+    ) as scan_progress:
+        scan_progress.add_task("Scanning for repairable files...", total=None)
+        
+        for input_dir in input_dirs:
+            errors_dir = errors_dir_map.get(input_dir)
+            if not errors_dir or not errors_dir.exists():
+                continue
+                
+            # If target_files is provided, use it. Otherwise, scan all extensions.
+            files_to_check = []
+            if target_files is not None:
+                for t in target_files:
+                    try:
+                        if errors_dir in t.parents or t.parent == errors_dir:
+                            files_to_check.append(t)
+                    except Exception:
+                        pass
+            else:
+                for ext in extensions:
+                    if not ext.startswith("."):
+                        ext = f".{ext}"
+                    files_to_check.extend(errors_dir.rglob(f"*{ext}"))
+            
+            for candidate in files_to_check:
+                if not candidate.exists():
+                    continue
+
+                # Check if already repaired
+                repaired_marker = candidate.with_suffix(candidate.suffix + ".repaired")
+                if repaired_marker.exists():
+                    continue
+                
+                # Check error file content to decide strategy
+                err_file = candidate.with_suffix(".err")
+                error_code = ""
+                is_hw_cap = False
+                if err_file.exists():
+                    try:
+                        err_content = err_file.read_text()
+                        if _is_metadata_verification_failure(err_content):
+                            if logger:
+                                logger.info(
+                                    f"Skipping repair for {candidate.name} - missing VBC tags is metadata-only."
+                                )
+                            continue
+                        if "Hardware is lacking required capabilities" in err_content:
+                            is_hw_cap = True
+                        elif "code 234" in err_content or "Invalid argument" in err_content:
+                            error_code = "234"
+                    except Exception:
+                        pass
+
+                if is_hw_cap:
+                    if logger:
+                        logger.debug(f"Skipping repair for {candidate.name} - hardware limit, not corruption.")
+                    continue
+
+                try:
+                    rel_path = candidate.relative_to(errors_dir)
+                except ValueError:
+                    rel_path = Path(candidate.name)
+                
+                dest_path = input_dir / rel_path
+                dest_mkv = dest_path.with_suffix(".mkv")
+                try:
+                    candidate_size = max(candidate.stat().st_size, 1)
+                except OSError:
+                    candidate_size = 1
+                candidates_to_repair.append((candidate, dest_path, dest_mkv, repaired_marker, error_code, candidate_size))
+    
+    # Deduplicate
+    seen_candidates = set()
+    unique_candidates = []
+    for c, dp, dmkv, rm, ec, size in candidates_to_repair:
+        if c not in seen_candidates:
+            unique_candidates.append((c, dp, dmkv, rm, ec, size))
+            seen_candidates.add(c)
+    candidates_to_repair = unique_candidates
+
+    if not candidates_to_repair:
+        if return_repaired_files:
+            return 0, []
+        return 0
+
+    if logger:
+        logger.info(f"Found {len(candidates_to_repair)} files eligible for repair.")
+    
+    if target_files is not None:
+        console.print(f"[bold cyan]Attempting to repair {len(candidates_to_repair)} failed files from this session.[/bold cyan]")
+    else:
+        console.print(f"[bold cyan]Found {len(candidates_to_repair)} failed files in error directories.[/bold cyan]")
+
+    # 2. Process repairs
+    total_bytes = sum(candidate_size for *_rest, candidate_size in candidates_to_repair)
+    processed_bytes = 0
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        DownloadColumn(),
+        TimeRemainingColumn(),
+        console=console
+    ) as progress:
+        task = progress.add_task("Repairing corrupted files", total=total_bytes)
+        
+        for index, (candidate, dest_path, dest_mkv, repaired_marker, error_code, candidate_size) in enumerate(candidates_to_repair, start=1):
+            progress.update(
+                task,
+                description=f"Repairing [yellow]{candidate.name}[/yellow] ({index}/{len(candidates_to_repair)})",
+                completed=processed_bytes,
+            )
+            
+            success = False
+            repaired_file_path = None
+            temp_flv = None
+
+            if dest_mkv.exists():
+                if logger:
+                    logger.warning(
+                        f"Skipping repair for {candidate.name} - MKV already exists in source: {dest_mkv}"
+                    )
+                processed_bytes += candidate_size
+                progress.update(task, completed=processed_bytes)
+                continue
+            
+            # STRATEGY 1: FLV Prefix Cut (Fast)
+            # Try this if no specific error code OR if it looks like it might be an FLV dump
+            reencode_input = candidate
+            if not error_code:
+                temp_flv = candidate.with_suffix(".repaired_temp.flv")
+                try:
+                    if repair_flv_file(candidate, temp_flv):
+                        reencode_input = temp_flv
+                except Exception:
+                    temp_flv = None
+
+            # STRATEGY 2: Re-encode to MKV (Final output)
+            temp_mkv = candidate.with_suffix(".repaired_temp.mkv")
+            try:
+                def update_reencode_progress(output_size: int) -> None:
+                    current_file_bytes = min(max(output_size, 0), candidate_size)
+                    progress.update(task, completed=min(total_bytes, processed_bytes + current_file_bytes))
+
+                # Inform user this might take longer
+                if logger:
+                    logger.info(f"Attempting re-encode repair for {candidate.name}")
+                if repair_via_reencode(reencode_input, temp_mkv, progress_callback=update_reencode_progress):
+                    success = True
+                    repaired_file_path = temp_mkv
+                    dest_path = dest_mkv
+            except Exception:
+                pass
+            
+            if success and repaired_file_path:
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    import shutil
+                    shutil.move(str(repaired_file_path), str(dest_path))
+                    repaired_marker.touch()
+                    if logger:
+                        logger.info(f"Repaired and restored: {candidate.name} -> {dest_path}")
+                    total_repaired += 1
+                    repaired_paths.append(dest_path)
+                except Exception as e:
+                    if logger:
+                        logger.error(f"Failed to move repaired file: {e}")
+                    if repaired_file_path.exists():
+                        repaired_file_path.unlink()
+            if temp_flv and temp_flv.exists():
+                try:
+                    temp_flv.unlink()
+                except Exception:
+                    pass
+            
+            processed_bytes += candidate_size
+            progress.update(task, completed=processed_bytes)
+
+    if total_repaired > 0:
+        summary_msg = f"Repaired {total_repaired}/{len(candidates_to_repair)} files."
+        console.print(f"[bold green]✔ {summary_msg}[/bold green]")
+        # Only tell the user to re-run VBC when repaired files won't be
+        # compressed in the current session (auto_repair queues them itself).
+        if not auto_repair:
+            console.print("\n[bold white]Please re-run VBC to compress the repaired files restored to source folders.[/bold white]")
+        if logger:
+            logger.info(summary_msg)
+    elif target_files is not None:
+        # If we targeted specific files but repaired none, user needs to know
+        summary_msg = f"Repaired 0/{len(candidates_to_repair)} files."
+        console.print(f"[yellow]⚠ {summary_msg} (Files unreadable or missing video stream)[/yellow]")
+        if logger:
+            logger.info(summary_msg)
+
+    if return_repaired_files:
+        return total_repaired, repaired_paths
+    return total_repaired
