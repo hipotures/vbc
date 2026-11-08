@@ -1,9 +1,14 @@
 # Service Split Plan (server / API / clients)
 
-Status: **proposal**. Scope: VBC only. Deployment target (container, VM, LXC), GPU
-handling and the Rich TUI rewrite are explicitly out of scope; everything below
-assumes the server and the clients run as ordinary local processes that may
-later live on different hosts.
+Status: **proposal**. Scope: VBC only. Deployment target (container, VM, LXC)
+and GPU device handling are explicitly out of scope; everything below assumes
+the server and the clients run as ordinary local processes that may later live
+on different hosts.
+
+Order of delivery (decided): **server + CLI client + TUI client first**, the
+web client later. The existing Rich TUI is reused as an API client (same
+panels, data from the API instead of the in-process `UIState`); it is not
+redesigned.
 
 ## Goal
 
@@ -22,8 +27,9 @@ later live on different hosts.
                                    │ HTTP (long-poll), bearer token
             ┌──────────────────────┼──────────────────────┐
             ▼                      ▼                      ▼
-     vbc-web (separate       future TUI client       curl / scripts
-     process, own port)
+     vbc tui (Rich,          vbc ctl (CLI:           vbc-web (later,
+     phase 1)                status/commands,        own process/port)
+                             phase 1)                + curl / scripts
 ```
 
 * The **server** owns all business state and all side effects (encoding, config
@@ -88,10 +94,30 @@ preset/palette/metric, logs page index, Dirs editor cursor/input buffer/staged
 edits, unicode stripping, every `format_*` helper. Dirs editing becomes "edit
 locally, then send the whole ordered list" (`PUT /dirs`).
 
-`vbc-web`: separate process, separate entry point, own port. Serves static
-files and proxies `/api/*` to the server, injecting the bearer token
+All clients are Python and live in `vbc/clients/`; they import only
+`vbc/contracts/` and a shared thin HTTP client (`clients/api_client.py`,
+`httpx`: auth header, long-poll loop, clock-skew correction, retries).
+
+`vbc tui` (phase 1): the current Rich dashboard and overlays, fed by the API.
+A background thread runs the `/state` long-poll and replaces a local snapshot;
+the render loop extrapolates counters from anchors (see below). Keys map to
+commands: `<`/`>` → `PUT /threads` with an absolute target computed from the
+last snapshot, `R` → `POST /refresh`, `S` → `POST`/`DELETE /shutdown`
+depending on `shutdown_requested`, Ctrl+C → detach the client (does **not**
+stop the server; interrupting the server is an explicit command). Overlay
+tabs fetch `/config`, `/io`, `/dirs`, `/errors`, `/logs` on demand.
+
+`vbc ctl` (phase 1): non-interactive CLI for scripts and quick checks, one
+subcommand per endpoint: `status` (one-shot or `--watch`), `threads N`,
+`refresh`, `shutdown [--interrupt|--cancel]`, `dirs [list|set …]`, `errors`,
+`logs [--follow] [--level]`, `config`. Human-readable output by default,
+`--json` prints the DTOs as-is; non-zero exit status on HTTP/auth errors.
+
+`vbc-web` (later): separate process, separate entry point, own port. Serves
+static files and proxies `/api/*` to the server, injecting the bearer token
 (backend-for-frontend: no CORS, token never reaches the browser). Replaces
-`infrastructure/web_server.py` and the `--web` flag.
+`infrastructure/web_server.py` and the `--web` flag; until it exists, the
+current `--web` keeps working in local mode.
 
 ## Classification of today's `UIState`
 
@@ -235,7 +261,7 @@ Read:
 | Endpoint | Content |
 |---|---|
 | `GET /api/v1/state?since=<rev>&wait=<s>` | Main snapshot (run status, counters, bytes, throughput anchors, active jobs with progress anchors, last N recent jobs, queue count, `shutdown_requested`, `config_rev`, `errors_last_id`). Long-poll: returns immediately if `rev > since`, otherwise holds up to `wait` (≤30 s) and returns `204 No Content` on timeout (the client simply polls again). Plain polling uses `ETag: "<rev>"` and returns `304` only for a request carrying `If-None-Match`. |
-| `GET /api/v1/gpu` | Latest GPU sample (`gpu_data` today) or `null` when monitoring is disabled. History and anchors are deferred (see Open decisions). |
+| `GET /api/v1/gpu?since=<seq>` | Latest GPU sample (`gpu_data` today) plus samples newer than `seq` from a bounded history (for the TUI sparkline); `enabled: false` when monitoring is off. Anchors are deferred (see Open decisions). |
 | `GET /api/v1/queue?offset&limit` | Pending files (can be 10k+, never inside the snapshot). |
 | `GET /api/v1/jobs/recent?limit` | Longer activity history (bounded ring, e.g. 500). |
 | `GET /api/v1/errors?since&limit` | Session error log entries (see Logs). |
@@ -344,8 +370,10 @@ mechanism without changing the read model.
 | Command | What runs |
 |---|---|
 | `vbc serve [--config] [--host] [--port]` | `bootstrap` + API, headless, no Rich, no keyboard. Input dirs from config (positional args optional). `--demo` uses `DemoOrchestrator`. |
-| `vbc-web --api http://host:port --token-file …` | Web client only. |
-| `vbc <dirs>` (today) | Kept during migration: same `bootstrap` + current TUI subscribed in-process. Converting the TUI into an API client is out of scope. |
+| `vbc tui --api http://host:port --token-file …` | TUI client only (phase 1). |
+| `vbc ctl --api … --token-file … <subcommand>` | CLI client (phase 1). `--api`/`--token-file` also from env (`VBC_API`, `VBC_TOKEN_FILE`) or client config. |
+| `vbc-web --api … --token-file …` | Web client only (later). |
+| `vbc <dirs>` (today) | Kept during migration: same `bootstrap` + current TUI subscribed in-process. See Open decisions for replacing it with "local server + `vbc tui`". |
 
 `vbc serve` lifecycle:
 
@@ -388,10 +416,9 @@ Every step leaves the test suite green and `vbc <dirs>` working.
 3. **Split `UIState`.** Introduce `service/state_store.py` with the business
    fields and the handlers moved from `UIManager`. Keep `ui/view_state.py` for
    the view-only fields. Dashboard reads both; `KeyboardListener` reads only
-   view state. `GpuMonitor` writes its sample into `StateStore` (GPU history
-   for the TUI sparkline stays in view state for now).
-   `infrastructure/web_server.py` reads `StateStore` (temporary, deleted in
-   step 6).
+   view state. `GpuMonitor` writes its samples and bounded history into
+   `StateStore`. `infrastructure/web_server.py` reads `StateStore`
+   (temporary, deleted in step 8).
 4. **Contracts + anchors.** `vbc/contracts/` DTOs, `rev`, rate EWMA,
    dead-reckoning thresholds, ETA anchor. Unit tests for the threshold logic
    (deterministic clock injected).
@@ -399,30 +426,46 @@ Every step leaves the test suite green and `vbc <dirs>` working.
    app with the endpoints above, long-poll via `asyncio.Event` set with
    `loop.call_soon_threadsafe` from the bus callback; auth, health, OpenAPI
    artifact + drift test. Integration test: `serve --demo` + HTTP client.
-6. **Separate web client.** `frontends/web/` (own entry point `vbc-web`): static
-   page + small JS client (long-poll loop + local ticker for extrapolation) +
-   proxy. Reach parity with the HTMX dashboard, then delete
+6. **`vbc ctl`.** `clients/api_client.py` + CLI subcommands. Comes before the
+   TUI because it is small and exercises every endpoint end to end
+   (integration tests against `serve --demo`).
+7. **`vbc tui`.** Dashboard and overlays rendered from a client-side
+   snapshot (DTOs + `ui/view_state.py`) instead of `UIState`; long-poll
+   thread, local extrapolation ticker, key → command mapping. Parity check:
+   the same `serve --demo` session rendered by in-process `vbc --demo` and by
+   `vbc tui` shows the same panels. Phase 1 ends here (docs for `serve`,
+   `ctl`, `tui` land with it).
+8. **Web client (later).** `frontends/web/` (own entry point `vbc-web`):
+   static page + small JS client (long-poll loop + local ticker for
+   extrapolation) + proxy. Reach parity with the HTMX dashboard, then delete
    `infrastructure/web_server.py` and `--web`.
-7. **Docs.** `docs/architecture/` (this page → final design), API reference,
-   user guide for `serve`/`vbc-web`; README dependency notes (FastAPI, uvicorn).
+9. **Docs.** `docs/architecture/` (this page → final design), API reference,
+   user guide for `serve`/`ctl`/`tui` (phase 1) and `vbc-web` (later); README
+   dependency notes (FastAPI, uvicorn, httpx).
 
 ## Decisions
 
 * Language: **Python stays** (decided) for the server and for the clients
-  (`vbc-web`, the TUI). No Rust rewrite; mypowers is referenced only for its
-  API conventions, not its implementation stack.
-* HTTP framework: **FastAPI + uvicorn** (decided). New runtime dependencies,
-  to be documented in `README.md` and `docs/getting-started/` when step 5 lands.
+  (`vbc tui`, `vbc ctl`, `vbc-web`). No Rust rewrite; mypowers is referenced
+  only for its API conventions, not its implementation stack.
+* Delivery order: **server + `vbc ctl` + `vbc tui` first** (phase 1, steps
+  1–7), web client later (step 8).
+* HTTP framework: **FastAPI + uvicorn** (decided); HTTP client for `ctl`/`tui`:
+  **httpx**. New runtime dependencies, to be documented in `README.md` and
+  `docs/getting-started/` when steps 5–6 land.
 
 ## Open decisions
 
 * Web client: vanilla JS (zero build) vs. keeping Jinja/HTMX fragments rendered
   by `vbc-web` from API data. Recommended: vanilla JS, because HTMX polling
   cannot extrapolate counters.
-* Whether `vbc <dirs>` should eventually always start a local server and attach
-  the TUI over HTTP (single code path) or keep the in-process mode.
-* GPU metrics beyond the latest sample: history and anchors (server-side
-  producer → read model → anchors) are deferred. The latest sample is
-  **not** deferred: v1 exposes it at `GET /api/v1/gpu`, because the web
-  dashboard shows it today and step 6 must reach parity before
-  `web_server.py` is deleted.
+* Whether `vbc <dirs>` should, once `vbc tui` reaches parity, always start a
+  local server and attach `vbc tui` over HTTP (single code path, the
+  in-process dashboard wiring is deleted) or keep the in-process mode.
+  Recommended: single code path, because otherwise every TUI change has to be
+  made twice.
+* GPU metrics: v1 needs the latest sample **and** a bounded history, because
+  the TUI sparkline shows history today and `vbc tui` is in phase 1:
+  `GET /api/v1/gpu?since=<seq>` returns new samples (ring buffer, `410` when
+  `since` is too old, like `/errors`). Anchors/extrapolation for GPU are
+  deferred.
