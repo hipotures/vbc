@@ -68,6 +68,13 @@ def apply_env_overrides(config: AppConfig, env: Mapping[str, str]) -> None:
         config.server.port = int(env["VBC_SERVER_PORT"])
     if env.get("VBC_ALLOWED_HOSTS"):
         config.server.allowed_hosts = [h.strip() for h in env["VBC_ALLOWED_HOSTS"].split(",") if h.strip()]
+    gpu = (env.get("VBC_GPU") or "").strip().lower()
+    if gpu in ("auto", "1", "true", "yes"):
+        # GPU whenever NVENC works here (probed at start), CPU otherwise.
+        config.general.gpu = True
+        config.gpu_config.enabled = True
+    elif gpu in ("0", "false", "no", "cpu"):
+        config.general.gpu = False
     if env.get("VBC_STORAGE_ROOTS"):
         config.storage.roots = [r.strip() for r in env["VBC_STORAGE_ROOTS"].split(",") if r.strip()]
 

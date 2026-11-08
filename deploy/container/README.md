@@ -53,6 +53,7 @@ Unpacked size: about 490 MB.
 |---|---|---|
 | Extra storage roots | `VBC_STORAGE_ROOTS` | usually empty: every media mount of the container is a storage root by itself (read from `/proc/self/mountinfo` on each use, no restart); input dirs and their `_out`/`_err` siblings must lie inside a root |
 | Allowed host names | `VBC_ALLOWED_HOSTS` | usually empty: the server accepts its host name, `<hostname>.<domain>` (resolv.conf search domains) and IP addresses by itself; add only other names clients use (e.g. a Pangolin subdomain) |
+| GPU | `VBC_GPU` | image default `auto`: NVENC probed at every start, GPU when usable, CPU otherwise (overrides `general.gpu` of the volume config); `cpu` forces CPU |
 | Heartbeat | `HOMESTACK_HEARTBEAT_SECONDS` | set by HomeStack from the manifest (60) |
 
 Input folders are added at run time: `vbc dirs add PATH` or the TUI Dirs tab.

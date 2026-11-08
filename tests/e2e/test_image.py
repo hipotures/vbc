@@ -45,7 +45,9 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
     # Only the video folder: the manifest folder is added later through the API.
     config["input_dirs"] = [e for e in config["input_dirs"] if not e["metadata"]]
     config["general"]["log_path"] = None
-    config["general"]["gpu"] = True  # no GPU in the test runtime: must fall back to CPU
+    # An old volume config says CPU; the image's VBC_GPU=auto still probes NVENC.
+    # No GPU in the test runtime: it must fall back to CPU.
+    config["general"]["gpu"] = False
     config["server"] = {"host": "0.0.0.0", "port": 8080}
     (volume / "config" / "vbc.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     before = record_legacy.snapshot(root)
