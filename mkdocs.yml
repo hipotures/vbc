@@ -89,6 +89,7 @@ nav:
       - Service Split Plan: architecture/service-split.md
   - User Guide:
       - CLI Reference: user-guide/cli.md
+      - Server and Clients: user-guide/server.md
       - Runtime Controls: user-guide/runtime-controls.md
       - Advanced Features: user-guide/advanced.md
   - API Reference:

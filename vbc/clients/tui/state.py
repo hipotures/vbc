@@ -1,34 +1,35 @@
+"""Client-side state of `vbc tui` (copied from vbc_legacy/ui/state.py).
+
+Same attribute surface as the legacy ``UIState`` so the copied renderers
+work unchanged, but the business half is no longer computed here: it is
+filled from API responses by ``apply_*`` (called by ``poller.Poller``).
+View state (overlay, tabs, Dirs editor, logs paging, sparkline selection)
+stays client-only. Active-job progress is extrapolated from the server's
+anchors on every read (dead reckoning).
+"""
+
 import threading
-from dataclasses import dataclass
+import time
 from datetime import datetime
 from pathlib import Path
 from collections import deque
 from typing import List, Optional, Dict, Any, ClassVar, Tuple, Set
-from vbc_legacy.domain.models import CompressionJob
-from vbc_legacy.ui.gpu_sparkline import (
+
+from vbc import contracts as dto
+from vbc.clients.tui.gpu_sparkline import (
     DEFAULT_GPU_SPARKLINE_PALETTE,
     DEFAULT_GPU_SPARKLINE_PRESET,
 )
+from vbc.clients.tui.views import FileView, JobView, SessionErrorEntry, local_datetime
+
+STATUS_OK = "✓"
+STATUS_MISSING = "✗"
+STATUS_NO_ACCESS = "⚡"
+MAX_INPUT_DIR_LEN = 150
 
 
-@dataclass(frozen=True)
-class SessionErrorEntry:
-    """Snapshot of a failed job captured for current-session Logs tab."""
-
-    path: Path
-    size_bytes: Optional[int]
-    width: Optional[int]
-    height: Optional[int]
-    fps: Optional[float]
-    codec: Optional[str]
-    audio_codec: Optional[str]
-    duration_seconds: Optional[float]
-    error_message: str
-    created_at: datetime
-
-
-class UIState:
-    """Thread-safe state manager for the interactive UI."""
+class ClientState:
+    """Thread-safe state of the TUI client."""
 
     # Tab order for cycling (shortcuts first as it's the main menu)
     OVERLAY_TABS: ClassVar[List[str]] = ["shortcuts", "settings", "io", "dirs", "tui", "reference", "logs"]
@@ -61,13 +62,28 @@ class UIState:
         self.total_output_bytes = 0
         self.throughput_history: deque[Tuple[datetime, int]] = deque()
 
-        # Job lists
-        self.active_jobs: List[CompressionJob] = []
+        # Job lists (filled from /state and /queue)
+        self._active: List[Tuple[JobView, Optional[dto.ProgressAnchor]]] = []
         self.recent_jobs = deque(maxlen=activity_feed_max_items)
-        # Web dashboard can render variable-height Activity Feed,
-        # so keep a deeper history than TUI's compact feed window.
-        self.web_recent_jobs = deque(maxlen=max(80, activity_feed_max_items))
-        self.pending_files: List[Any] = []  # VideoFile objects waiting to be submitted
+        self.pending_files: List[Any] = []  # first page of /queue (FileView)
+        self.queue_count = 0
+        self.queue_bytes = 0
+
+        # Server-computed anchors (replace the legacy local throughput history)
+        self.throughput_bps: Optional[float] = None
+        self.eta_at: Optional[datetime] = None
+
+        # Connection to the server
+        self.server_url = ""
+        self.connected = False
+        self.connection_error: Optional[str] = None
+        self.clock_offset_ms = 0
+        self.rev = 0
+        self.dirs_rev = 0
+        self.config_rev = 0
+        self.errors_last_id = 0
+        self.gpu_last_seq = 0
+        self.dirs_status: Dict[str, Tuple[bool, bool]] = {}  # path -> (exists, readable) on the server
 
         # Job timing tracking
         self.job_start_times: Dict[str, datetime] = {}  # filename -> start time
@@ -135,12 +151,159 @@ class UIState:
         self.gpu_history_gpu: deque = deque(maxlen=60)
         self.gpu_history_mem: deque = deque(maxlen=60)
         self.gpu_history_fan: deque = deque(maxlen=60)
+        self.gpu_enabled = False
 
         # Logs tab (current session only)
         self.logs_page_size: int = 10
         self.logs_page_index: int = 0
         self.session_error_logs: List[SessionErrorEntry] = []
         self._discovery_error_keys: set[Tuple[Path, str]] = set()
+
+    # ── API -> state ───────────────────────────────────────────────────────
+
+    def _server_now_ms(self) -> int:
+        return int(time.time() * 1000) + self.clock_offset_ms
+
+    @property
+    def active_jobs(self) -> List[JobView]:
+        """Active jobs with progress extrapolated to now (dead reckoning)."""
+        with self._lock:
+            now = self._server_now_ms()
+            jobs = []
+            for job, anchor in self._active:
+                if anchor is not None:
+                    job.progress_percent = min(anchor.percent + anchor.rate * (now - anchor.at) / 1000, 99.5)
+                jobs.append(job)
+            return jobs
+
+    def apply_snapshot(self, snap: dto.StateSnapshot, offset_ms: int) -> None:
+        with self._lock:
+            self.connected = True
+            self.connection_error = None
+            self.clock_offset_ms = offset_ms
+            self.rev = snap.rev
+            c, d = snap.counters, snap.discovery
+            self.completed_count = c.completed
+            self.failed_count = c.failed
+            self.skipped_count = c.skipped
+            self.hw_cap_count = c.hw_cap
+            self.cam_skipped_count = c.cam_skipped
+            self.min_ratio_skip_count = c.min_ratio_skip
+            self.interrupted_count = c.interrupted
+            self.ignored_av1_count = c.ignored_av1
+            self.completed_count_at_last_discovery = c.completed_at_last_discovery
+            self.failed_count_at_last_discovery = c.failed_at_last_discovery
+            self.session_completed_base = c.session_completed_base
+            self.discovery_finished = d.finished
+            self.discovery_finished_time = local_datetime(d.finished_at, offset_ms)
+            self.total_files_found = d.files_found
+            self.files_to_process = d.files_to_process
+            self.already_compressed_count = d.already_compressed
+            self.ignored_small_count = d.ignored_small
+            self.ignored_err_count = d.ignored_err
+            self.source_folders_count = d.source_folders_count
+            self.total_input_bytes = snap.total_input_bytes
+            self.total_output_bytes = snap.total_output_bytes
+            self.throughput_bps = snap.throughput.bytes_per_s if snap.throughput else None
+            self.eta_at = local_datetime(snap.eta_at, offset_ms)
+            self.processing_start_time = local_datetime(snap.processing_started_at, offset_ms)
+            self.current_threads = snap.threads.current
+            status = snap.run_status
+            self.shutdown_requested = snap.shutdown_requested
+            self.interrupt_requested = snap.interrupt_requested
+            self.error_paused = status in ("paused_on_error", "verification_abort", "failed")
+            self.error_status_text = "ERROR" if self.error_paused else None
+            self.error_message = snap.status_message if self.error_paused else None
+            self.repair_active = snap.repair.active
+            self.repair_candidate_count = snap.repair.candidates
+            self.repair_repaired_count = snap.repair.repaired
+            # `vbc serve` waits for a refresh after every pass: shown as WAITING (R = rescan).
+            self.waiting_for_input = status == "idle"
+            self.finished = False
+            self._active = [(JobView.from_active(j), j.progress) for j in snap.active_jobs]
+            self.job_start_times = {
+                j.name: local_datetime(j.started_at, offset_ms) for j in snap.active_jobs
+            }
+            self.recent_jobs.clear()
+            for job in snap.recent_jobs[: self.recent_jobs.maxlen]:
+                self.recent_jobs.append(JobView.from_recent(job))
+            self.queue_count = snap.queue.count
+            self.queue_bytes = snap.queue.bytes
+            if snap.last_action is not None:
+                self.last_action = snap.last_action.text
+                self.last_action_time = local_datetime(snap.last_action.at, offset_ms)
+            self.dirs_rev = snap.dirs_rev
+            self.config_rev = snap.config_rev
+            self.errors_last_id = snap.errors_last_id
+            self.gpu_last_seq = snap.gpu_last_seq
+
+    def apply_queue(self, page: dto.QueuePage) -> None:
+        with self._lock:
+            self.pending_files = [
+                FileView(Path(item.path), item.size_bytes, None, item.part_count) for item in page.items
+            ]
+
+    def apply_errors(self, page: dto.ErrorsPage, offset_ms: int) -> None:
+        with self._lock:
+            known = len(self.session_error_logs)
+            for entry in page.entries:
+                self.session_error_logs.insert(0, SessionErrorEntry.from_dto(entry, offset_ms))
+            if len(self.session_error_logs) != known:
+                self.logs_page_index = 0
+
+    def apply_dirs(self, state: dto.DirsState) -> None:
+        with self._lock:
+            self.dirs_config_entries = [(e.path, e.enabled) for e in state.entries]
+            self.dirs_status = {e.path: (e.exists, e.readable) for e in state.entries}
+            self.dirs_rev = state.dirs_rev
+
+    def apply_io(self, io: dto.IoView) -> None:
+        with self._lock:
+            stats = []
+            for row in io.dirs:
+                if not row.enabled:
+                    continue
+                status = STATUS_OK if (row.exists and row.readable) else (STATUS_MISSING if not row.exists else STATUS_NO_ACCESS)
+                stats.append((status, row.path, row.pending_count, row.pending_bytes))
+            self.io_input_dir_stats = stats
+            self.io_suffix_output_dirs = io.suffix_output_dirs
+            self.io_suffix_errors_dirs = io.suffix_errors_dirs
+            self.io_queue_sort = io.queue_sort
+            self.io_queue_seed = io.queue_seed
+            self.log_path = io.log_path
+            if io.suffix_output_dirs is None:
+                self.io_output_dir_lines = [
+                    f"  {_icon(r.output_writable)}{i}. {r.output_dir}"
+                    for i, r in enumerate([r for r in io.dirs if r.enabled], start=1) if r.output_dir
+                ]
+            if io.suffix_errors_dirs is None:
+                self.io_errors_dir_lines = [
+                    f"  {_icon(True)}{i}. {r.errors_dir}"
+                    for i, r in enumerate([r for r in io.dirs if r.enabled], start=1) if r.errors_dir
+                ]
+
+    def apply_config_lines(self, lines: List[str], debug: bool) -> None:
+        with self._lock:
+            self.config_lines = lines
+            self.debug_enabled = debug
+
+    def apply_gpu(self, page: dto.GpuPage) -> None:
+        with self._lock:
+            self.gpu_enabled = page.enabled
+            for sample in page.samples:
+                self.gpu_data = sample.raw
+                self.gpu_history_temp.append(sample.temp_c)
+                self.gpu_history_pwr.append(sample.power_w)
+                self.gpu_history_gpu.append(sample.gpu_util_pct)
+                self.gpu_history_mem.append(sample.mem_util_pct)
+                self.gpu_history_fan.append(sample.fan_pct)
+            if page.samples:
+                self.gpu_last_seq = page.samples[-1].seq
+
+    def set_disconnected(self, message: str) -> None:
+        with self._lock:
+            self.connected = False
+            self.connection_error = message
 
     @property
     def space_saved_bytes(self) -> int:
@@ -153,74 +316,6 @@ class UIState:
             if self.total_input_bytes == 0:
                 return 0.0
             return self.total_output_bytes / self.total_input_bytes
-
-    def add_active_job(self, job: CompressionJob):
-        with self._lock:
-            identity_path = job.source_file.identity_path
-            for index, active_job in enumerate(self.active_jobs):
-                if active_job.source_file.identity_path == identity_path:
-                    self.active_jobs[index] = job
-                    return
-            self.active_jobs.append(job)
-            # Track start time
-            self.job_start_times[job.source_file.path.name] = datetime.now()
-
-    def remove_active_job(self, job: CompressionJob):
-        with self._lock:
-            identity_path = job.source_file.identity_path
-            self.active_jobs[:] = [
-                active_job
-                for active_job in self.active_jobs
-                if active_job.source_file.identity_path != identity_path
-            ]
-            # Clean up start time
-            self.job_start_times.pop(job.source_file.path.name, None)
-
-    def add_completed_job(self, job: CompressionJob, output_size: int):
-        with self._lock:
-            self.completed_count += 1
-            self.total_input_bytes += job.source_file.size_bytes
-            self.total_output_bytes += output_size
-            self.throughput_history.append((datetime.now(), job.source_file.size_bytes))
-            
-            # Prune history older than 60s
-            cutoff = datetime.now().timestamp() - 60
-            while self.throughput_history and self.throughput_history[0][0].timestamp() < cutoff:
-                self.throughput_history.popleft()
-                
-            # Store output size in job for display
-            job.output_size_bytes = output_size
-            self._add_recent_job_unlocked(job)
-            self.remove_active_job(job)
-
-    def add_failed_job(self, job: CompressionJob):
-        with self._lock:
-            self.failed_count += 1
-            self.throughput_history.append((datetime.now(), 0))
-            # Prune history older than 60s
-            cutoff = datetime.now().timestamp() - 60
-            while self.throughput_history and self.throughput_history[0][0].timestamp() < cutoff:
-                self.throughput_history.popleft()
-            self._add_recent_job_unlocked(job)
-            self.remove_active_job(job)
-
-    def _add_recent_job_unlocked(self, job: CompressionJob):
-        """Append a job to both TUI and web activity histories.
-
-        Caller must hold self._lock.
-        """
-        self.recent_jobs.appendleft(job)
-        self.web_recent_jobs.appendleft(job)
-
-    def add_recent_job(self, job: CompressionJob):
-        """Thread-safe wrapper for adding job to recent activity feeds."""
-        with self._lock:
-            self._add_recent_job_unlocked(job)
-
-    def add_skipped_job(self, job: CompressionJob):
-        with self._lock:
-            self.skipped_count += 1
-            self.remove_active_job(job)
 
     def set_last_action(self, action: str):
         """Set last action message with timestamp (like old vbc.py)."""
@@ -311,7 +406,6 @@ class UIState:
         """
         with self._lock:
             entries: List[Tuple[str, str, Optional[int], Optional[int], Optional[str]]] = []
-            from vbc_legacy.config.input_dirs import STATUS_OK, STATUS_MISSING
             stats_by_path = {entry: (fs, count, size) for fs, entry, count, size in self.io_input_dir_stats}
             enabled_by_path = {path: enabled for path, enabled in self.dirs_config_entries}
             effective_order = self._dirs_effective_order_unlocked()
@@ -325,14 +419,9 @@ class UIState:
                         fs, count, size = fs_entry
                         fs_status = "ok" if fs == STATUS_OK else ("missing" if fs == STATUS_MISSING else "no_access")
                     else:
-                        import os as _os
-                        p = Path(path)
-                        if not p.exists():
-                            fs_status = "missing"
-                        elif not _os.access(p, _os.R_OK | _os.X_OK):
-                            fs_status = "no_access"
-                        else:
-                            fs_status = "ok"
+                        # Server paths: existence comes from /dirs, never the client's filesystem.
+                        exists, readable = self.dirs_status.get(path, (True, True))
+                        fs_status = "missing" if not exists else ("no_access" if not readable else "ok")
                         count, size = None, None
 
                     if path in self.dirs_pending_remove:
@@ -402,78 +491,6 @@ class UIState:
             self.overlay_dim_level = self.OVERLAY_DIM_LEVELS[next_idx]
 
     @staticmethod
-    def _normalize_error_message(error_message: str) -> str:
-        return (error_message or "Unknown error").strip() or "Unknown error"
-
-    def _append_session_error_entry(
-        self,
-        *,
-        path: Path,
-        size_bytes: Optional[int],
-        width: Optional[int],
-        height: Optional[int],
-        fps: Optional[float],
-        codec: Optional[str],
-        audio_codec: Optional[str],
-        duration_seconds: Optional[float],
-        error_message: str,
-    ) -> None:
-        normalized_error = self._normalize_error_message(error_message)
-
-        self.session_error_logs.insert(
-            0,
-            SessionErrorEntry(
-                path=path,
-                size_bytes=size_bytes,
-                width=width,
-                height=height,
-                fps=fps,
-                codec=codec,
-                audio_codec=audio_codec,
-                duration_seconds=duration_seconds,
-                error_message=normalized_error,
-                created_at=datetime.now(),
-            ),
-        )
-        # Keep first page focused on newest entries.
-        self.logs_page_index = 0
-
-    def add_session_error(self, job: CompressionJob, error_message: str) -> None:
-        """Store failed job snapshot for current-session Logs tab."""
-        with self._lock:
-            metadata = job.source_file.metadata
-            self._append_session_error_entry(
-                path=job.source_file.path,
-                size_bytes=job.source_file.size_bytes if job.source_file else None,
-                width=metadata.width if metadata else None,
-                height=metadata.height if metadata else None,
-                fps=metadata.fps if metadata else None,
-                codec=metadata.codec if metadata else None,
-                audio_codec=metadata.audio_codec if metadata else None,
-                duration_seconds=metadata.duration if metadata else None,
-                error_message=error_message or (job.error_message or "Unknown error"),
-            )
-
-    def add_discovery_error(self, path: Path, size_bytes: Optional[int], error_message: str) -> None:
-        """Store discovery-time `.err` marker entry for current-session Logs tab."""
-        with self._lock:
-            normalized_error = self._normalize_error_message(error_message)
-            key = (path, normalized_error)
-            if key in self._discovery_error_keys:
-                return
-            self._discovery_error_keys.add(key)
-            self._append_session_error_entry(
-                path=path,
-                size_bytes=size_bytes,
-                width=None,
-                height=None,
-                fps=None,
-                codec=None,
-                audio_codec=None,
-                duration_seconds=None,
-                error_message=normalized_error,
-            )
-
     def logs_total_pages(self) -> int:
         with self._lock:
             if not self.session_error_logs:
@@ -502,3 +519,11 @@ class UIState:
             end = start + page_size
             entries = list(self.session_error_logs[start:end])
             return entries, page_index, total_pages, total_entries
+
+
+def _icon(ok: Optional[bool]) -> str:
+    """Status icon markup as the legacy IO tab renders it."""
+    return "[green]✓ [/]" if ok else "[red]⚡[/]"
+
+
+UIState = ClientState  # name used by the copied renderers

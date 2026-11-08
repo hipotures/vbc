@@ -1181,7 +1181,9 @@ The headless server already runs: `vbc serve --config conf/vbc.yaml`
 by one-shot commands: `vbc status [--watch]`, `vbc threads N`, `vbc refresh`,
 `vbc shutdown [--interrupt|--cancel]`, `vbc dirs [add|remove|enable|disable|set]`,
 `vbc errors`, `vbc logs [--follow]`, `vbc config`, `vbc log-level LEVEL`
-(`--api URL` or `VBC_API`, `--json`).
+(`--api URL` or `VBC_API`, `--json`), and by the terminal UI `vbc tui`
+(same dashboard as `vbc run`; Ctrl+C detaches, the server keeps running).
+See [docs/user-guide/server.md](docs/user-guide/server.md).
 
 ### Running Tests
 

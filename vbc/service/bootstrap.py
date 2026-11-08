@@ -14,6 +14,7 @@ import logging
 import os
 import sys
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional
@@ -131,6 +132,7 @@ class VbcServer:
         port: Optional[int] = None,
     ) -> None:
         self.config_path = config_path
+        self.started_at = time.time()
         self.demo = demo
         self.demo_config_path = demo_config_path
         config = load_config(config_path)
@@ -405,7 +407,27 @@ class VbcServer:
             "server": dump["server"],
             "storage": dump["storage"],
             "gpu_monitor": {"enabled": self.gpu_enabled, **dump["gpu_config"]},
-            "demo": {"enabled": self.demo},
+            "demo": self._demo_section(),
+            "session": {"started_at": int(self.started_at * 1000), "config_path": str(self.config_path)},
+        }
+
+    def _demo_section(self) -> Dict[str, object]:
+        if not self.demo:
+            return {"enabled": False}
+        demo_config = getattr(self.orchestrator, "demo_config", None)
+        if demo_config is None:
+            return {"enabled": True}
+        return {
+            "enabled": True,
+            "files": demo_config.files.count,
+            "errors": demo_config.errors.total,
+            "kept_original": demo_config.kept_original.count,
+            "size_min_mb": demo_config.sizes.min_mb,
+            "size_max_mb": demo_config.sizes.max_mb,
+            "size_distribution": demo_config.sizes.distribution,
+            "throughput_mb_s": demo_config.processing.throughput_mb_s,
+            "jitter_pct": demo_config.processing.jitter_pct,
+            "extensions": [e.ext for e in demo_config.files.extensions],
         }
 
     def io_dirs(self, pending: list) -> List[dict]:

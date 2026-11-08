@@ -3,8 +3,8 @@
 Commands (docs/architecture/service-split.md): ``serve`` (headless server),
 ``run`` (legacy in-process TUI, today's ``vbc <dirs>``; arguments pass through
 unchanged) and the one-shot API commands ``status``, ``threads``, ``refresh``,
-``shutdown``, ``dirs``, ``errors``, ``logs``, ``config``, ``log-level``.
-Planned: ``tui``.
+``shutdown``, ``dirs``, ``errors``, ``logs``, ``config``, ``log-level``, and
+``tui`` (the Rich dashboard as an API client).
 
 Client commands take ``--api URL`` (default ``$VBC_API`` or
 http://127.0.0.1:8770) and ``--json``. Exit status: 0 ok, 1 rejected by the
@@ -76,6 +76,17 @@ def serve(
 
 API_OPTION = typer.Option(None, "--api", help="Server URL (default $VBC_API or http://127.0.0.1:8770)")
 JSON_OPTION = typer.Option(False, "--json", help="Print the API response as JSON")
+
+
+@app.command()
+def tui(
+    api: Optional[str] = API_OPTION,
+    log_file: Optional[Path] = typer.Option(None, "--log-file", help="Write client logs to this file"),
+) -> None:
+    """Live dashboard of a running server (keys as in `vbc run`; Ctrl+C detaches, S stops the server)."""
+    from vbc.clients.tui.app import run_tui
+
+    raise typer.Exit(code=run_tui(api, str(log_file) if log_file else None))
 
 
 @app.command()

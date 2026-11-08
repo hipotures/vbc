@@ -52,6 +52,19 @@ class ProgressAnchor(_Dto):
     rate: float = Field(description="percent per second")
 
 
+class MediaInfo(_Dto):
+    """Source stream facts the server already knows (for display only)."""
+
+    width: Optional[int] = None
+    height: Optional[int] = None
+    fps: Optional[float] = None
+    duration_s: Optional[float] = None
+    codec: Optional[str] = None
+    audio_codec: Optional[str] = None
+    camera_model: Optional[str] = None
+    custom_cq: Optional[int] = None
+
+
 class ActiveJob(_Dto):
     id: str
     name: str
@@ -60,7 +73,11 @@ class ActiveJob(_Dto):
     started_at: int
     input_bytes: int
     quality: Optional[str] = None
+    quality_value: Optional[int] = None
+    rotation_angle: Optional[int] = None
+    config_source: Optional[str] = None
     part_count: int = 1
+    media: Optional[MediaInfo] = None
     progress: Optional[ProgressAnchor] = None
 
 
@@ -74,6 +91,11 @@ class RecentJob(_Dto):
     output_bytes: Optional[int] = None
     duration_s: Optional[float] = None
     error_message: Optional[str] = None
+    quality: Optional[str] = None
+    quality_value: Optional[int] = None
+    rotation_angle: Optional[int] = None
+    config_source: Optional[str] = None
+    media: Optional[MediaInfo] = None
 
 
 class Counters(_Dto):

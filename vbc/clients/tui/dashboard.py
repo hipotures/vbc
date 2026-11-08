@@ -20,16 +20,16 @@ from rich.text import Text
 from rich.rule import Rule
 from rich.box import ROUNDED, SIMPLE
 from rich.style import Style
-from vbc_legacy.ui.state import UIState
-from vbc_legacy.domain.models import JobStatus
-from vbc_legacy.ui.gpu_sparkline import (
+from vbc.clients.tui.state import UIState
+from vbc.clients.tui.views import JobStatus
+from vbc.clients.tui.gpu_sparkline import (
     PALETTE_GLYPH,
     get_gpu_sparkline_config,
     get_gpu_sparkline_palette,
     render_sparkline,
 )
-from vbc_legacy.ui.display_text import safe_markup, single_line, truncate_cells
-from vbc_legacy.ui.modern_overlays import (
+from vbc.clients.tui.display_text import safe_markup, single_line, truncate_cells
+from vbc.clients.tui.modern_overlays import (
     render_settings_content,
     render_reference_content,
     render_shortcuts_content,
@@ -728,7 +728,12 @@ class Dashboard:
         with self.state._lock:
             # L1: Status + Threads
             indicator = "[green]●[/]"
-            if self.state.error_paused:
+            if not self.state.connected:
+                status = "[bright_red]DISCONNECTED[/]"
+                if self.state.connection_error:
+                    status += f": [red]{safe_markup(truncate_cells(self.state.connection_error, 40))}[/]"
+                indicator = "[red]○[/]"
+            elif self.state.error_paused:
                 status = "[bright_red]ERROR[/]"
                 if self.state.error_message:
                     error_summary = truncate_cells(self.state.error_message, 40)
@@ -758,51 +763,14 @@ class Dashboard:
             eta_str = "--:--"
             throughput_str = "0.0 MB/s"
             
-            if self.state.processing_start_time and (self.state.completed_count > 0 or self.state.failed_count > 0):
-                now = datetime.now()
-                elapsed = (now - self.state.processing_start_time).total_seconds()
-                
-                # --- Sliding Window Stats (Last 30s) ---
-                window_sec = 30.0
-                cutoff = now.timestamp() - window_sec
-                bytes_window = 0
-                files_window = 0
-                
-                # Calculate window stats from history
-                for ts, size in reversed(self.state.throughput_history):
-                    if ts.timestamp() < cutoff:
-                        break
-                    bytes_window += size
-                    files_window += 1
-                
-                time_window = min(elapsed, window_sec)
-                
-                # --- Throughput (MB/s) ---
-                # Prefer window stats, fallback to global if window is empty but session active
-                if time_window > 0.1 and bytes_window > 0:
-                    tp = bytes_window / time_window
-                elif elapsed > 0:
-                    tp = self.state.total_input_bytes / elapsed
-                else:
-                    tp = 0
-                throughput_str = f"{tp / 1024 / 1024:.1f} MB/s"
+            # Throughput and ETA come from the server's anchors (same formulas as
+            # the legacy local computation, done once on the server).
+            if self.state.throughput_bps is not None:
+                throughput_str = f"{self.state.throughput_bps / 1024 / 1024:.1f} MB/s"
+            if self.state.eta_at is not None:
+                remaining = (self.state.eta_at - datetime.now()).total_seconds()
+                eta_str = self.format_global_eta(max(0.0, remaining))
 
-                # --- ETA Calculation ---
-                total = self.state.files_to_process
-                done_since = (self.state.completed_count - self.state.completed_count_at_last_discovery) + \
-                             (self.state.failed_count - self.state.failed_count_at_last_discovery)
-                rem = total - done_since
-                
-                if rem > 0:
-                    avg_sec_per_file = 0
-                    if files_window > 0 and time_window > 0:
-                         avg_sec_per_file = time_window / files_window
-                    elif (self.state.completed_count + self.state.failed_count) > 0 and elapsed > 0:
-                         avg_sec_per_file = elapsed / (self.state.completed_count + self.state.failed_count)
-                    
-                    if avg_sec_per_file > 0:
-                        eta_str = self.format_global_eta(avg_sec_per_file * rem)
-            
             saved = self.format_size(self.state.space_saved_bytes)
             ratio = self.state.compression_ratio
 
@@ -826,7 +794,7 @@ class Dashboard:
             if self.state.repair_active:
                 l3 = "[dim]Repairing failed files from this session[/]"
             elif self.state.waiting_for_input or self.state.error_paused:
-                l3 = "[dim]R = restart scan  │  S / Ctrl+C = exit[/]"
+                l3 = "[dim]R = rescan  │  S = stop server  │  Ctrl+C = detach[/]"
             else:
                 l3 = "[dim]Press M for menu[/]"
             left_content = f"{l1}\n{l2}\n{l3}"
@@ -967,9 +935,8 @@ class Dashboard:
             total_size_bytes = 0
             processed_size_bytes = 0
 
-            # Pending files
-            for file in self.state.pending_files:
-                total_size_bytes += file.size_bytes
+            # Pending files (total from the server; the client holds only the first page)
+            total_size_bytes += self.state.queue_bytes
 
             # Active jobs
             for job in self.state.active_jobs:

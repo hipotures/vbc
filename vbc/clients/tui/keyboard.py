@@ -6,8 +6,8 @@ import termios
 import tty
 import select
 from typing import Optional, TYPE_CHECKING
-from vbc_legacy.infrastructure.event_bus import EventBus
-from vbc_legacy.domain.events import (
+from vbc.clients.tui.bus import EventBus
+from vbc.clients.tui.events import (
     ActionMessage,
     Event,
     InterruptRequested,
@@ -26,7 +26,7 @@ from vbc_legacy.domain.events import (
 )
 
 if TYPE_CHECKING:
-    from vbc_legacy.ui.state import UIState
+    from vbc.clients.tui.state import UIState
 
 # Deprecated overlay events (kept for compatibility)
 class ToggleConfig(Event):

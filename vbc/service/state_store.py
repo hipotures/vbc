@@ -121,6 +121,28 @@ class _State:
     last_action: Optional[Tuple[str, float]] = None
 
 
+def _media(job: CompressionJob) -> Optional[dto.MediaInfo]:
+    meta = job.source_file.metadata
+    if meta is None:
+        return None
+    return dto.MediaInfo(
+        width=meta.width, height=meta.height, fps=meta.fps, duration_s=meta.duration,
+        codec=meta.codec, audio_codec=meta.audio_codec, camera_model=meta.camera_model,
+        custom_cq=meta.custom_cq,
+    )
+
+
+def _display_fields(job: CompressionJob) -> dict:
+    source = job.config_source
+    return {
+        "quality": job.quality_display,
+        "quality_value": job.quality_value,
+        "rotation_angle": job.rotation_angle,
+        "config_source": source.value if hasattr(source, "value") else source,
+        "media": _media(job),
+    }
+
+
 def to_ms(seconds: Optional[float]) -> Optional[int]:
     """Epoch seconds -> epoch milliseconds (API time unit)."""
     return None if seconds is None else int(round(seconds * 1000))
@@ -337,6 +359,7 @@ class StateStore:
             output_bytes=output_bytes,
             duration_s=duration,
             error_message=error,
+            **_display_fields(job),
         )
 
     def _on_job_completed(self, event: JobCompleted) -> None:
@@ -690,8 +713,8 @@ class StateStore:
                     status=job.status.value if hasattr(job.status, "value") else str(job.status),
                     started_at=to_ms(a.started_at),
                     input_bytes=job.source_file.size_bytes,
-                    quality=job.quality_display,
                     part_count=job.source_file.part_count,
+                    **_display_fields(job),
                     progress=None if a.anchor is None else dto.ProgressAnchor(
                         percent=a.anchor.percent, at=to_ms(a.anchor.at), rate=a.anchor.rate,
                     ),

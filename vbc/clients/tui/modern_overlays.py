@@ -24,8 +24,8 @@ from rich.table import Table
 from rich.text import Text
 from rich.rule import Rule
 from rich.box import ROUNDED
-from vbc_legacy.ui.display_text import safe_markup, single_line
-from vbc_legacy.ui.gpu_sparkline import (
+from vbc.clients.tui.display_text import safe_markup, single_line
+from vbc.clients.tui.gpu_sparkline import (
     DEFAULT_GPU_SPARKLINE_PALETTE,
     DEFAULT_GPU_SPARKLINE_PRESET,
     build_cycle_text,

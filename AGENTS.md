@@ -86,6 +86,7 @@ vbc/                     # new tree (being built)
 ├── contracts/           # API DTOs (the only module clients may share)
 ├── service/             # state_store, commands, bootstrap, api, log_buffer
 ├── clients/             # api_client (httpx), commands (one-shot CLI), format
+│   └── tui/             # `vbc tui`: copied Rich renderers + ClientState, controller, poller
 └── domain/ config/ infrastructure/ pipeline/ utils/   # core copied from legacy
 vbc_legacy/              # frozen, today's application
 ├── main.py              # legacy Typer command (`vbc run`)

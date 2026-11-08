@@ -34,6 +34,17 @@
       "ActiveJob": {
         "additionalProperties": false,
         "properties": {
+          "config_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Source"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -41,6 +52,16 @@
           "input_bytes": {
             "title": "Input Bytes",
             "type": "integer"
+          },
+          "media": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MediaInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "name": {
             "title": "Name",
@@ -75,6 +96,28 @@
               }
             ],
             "title": "Quality"
+          },
+          "quality_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Value"
+          },
+          "rotation_angle": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotation Angle"
           },
           "started_at": {
             "title": "Started At",
@@ -943,6 +986,102 @@
         "title": "LogsPage",
         "type": "object"
       },
+      "MediaInfo": {
+        "additionalProperties": false,
+        "description": "Source stream facts the server already knows (for display only).",
+        "properties": {
+          "audio_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Codec"
+          },
+          "camera_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Model"
+          },
+          "codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codec"
+          },
+          "custom_cq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Cq"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "fps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "title": "MediaInfo",
+        "type": "object"
+      },
       "Problem": {
         "additionalProperties": false,
         "description": "Error body for 4xx responses (field errors for 422).",
@@ -1115,6 +1254,17 @@
       "RecentJob": {
         "additionalProperties": false,
         "properties": {
+          "config_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Source"
+          },
           "duration_s": {
             "anyOf": [
               {
@@ -1149,6 +1299,16 @@
             "title": "Input Bytes",
             "type": "integer"
           },
+          "media": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MediaInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1167,6 +1327,39 @@
           "path": {
             "title": "Path",
             "type": "string"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "quality_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Value"
+          },
+          "rotation_angle": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotation Angle"
           },
           "status": {
             "title": "Status",

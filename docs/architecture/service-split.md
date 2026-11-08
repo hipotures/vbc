@@ -598,7 +598,32 @@ allowed to fail and be repeated:
 
 ## Migration steps
 
-Progress: baseline tag `service-split-baseline`; **steps 1–6 done**.
+Progress: baseline tag `service-split-baseline`; **steps 1–7 done — phase 1
+complete** (server, one-shot commands, TUI client; next: step 8 HomeStack
+packaging).
+Step 7 notes: `vbc/clients/tui/` = the legacy renderers copied verbatim
+(`dashboard`, `modern_overlays`, `gpu_sparkline`, `display_text`,
+`keyboard`; commit c89b81b) plus `state.py` (`ClientState`: legacy `UIState`
+surface, business fields filled by `apply_*` from the API, active-job
+progress extrapolated from anchors on every read, Dirs existence from the
+server's flags instead of the client's filesystem), `controller.py` (legacy
+`UIManager` view handlers unchanged; keys `<`/`>` → `PUT /threads` absolute,
+`R` → refresh, `S` → shutdown or cancel, Ctrl+C → detach, Dirs apply →
+`PUT /dirs` with `If-Match`, 412/422 shown inline; API calls on a worker
+thread), `poller.py` (long-poll `/state`, refetch `/queue` page, `/errors`
+since last id, `/dirs`+`/io` on `dirs_rev`, `/config` on `config_rev`, `/gpu`
+every 5 s, DISCONNECTED + automatic resync), `configview.py` (Settings lines
+from `/config`, formerly built in legacy `main.py`), `views.py` (DTO-backed
+job/file/error views with the shape the renderers expect, `JobStatus`
+mirror). Dashboard changes: throughput/ETA and queue total from the server,
+DISCONNECTED status, hint line "R = rescan │ S = stop server │ Ctrl+C =
+detach". DTOs gained `MediaInfo`, `quality_value`, `rotation_angle`,
+`config_source` (active and recent jobs). Parity check in a pty: legacy
+`vbc run --demo` and `serve --demo` + `vbc tui` with the same keys render the
+same panels and tabs (only the exit code differs: legacy Ctrl+C interrupts,
+the client detaches). Not carried over: the legacy demo's mock IO folders
+(the demo server shows its real `input_dirs`) and the "No files to process"
+info box at the end of a legacy run.
 Step 6 notes: `vbc/clients/api_client.py` (httpx, typed DTOs from
 `vbc.contracts`, `ApiUnavailable` / `ApiError` with the server's `Problem`,
 clock offset from `server_time`, `extrapolated_percent`), `vbc/clients/
