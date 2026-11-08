@@ -55,11 +55,14 @@ Layer leaks that block the split:
 |---|---|---|
 | Business read model lives in the UI layer | `ui/state.py` (`UIState`) mixes counters/jobs/queue with overlay tabs, cursors, palettes | The server has nothing to serve without importing `vbc.ui` |
 | UI layer performs a business side effect | `ui/manager.py` `on_dirs_apply_changes` calls `save_dirs_config()` and publishes `InputDirsChanged` | Config persistence must belong to the server |
-| Infrastructure depends on UI | `infrastructure/web_server.py:29`, `infrastructure/gpu_monitor.py:10` import `UIState` | Inverted dependency |
-| Presentation in pipeline | `pipeline/repair.py`, `pipeline/error_file_mover.py` use `rich.console` / `rich.progress` | Headless server must not print Rich output |
+| Infrastructure depends on UI | `infrastructure/gpu_monitor.py` imports `UIState` at runtime and **writes** `gpu_data` / `gpu_history_*` into it under `UIState._lock`; `infrastructure/web_server.py` imports it only under `TYPE_CHECKING` but reads the instance injected by `main.py` | Inverted dependency; the GPU producer has no home outside the UI |
+| Presentation outside `ui/` | `pipeline/repair.py`, `pipeline/error_file_mover.py` (`rich.console` / `rich.progress`); also `config/input_dirs.py` (`rich.markup.escape`) and `utils/fix_vbc_tags.py` (`rich.progress`, CLI utility) | Headless server must not print Rich output or emit Rich markup |
 | TUI-only events in the domain | `domain/events.py` `Dirs*` (overlay/sparkline events already live in `ui/keyboard.py`) | Keystroke-level events are not domain events |
-| Composition root is one function | `main.py:424-830` always builds Dashboard, Keyboard, UIManager, web server | No headless entry point |
-| Deltas, not values, for threads | `ThreadControlEvent(change=±1)` | Two clients pressing `>` race; network commands must be absolute and idempotent |
+| Composition root is one function | `main.py` `compress()` (the single Typer command) always builds Dashboard, Keyboard, UIManager, GpuMonitor, web server | No headless entry point |
+| Deltas, not values, for threads | `ThreadControlEvent(change=±1)`, clamped to a hard-coded `1..8` in `Orchestrator._on_thread_control` | Two clients pressing `>` race; network commands must be absolute and idempotent, and clients need the limits |
+| Toggle, not value, for shutdown | `RequestShutdown`: the first one requests a graceful shutdown, the second one **cancels** it (`Orchestrator._on_shutdown_request`) | A retried or duplicated `POST /shutdown` silently cancels the shutdown |
+| No job identity | `VideoFile` / `CompressionJob` have no id; jobs are identified by path | `/state`, `/errors` and `/logs` need a stable `job_id` |
+| View code reads business state | `KeyboardListener` reads `UIState` to route keys while the Dirs tab is active | After the split it must read view state, not `StateStore` |
 
 ## Responsibility split
 
@@ -72,7 +75,7 @@ New package `vbc/service/`:
 
 | Module | Responsibility |
 |---|---|
-| `service/state_store.py` | Subscribes to domain events, maintains the read model (the business half of today's `UIState` + `UIManager` handlers), bumps `rev`, computes rates/ETA anchors (see below). Bus callbacks only mutate memory under a lock and notify; no I/O. |
+| `service/state_store.py` | Subscribes to domain events, maintains the read model (the business half of today's `UIState` + `UIManager` handlers), bumps `rev`, computes rates/ETA anchors (see below). Events arrive synchronously from orchestrator worker threads and from every parsed FFmpeg progress line, so bus callbacks only mutate memory under one lock and notify; no I/O, and never `publish()` while holding the lock. Also holds the latest GPU sample written by `GpuMonitor`. |
 | `service/commands.py` | `CommandService`: validates client commands, persists config (`save_dirs_config` moves here), publishes domain events. |
 | `service/api.py` | HTTP app (FastAPI + uvicorn — **decided**; same stack as mypowers, OpenAPI for free). Thin: translate HTTP ↔ StateStore/CommandService. |
 | `service/bootstrap.py` | Headless composition root extracted from `main.py`: config, bus, adapters, orchestrator, StateStore, CommandService. Reused by local mode and `serve`. |
@@ -157,7 +160,9 @@ Recommended approach, in order:
    parent). Manifests, suffix outputs and existing configs keep working
    unchanged. Alternatively use explicit `output_dirs`/`errors_dirs` inside the
    mounted tree instead of suffix mode.
-2. **Declared storage roots (server config + API).** New config section, e.g.:
+2. **Declared storage roots (server config + API).** Optional on loopback,
+   mandatory when the API is bound to any other address (see Security). New
+   config section, e.g.:
 
    ```yaml
    storage:
@@ -229,7 +234,8 @@ Read:
 
 | Endpoint | Content |
 |---|---|
-| `GET /api/v1/state?since=<rev>&wait=<s>` | Main snapshot (run status, counters, bytes, throughput anchors, active jobs with progress anchors, last N recent jobs, queue count). Long-poll: returns immediately if `rev > since`, otherwise holds up to `wait` (≤30 s) and returns `304`. `ETag: rev` for plain polling. |
+| `GET /api/v1/state?since=<rev>&wait=<s>` | Main snapshot (run status, counters, bytes, throughput anchors, active jobs with progress anchors, last N recent jobs, queue count, `shutdown_requested`, `config_rev`, `errors_last_id`). Long-poll: returns immediately if `rev > since`, otherwise holds up to `wait` (≤30 s) and returns `204 No Content` on timeout (the client simply polls again). Plain polling uses `ETag: "<rev>"` and returns `304` only for a request carrying `If-None-Match`. |
+| `GET /api/v1/gpu` | Latest GPU sample (`gpu_data` today) or `null` when monitoring is disabled. History and anchors are deferred (see Open decisions). |
 | `GET /api/v1/queue?offset&limit` | Pending files (can be 10k+, never inside the snapshot). |
 | `GET /api/v1/jobs/recent?limit` | Longer activity history (bounded ring, e.g. 500). |
 | `GET /api/v1/errors?since&limit` | Session error log entries (see Logs). |
@@ -243,14 +249,24 @@ Commands (absolute and idempotent where possible):
 
 | Endpoint | Maps to |
 |---|---|
-| `PUT /api/v1/threads {"target": n}` | New `SetThreadCount` event (orchestrator clamps; replaces client-side ±1) |
-| `POST /api/v1/refresh` | `RefreshRequested` (also "R" in waiting/paused state) |
-| `POST /api/v1/shutdown {"mode": "graceful"\|"interrupt"}` | `RequestShutdown` / `InterruptRequested` |
+| `PUT /api/v1/threads {"target": n}` | New `SetThreadCount` event (replaces client-side ±1). The orchestrator clamps and the response returns the **effective** value; `threads_min`/`threads_max` are exposed in `/config` (today `1..8` hard-coded, to be moved to config). |
+| `POST /api/v1/refresh` | `RefreshRequested`. This is also the **only** way to resume after `paused_on_error` or `waiting_for_input`: it always triggers a full rediscovery; there is no "continue without rescan". |
+| `POST /api/v1/shutdown {"mode": "graceful"\|"interrupt"}` | New absolute `SetShutdownRequested(true)` / `InterruptRequested`. Repeating it is a no-op. |
+| `DELETE /api/v1/shutdown` | `SetShutdownRequested(false)`: cancels a pending graceful shutdown (what today's second "S" does). `RequestShutdown` stays as the TUI toggle, translated to the absolute event. |
 | `PUT /api/v1/runtime/log-level {"level": …}` | Adjust root logger level at runtime |
 | `PUT /api/v1/dirs` + `If-Match: <dirs_rev>` | Validate → `save_dirs_config` → `InputDirsChanged` + `RefreshRequested`; `412` on stale rev |
 
+Run status in `/state` is one field with a reason, so clients know which
+actions to offer: `discovering`, `running`, `paused_on_error`,
+`waiting_for_input` (`wait_on_finish`), `verification_abort`,
+`shutting_down`, `interrupted`, `idle` (see Process model).
+
 Security: bind `127.0.0.1` by default; bearer token from a 0600 file,
-constant-time compare; Host/Origin allowlist (same model as mypowers).
+constant-time compare; Host/Origin allowlist (same model as mypowers). When
+bound to anything other than loopback, `storage.roots` (see Paths) is
+**mandatory** and the server refuses to start without it, because otherwise
+`PUT /dirs` lets any token holder point the server at any directory it can
+write to.
 
 ## Changing counters without streaming every tick
 
@@ -328,13 +344,28 @@ mechanism without changing the read model.
 | `vbc-web --api http://host:port --token-file …` | Web client only. |
 | `vbc <dirs>` (today) | Kept during migration: same `bootstrap` + current TUI subscribed in-process. Converting the TUI into an API client is out of scope. |
 
+`vbc serve` lifecycle:
+
+* **The process outlives the queue.** When processing finishes, the server
+  goes to `idle` (keeping state, errors and logs readable) instead of exiting
+  as the CLI does today; `POST /refresh` starts a new pass, `input_dirs.watch`
+  starts one automatically. The process ends only on `POST /shutdown` or a
+  signal.
+* **Threads and signals.** uvicorn owns the main thread and its event loop;
+  `bootstrap` returns an object with `start()` / `stop()` that runs the
+  orchestrator in its own thread. uvicorn installs its own SIGINT/SIGTERM
+  handlers, so the server hooks its shutdown: SIGTERM → `SetShutdownRequested`
+  (graceful), a second SIGINT → `InterruptRequested`; uvicorn stops after the
+  orchestrator thread has joined. `POST /shutdown` goes through the same path.
+
 ## Migration steps
 
 Every step leaves the test suite green and `vbc <dirs>` working.
 
 1. **Characterisation tests.** Drive a scripted event sequence (or
    `DemoOrchestrator`) and assert the resulting `UIState` business fields. This
-   is the parity oracle for steps 2–3.
+   is the parity oracle for steps 2–3 and must cover all `UIManager`
+   subscriptions (35 today), not only the counters.
 2. **Remove layer leaks.**
    * `pipeline/repair.py`, `pipeline/error_file_mover.py`: replace Rich output
      with events/logging (CLI utilities can render them).
@@ -344,11 +375,20 @@ Every step leaves the test suite green and `vbc <dirs>` working.
    * Move the `Dirs*` events from `domain/events.py` to `ui/` (next to the
      overlay events in `ui/keyboard.py`).
    * Add `SetThreadCount(target)`; keep `ThreadControlEvent` as a TUI-side
-     convenience translated to an absolute target.
+     convenience translated to an absolute target. Move the `1..8` limit to
+     config.
+   * Add `SetShutdownRequested(bool)`; keep `RequestShutdown` as the TUI
+     toggle translated to it.
+   * Introduce `job_id`: assigned when a job starts and carried by every
+     `Job*` event (and by session error entries).
+   * `config/input_dirs.py`: return plain text, let the UI escape markup.
 3. **Split `UIState`.** Introduce `service/state_store.py` with the business
    fields and the handlers moved from `UIManager`. Keep `ui/view_state.py` for
-   the view-only fields. Dashboard reads both. `infrastructure/web_server.py`
-   reads `StateStore` (temporary, deleted in step 6).
+   the view-only fields. Dashboard reads both; `KeyboardListener` reads only
+   view state. `GpuMonitor` writes its sample into `StateStore` (GPU history
+   for the TUI sparkline stays in view state for now).
+   `infrastructure/web_server.py` reads `StateStore` (temporary, deleted in
+   step 6).
 4. **Contracts + anchors.** `vbc/contracts/` DTOs, `rev`, rate EWMA,
    dead-reckoning thresholds, ETA anchor. Unit tests for the threshold logic
    (deterministic clock injected).
@@ -375,5 +415,8 @@ Every step leaves the test suite green and `vbc <dirs>` working.
   cannot extrapolate counters.
 * Whether `vbc <dirs>` should eventually always start a local server and attach
   the TUI over HTTP (single code path) or keep the in-process mode.
-* GPU metrics: same pattern (server-side producer → read model → anchors);
-  deferred.
+* GPU metrics beyond the latest sample: history and anchors (server-side
+  producer → read model → anchors) are deferred. The latest sample is
+  **not** deferred: v1 exposes it at `GET /api/v1/gpu`, because the web
+  dashboard shows it today and step 6 must reach parity before
+  `web_server.py` is deleted.
