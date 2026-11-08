@@ -609,7 +609,12 @@ manifest `.homestack/services/vbc/`, `scripts/tag-image.py`,
 passes. Published 2026-11-08: manifest on `main` (`.homestack/services/vbc/`,
 commit 7c220ba; HomeStack reads manifests only from the default branch),
 image `ghcr.io/hipotures/vbc:0.1.0` from tag `vbc-0.1.0` (abe408a), pullable
-anonymously; the image e2e passes on the published image. Open: GPU in the
+anonymously; the image e2e passes on the published image. Image **0.1.1**
+(tag `vbc-0.1.1`, 9dd0ddd): container port **8080** (HomeStack convention;
+`VBC_SERVER_PORT` overrides the port of an existing config, local `vbc serve`
+keeps 8770), on-volume storage roots created at start, `<hostname>.<domain>`
+accepted without configuration; manifest on `main` switched to 8080 only
+after 0.1.1 was published (dff76d8). Open: GPU in the
 LXC (devices + host driver libraries), real deployment test on Proxmox,
 HomeStack external mounts for media. While the migration stays on this
 branch, a manifest change must also be copied to `main`. Post-phase-1 fixes from the owner's first run: long-polls are
