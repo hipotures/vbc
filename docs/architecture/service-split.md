@@ -39,6 +39,16 @@ redesigned.
 * The in-process `EventBus` stays the backbone inside the server. It is **not**
   exported over the network; the network sees a versioned read model and a small
   command API.
+* **Control plane only, no data plane.** Clients only *steer* the server
+  (add/remove/reorder/enable input folders, threads, refresh, shutdown, log
+  level) and *read status*. Video files are never transferred: there is no
+  upload, download or streaming of media through the API, and clients need no
+  access to the files at all. The server reads inputs and writes outputs,
+  error files and markers only in its own filesystem; every path a client
+  sees or sends is a server path. What clients do see is metadata the server
+  derives (file names and paths, sizes, codec/resolution/duration, progress,
+  error messages). Moving media between client and server is out of scope for
+  this plan.
 
 ## Current state (findings)
 
@@ -248,7 +258,7 @@ Recommended approach, in order:
    * `PUT /api/v1/dirs` rejects (`422`) any path, and its derived output/error
      dir, that is not inside a declared root. Without this, any API client
      could make the server read and write anywhere it has permissions.
-   * `GET /api/v1/roots` and `GET /api/v1/fs?root=&path=` (directories only,
+   * `GET /api/v1/roots` and `GET /api/v1/fs?root=&path=` (directory names only, never file contents,
      no files, no symlinks escaping the root) let clients **pick** a directory
      on the server instead of typing a path that only makes sense on the
      client.
