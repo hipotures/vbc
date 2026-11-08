@@ -85,3 +85,29 @@ def test_commands_and_health(demo_config, serve_factory):
 
     serve.proc.send_signal(signal.SIGTERM)
     assert serve.proc.wait(timeout=60) == 0
+
+
+def test_shutdown_with_open_long_poll_is_clean(demo_config, serve_factory):
+    """A client waiting in a long-poll must not delay or break the shutdown."""
+    import threading
+    import time
+
+    serve = serve_factory(["--demo", "--config", str(demo_config)])
+    rev = serve.state()["rev"]
+    answers = []
+
+    def long_poll():
+        answers.append(serve.http.get("/api/v1/state", params={"since": 10**9, "wait": 30}).status_code)
+
+    waiter = threading.Thread(target=long_poll)
+    waiter.start()
+    time.sleep(1)
+    started = time.monotonic()
+    serve.proc.send_signal(signal.SIGINT)
+    assert serve.proc.wait(timeout=30) == 0
+    waiter.join(timeout=10)
+    assert time.monotonic() - started < 6, "shutdown waited for the long-poll"
+    assert answers == [204]
+    log = serve.log_path.read_text()
+    assert "Traceback" not in log and "timeout graceful shutdown exceeded" not in log
+    assert rev >= 1

@@ -194,10 +194,29 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
     interval = float(os.environ.get("HOMESTACK_HEARTBEAT_SECONDS") or 60)
     beat = Heartbeat(heartbeat_url or f"http://127.0.0.1:{server.config.server.port}/api/v1/state", interval)
     state_notifier: dict[str, _Notifier] = {}
+    closing = threading.Event()
+    loop_ref: dict[str, asyncio.AbstractEventLoop] = {}
+
+    def begin_close() -> None:
+        """Release every long-poll now (called from any thread when the server stops).
+
+        uvicorn waits for in-flight requests before it exits; a client parked in
+        a 30 s long-poll would otherwise hold the shutdown and be cancelled.
+        """
+        closing.set()
+        loop = loop_ref.get("loop")
+        if loop is None:
+            return
+        for notifier in list(state_notifier.values()):
+            try:
+                loop.call_soon_threadsafe(notifier.fire)
+            except RuntimeError:  # loop already closed
+                pass
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         loop = asyncio.get_running_loop()
+        loop_ref["loop"] = loop
         state_notifier["state"] = _Notifier()
         state_notifier["logs"] = _Notifier()
         store.add_listener(_threadsafe(loop, state_notifier["state"].fire))
@@ -215,6 +234,7 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
         lifespan=lifespan,
     )
     app.state.heartbeat = beat
+    app.state.begin_close = begin_close
 
     @app.middleware("http")
     async def host_origin_guard(request: Request, call_next):
@@ -243,9 +263,10 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
         if_none_match: Optional[str] = Header(None),
     ):
         if since is not None and wait > 0:
-            changed = await state_notifier["state"].wait_until(lambda: store.rev > since, wait)
-            if not changed:
-                return Response(status_code=204)
+            changed = await state_notifier["state"].wait_until(
+                lambda: store.rev > since or closing.is_set(), wait)
+            if not changed or closing.is_set():
+                return Response(status_code=204, headers={"Connection": "close"} if closing.is_set() else None)
         snapshot = store.snapshot()
         etag = f'"{snapshot.rev}"'
         if if_none_match is not None and if_none_match == etag:
@@ -275,7 +296,7 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
         wait: float = Query(0.0, ge=0.0, le=MAX_WAIT_S),
     ):
         if wait > 0:
-            await state_notifier["logs"].wait_until(lambda: logs.last_seq > since, wait)
+            await state_notifier["logs"].wait_until(lambda: logs.last_seq > since or closing.is_set(), wait)
         try:
             records = logs.read(since, limit, level)
         except LogBuffer.Gone as exc:
@@ -398,14 +419,16 @@ class _UvicornServer(uvicorn.Server):
     SIGINT: interrupt running jobs. The HTTP server exits only after the
     orchestrator thread ended, and signals are not re-raised (exit code 0)."""
 
-    def __init__(self, config: uvicorn.Config, vbc: VbcServer) -> None:
+    def __init__(self, config: uvicorn.Config, vbc: VbcServer, begin_close: Callable[[], None]) -> None:
         super().__init__(config)
         self._vbc = vbc
+        self._begin_close = begin_close
         self._signals = 0
 
     def handle_exit(self, sig: int, frame) -> None:  # noqa: ANN001 - signal handler signature
         self._signals += 1
         if not self._vbc.orchestrator_alive:
+            self._begin_close()
             self.should_exit = True
             if self._signals > 1:
                 self.force_exit = True
@@ -426,8 +449,13 @@ def run_server(vbc: VbcServer) -> int:
         app, host=host, port=port, log_config=None, access_log=False,
         timeout_graceful_shutdown=3, lifespan="on",
     )
-    server = _UvicornServer(config, vbc)
-    vbc.on_exit(lambda: setattr(server, "should_exit", True))
+    server = _UvicornServer(config, vbc, app.state.begin_close)
+
+    def stop_http() -> None:
+        app.state.begin_close()
+        server.should_exit = True
+
+    vbc.on_exit(stop_http)
     vbc.start()
     try:
         server.run()
