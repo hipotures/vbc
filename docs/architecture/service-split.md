@@ -518,6 +518,30 @@ known subcommand, `vbc` prints `use: vbc run <dirs>` and exits non-zero.
   (graceful), a second SIGINT → `InterruptRequested`; uvicorn stops after the
   orchestrator thread has joined. `POST /shutdown` goes through the same path.
 
+## Working rule: restart over workaround
+
+This document is the source of truth; the code follows it. Implementation is
+allowed to fail and be repeated:
+
+* **Baseline.** The commit that finishes this plan, before step 1, is tagged
+  (e.g. `service-split-baseline`). Every step is a small commit on top of it,
+  and legacy keeps `vbc run <dirs>` working throughout, so going back costs
+  only the discarded steps.
+* **When the plan turns out wrong**, i.e. implementation shows that an
+  architectural decision was wrong or missing (a contract, a layer
+  boundary, the data model, the process model, something several later
+  steps depend on): **stop, do not work around it.** Record what was learned
+  in this document, fix the decision, and implement again from the baseline
+  (or from the last step that is still valid).
+* **How to go back without rewriting history.** No force-push and no moving
+  of tags: the next attempt starts on a fresh branch from the baseline (or
+  from the last good step); the failed attempt stays as a reference branch
+  until it is no longer useful.
+* **What does not need a restart:** a local bug, a missed edge case or a
+  refactor inside one module; those are fixed in place.
+* Restarting is cheaper than carrying a wrong decision forward: forcing the
+  code down a path we do not want complicates every later step.
+
 ## Migration steps
 
 Every step leaves both test suites green (`tests/legacy/` and the new tests)
@@ -526,7 +550,15 @@ and `vbc run <dirs>` (legacy) working.
 1. **Move to legacy.** `git mv vbc vbc_legacy`, `git mv` today's tests to
    `tests/legacy/`, rewrite imports `vbc.` → `vbc_legacy.`; new
    `vbc/cli.py` with only `vbc run <dirs>` delegating to
-   `vbc_legacy.main`. Pure mechanical commit; the full
+   `vbc_legacy.main`. Also in this commit:
+   * `pyproject.toml`: `[tool.hatch.build.targets.wheel] packages` gets
+     `vbc_legacy` next to `vbc`, entry point `vbc = "vbc.cli:app"`;
+   * `scripts/*.py` that import `vbc` (5 today) switch to `vbc_legacy`;
+   * `docs/api/*.md` mkdocstrings references (`::: vbc.…`, 38 today) point at
+     `vbc_legacy` so `mkdocs build --strict` stays green; they move back to
+     `vbc` module by module as the new tree is written;
+   * `AGENTS.md` / `CLAUDE.md`: the legacy rules (frozen, no cross imports,
+     deleted at the end). Pure mechanical commit; the full
    legacy suite must pass unchanged.
 2. **Characterisation tests (on legacy).** A scripted event sequence and a
    `DemoOrchestrator` run, asserting the resulting legacy `UIState` business
