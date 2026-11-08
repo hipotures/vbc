@@ -246,9 +246,10 @@ Recommended approach, in order:
    parent). Manifests, suffix outputs and existing configs keep working
    unchanged. Alternatively use explicit `output_dirs`/`errors_dirs` inside the
    mounted tree instead of suffix mode.
-2. **Declared storage roots (server config + API).** Optional on loopback,
-   mandatory when the API is bound to any other address (see Security). New
-   config section, e.g.:
+2. **Storage roots (server config + API).** Optional on loopback; enforced
+   when the API is bound to any other address (see Security), where the
+   roots are the configured ones plus every media mount of the process
+   (image 0.1.2; see the step 8 progress note). Config section, e.g.:
 
    ```yaml
    storage:
@@ -614,7 +615,18 @@ anonymously; the image e2e passes on the published image. Image **0.1.1**
 `VBC_SERVER_PORT` overrides the port of an existing config, local `vbc serve`
 keeps 8770), on-volume storage roots created at start, `<hostname>.<domain>`
 accepted without configuration; manifest on `main` switched to 8080 only
-after 0.1.1 was published (dff76d8). Open: GPU in the
+after 0.1.1 was published (dff76d8). Image 0.1.2 (owner's first deployment,
+Proxmox LXC at `vbc.example.lan:8080`): nvtop, NVIDIA toolkit env, NVENC
+probe with CPU fallback; **storage roots = configured roots + every media
+mount** (`vbc/service/storage.py`, read on each use), so `VBC_STORAGE_ROOTS`
+is optional and no restart is needed; **mount scan** (at start, `R` in the
+Dirs tab, `vbc dirs scan`, `POST /api/v1/dirs/scan`) offers folders directly
+inside each mount that hold videos or manifests as *disabled* entries, each
+once (`storage.discovered`); a folder's `metadata`/`watch`/`watch_mode` are
+detected when the request leaves them out (manifests inside, NFS → polling)
+and a dirs change rebuilds the watchers and the orchestrator's entries
+without a restart. HomeStack itself was fixed to let new image ENV defaults
+replace unchanged old ones (port 8770 had survived the 0.1.1 update). Open: GPU in the
 LXC (devices + host driver libraries), real deployment test on Proxmox,
 HomeStack external mounts for media. While the migration stays on this
 branch, a manifest change must also be copied to `main`. Post-phase-1 fixes from the owner's first run: long-polls are
@@ -664,7 +676,7 @@ subcommand). Exit codes 0 / 1 rejected / 2 usage / 3 unreachable. A client
 config file is not needed yet: `--api` or `VBC_API`.
 Step 5 notes: `vbc serve` = `vbc/service/bootstrap.py` (`VbcServer`: config +
 env overrides `VBC_SERVER_HOST/PORT`, `VBC_ALLOWED_HOSTS`,
-`VBC_STORAGE_ROOTS`; refuses a non-loopback host without `storage.roots`;
+`VBC_STORAGE_ROOTS`; off loopback the roots are `storage.roots` plus every media mount (0.1.2);
 logs to stdout + `/logs` ring buffer + optional `--log-file`; orchestrator in
 its own thread with `wait_on_finish` forced on) and `vbc/service/api.py`
 (FastAPI app, uvicorn with VBC's own signal handling: first SIGTERM/SIGINT =
@@ -804,7 +816,7 @@ green and, once it exists, the e2e suite green.
   (`vbc tui`, the one-shot commands, `vbc-web`). No Rust rewrite; mypowers is referenced
   only for its API conventions, not its implementation stack.
 * Security (decided): plain HTTP, no token, no TLS; trusted network only,
-  Host/Origin allowlist, `storage.roots` mandatory off loopback.
+  Host/Origin allowlist, storage roots enforced off loopback (configured + media mounts).
 * Stop vs. shutdown (decided 2026-11-08): the API and `vbc stop` stop
   *processing* only; the server process (a HomeStack container running
   non-stop) ends only on a signal. The TUI has no stop/shutdown action at all:

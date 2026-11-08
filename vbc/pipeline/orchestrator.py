@@ -321,7 +321,11 @@ class Orchestrator:
             )
 
     def _on_input_dirs_changed(self, event) -> None:
-        """Update active input dirs for the next re-scan cycle."""
+        """Update active input dirs (and their manifest/watch flags, from
+        ``config.input_dirs``) for the next re-scan cycle."""
+        entries = {Path(e.path): e for e in self.config.input_dirs if e.enabled}
+        self._input_dir_entries = entries
+        self._metadata_input_entries = {path: e for path, e in entries.items() if e.metadata}
         self._pending_input_dirs = [Path(d) for d in event.active_dirs]
 
     def _on_refresh_request(self, event):

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from vbc import contracts as dto
 
 
 def size(value: Optional[float]) -> str:
@@ -37,3 +40,16 @@ def ago(seconds: float) -> str:
     if seconds < 3600:
         return f"{int(seconds // 60)}m ago"
     return f"{int(seconds // 3600)}h ago"
+
+
+def dir_kind(entry: "dto.DirStatus") -> str:
+    """Short label of an input folder's manifest/watch settings ('' for a plain folder)."""
+    parts = []
+    if entry.metadata:
+        parts.append("manifests")
+    if entry.watch:
+        mode = entry.watch_mode or "inotify"
+        if mode == "polling" and entry.poll_interval_seconds:
+            mode += f" {entry.poll_interval_seconds:g}s"
+        parts.append(f"watch ({mode})")
+    return " · ".join(parts)

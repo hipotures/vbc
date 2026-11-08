@@ -236,6 +236,14 @@ def dirs_disable(ctx: typer.Context, path: str) -> None:
     _dirs_change(ctx, commands.set_enabled(path, False))
 
 
+@dirs_app.command("scan")
+def dirs_scan(ctx: typer.Context) -> None:
+    """Add new media mounts of the server to the list, disabled (enable them after checking)."""
+    from vbc.clients import commands
+
+    commands.dirs_scan(ctx.obj["api"], ctx.obj["json"])
+
+
 @dirs_app.command("set")
 def dirs_set(ctx: typer.Context, paths: list[str] = typer.Argument(..., help="New ordered list, all enabled")) -> None:
     """Replace the whole list."""

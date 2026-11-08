@@ -78,3 +78,8 @@ class DirsCancelInput(Event):
 class DirsApplyChanges(Event):
     """Apply all pending Dirs changes, save to YAML, and trigger refresh."""
     pass
+
+
+class DirsScanMounts(Event):
+    """Dirs tab [R]: offer the server's new media mounts as disabled folders."""
+    pass

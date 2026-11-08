@@ -25,6 +25,13 @@ class EventBus:
                 self._subscribers[event_type] = []
             self._subscribers[event_type].append(callback)
 
+    def unsubscribe(self, event_type: Type[Event], callback: Callable[[Any], None]) -> None:
+        """Removes a callback added with ``subscribe`` (no-op when absent)."""
+        with self._lock:
+            callbacks = self._subscribers.get(event_type, [])
+            if callback in callbacks:
+                callbacks.remove(callback)
+
     def publish(self, event: Event):
         """Publishes an event to all interested subscribers."""
         event_type = type(event)

@@ -196,7 +196,8 @@ def render_dirs(state: dto.DirsState) -> str:
     for index, entry in enumerate(state.entries, start=1):
         flag = "on " if entry.enabled else "off"
         health = "" if entry.exists and entry.readable else ("  [missing]" if not entry.exists else "  [no access]")
-        lines.append(f"  {index:>2}. [{flag}] {entry.path}{health}")
+        kind = f"  {fmt.dir_kind(entry)}" if fmt.dir_kind(entry) else ""
+        lines.append(f"  {index:>2}. [{flag}] {entry.path}{kind}{health}")
     return "\n".join(lines)
 
 
@@ -204,6 +205,19 @@ def dirs_list(api: Optional[str], as_json: bool) -> None:
     def action(client: ApiClient) -> None:
         state = client.dirs()
         emit_json(state) if as_json else typer.echo(render_dirs(state))
+
+    run(api, action)
+
+
+def dirs_scan(api: Optional[str], as_json: bool) -> None:
+    def action(client: ApiClient) -> None:
+        state = client.scan_dirs()
+        if as_json:
+            emit_json(state)
+            return
+        added = ", ".join(state.added) if state.added else "none"
+        typer.echo(f"new mounts (added disabled): {added}")
+        typer.echo(render_dirs(state))
 
     run(api, action)
 

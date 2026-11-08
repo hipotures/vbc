@@ -1,6 +1,6 @@
 import yaml
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from .models import AppConfig, DemoConfig, MetadataConfig
 
 
@@ -54,7 +54,9 @@ def load_metadata_config(config_path: Path) -> MetadataConfig:
         data = yaml.safe_load(f) or {}
     return MetadataConfig.model_validate(data.get("metadata") or {})
 
-def save_dirs_config(config_path: Path, input_dirs: List[Dict[str, Any]]) -> None:
+def save_dirs_config(
+    config_path: Path, input_dirs: List[Dict[str, Any]], discovered: Optional[List[str]] = None,
+) -> None:
     """Update input_dirs field in the YAML config file.
 
     Reads the existing YAML, updates only the input_dirs field, and writes back.
@@ -84,6 +86,10 @@ def save_dirs_config(config_path: Path, input_dirs: List[Dict[str, Any]]) -> Non
     data['input_dirs'] = preserved_entries
     if 'disabled_input_dirs' in data:
         del data['disabled_input_dirs']
+    if discovered is not None:
+        storage = data.get('storage') if isinstance(data.get('storage'), dict) else {}
+        storage['discovered'] = list(discovered)
+        data['storage'] = storage
 
     with open(config_path, 'w') as f:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)

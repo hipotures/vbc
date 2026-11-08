@@ -3,10 +3,9 @@ service: vbc
 inputs:
   - id: storage_roots
     label: Storage roots
-    description: Comma-separated absolute paths inside the container under which input folders and their _out/_err siblings may live (e.g. the external media mounts). Required because the API listens on the LAN.
+    description: Usually empty. Every media mount of the container is already allowed; add comma-separated absolute container paths only for other places input folders and their _out/_err siblings may live.
     type: string
-    required: true
-    min_length: 2
+    required: false
     max_length: 2000
     regex: '^/[^,]*(,/[^,]*)*$'
     target:

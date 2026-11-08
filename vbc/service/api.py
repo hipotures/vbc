@@ -414,7 +414,7 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
             log_path=config.general.log_path,
             queue_sort=config.general.queue_sort,
             queue_seed=config.general.queue_seed,
-            storage_roots=list(config.storage.roots),
+            storage_roots=[str(root) for root in server.current_storage_roots()],
         )
 
     @app.get("/api/v1/dirs", response_model=dto.DirsState)
@@ -440,6 +440,12 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
             except ValueError:
                 return _problem(412, "If-Match must be a dirs_rev number", detail=if_match)
         state = await asyncio.to_thread(commands.put_dirs, body.entries, rev)
+        return JSONResponse(state.model_dump(mode="json"), headers={"ETag": f'"{state.dirs_rev}"'})
+
+    @app.post("/api/v1/dirs/scan", response_model=dto.DirsScanResult, responses={500: {"model": dto.Problem}})
+    async def scan_dirs():
+        """Offer new media mounts as disabled folders."""
+        state = await asyncio.to_thread(commands.scan_mounts)
         return JSONResponse(state.model_dump(mode="json"), headers={"ETag": f'"{state.dirs_rev}"'})
 
     @app.put("/api/v1/threads", response_model=dto.ThreadsResult)
@@ -492,7 +498,7 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
             present = shutil.which(tool) is not None
             ok &= present
             checks[f"{tool}:executable"] = [{"status": "pass" if present else "fail"}]
-        for root in server.config.storage.roots:
+        for root in server.current_storage_roots():
             usable = os.path.isdir(root) and os.access(root, os.W_OK | os.X_OK)
             ok &= usable
             checks[f"storage:{root}"] = [{"status": "pass" if usable else "fail"}]

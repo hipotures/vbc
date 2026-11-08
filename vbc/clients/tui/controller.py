@@ -18,7 +18,7 @@ from vbc.clients.tui.state import MAX_INPUT_DIR_LEN, ClientState
 from vbc.clients.tui.events import (
     ActionMessage, QuitRequested, RefreshRequested, ThreadControlEvent,
     DirsCursorMove, DirsSwapSelected, DirsToggleSelected, DirsEnterAddMode, DirsMarkDelete,
-    DirsInputChar, DirsConfirmAdd, DirsCancelInput, DirsApplyChanges,
+    DirsInputChar, DirsConfirmAdd, DirsCancelInput, DirsApplyChanges, DirsScanMounts,
 )
 from vbc.clients.tui.gpu_sparkline import (
     format_preset_label,
@@ -73,6 +73,7 @@ class TuiController:
         self.bus.subscribe(DirsConfirmAdd, self.on_dirs_confirm_add)
         self.bus.subscribe(DirsCancelInput, self.on_dirs_cancel_input)
         self.bus.subscribe(DirsApplyChanges, self.on_dirs_apply_changes)
+        self.bus.subscribe(DirsScanMounts, self.on_dirs_scan_mounts)
 
     # ── commands (API) ──────────────────────────────────────────────────────
 
@@ -366,6 +367,30 @@ class TuiController:
             self.state.dirs_input_mode = False
             self.state.dirs_input_buffer = ""
             self.state.dirs_error_msg = ""
+
+    def on_dirs_scan_mounts(self, event: DirsScanMounts):
+        """Ask the server for new media mounts; they arrive disabled."""
+        self.state.set_last_action("Scanning server mounts...")
+
+        def scan() -> None:
+            try:
+                result = self.client.scan_dirs()
+            except ApiError as exc:
+                with self.state._lock:
+                    self.state.dirs_error_msg = str(exc)
+                return
+            except ApiUnavailable as exc:
+                self.state.set_disconnected(exc.reason)
+                return
+            self.state.apply_dirs(result)
+            if result.added:
+                self.state.set_last_action(
+                    f"New mounts (disabled, Space to enable): {', '.join(result.added)}")
+            else:
+                self.state.set_last_action("No new mounts")
+            self.on_changed()
+
+        self._worker.submit(scan)
 
     def on_dirs_apply_changes(self, event: DirsApplyChanges):
         """Send the whole staged list to the server (PUT /dirs with If-Match)."""

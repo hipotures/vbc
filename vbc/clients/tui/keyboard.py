@@ -22,6 +22,7 @@ from vbc.clients.tui.events import (
     DirsConfirmAdd,
     DirsCancelInput,
     DirsApplyChanges,
+    DirsScanMounts,
 )
 
 if TYPE_CHECKING:
@@ -263,6 +264,10 @@ class KeyboardListener:
                             continue
                         elif key in ('A', 'a'):
                             self.event_bus.publish(DirsEnterAddMode())
+                            continue
+                        elif key in ('R', 'r'):
+                            # In dirs tab: R looks for new mounts, not for new files
+                            self.event_bus.publish(DirsScanMounts())
                             continue
                         elif key in ('\x7f', '\x08'):  # Backspace/DEL → mark delete
                             self.event_bus.publish(DirsMarkDelete())

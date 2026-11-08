@@ -458,6 +458,9 @@ class StorageConfig(BaseModel):
     """Directories the API may point the server at (input dirs and their _out/_err)."""
 
     roots: List[str] = Field(default_factory=list)
+    # Media mounts already offered in the Dirs list (`dirs scan`): a removed one
+    # is not offered again.
+    discovered: List[str] = Field(default_factory=list)
 
 
 class MetadataErrorPolicyConfig(BaseModel):

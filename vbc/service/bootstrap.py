@@ -26,7 +26,7 @@ from vbc.config.local_registry import LocalConfigRegistry
 from vbc.config.models import AppConfig
 from vbc.config.overrides import CliConfigOverrides
 from vbc.config.rate_control import describe_rate_target
-from vbc.domain.events import InterruptRequested, RefreshRequested, SetShutdownRequested
+from vbc.domain.events import InputDirsChanged, InterruptRequested, RefreshRequested, SetShutdownRequested
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.exiftool_tmp import cleanup_exiftool_tmp_files
 from vbc.infrastructure.ffmpeg import (
@@ -40,6 +40,7 @@ from vbc.infrastructure.ffmpeg import (
 from vbc.service.commands import CommandService
 from vbc.service.log_buffer import LogBuffer
 from vbc.service.state_store import StateStore
+from vbc.service.storage import StorageRoots
 
 logger = logging.getLogger("vbc.server")
 
@@ -167,11 +168,16 @@ class VbcServer:
         config.general.bell_on_finish = False
         config.web_server.enabled = False
         self.config = config
-        self.storage_roots = [Path(root) for root in config.storage.roots]
-        if not is_loopback(config.server.host) and not self.storage_roots:
-            raise ServerConfigError(
-                f"server.host={config.server.host!r} is not loopback: storage.roots must be set "
-                "(config `storage.roots` or VBC_STORAGE_ROOTS)"
+        # Off loopback the API may point the server only into storage roots: the
+        # configured ones plus every media mount (the volume holding the config is
+        # not media). On loopback without configured roots there is no restriction.
+        if is_loopback(config.server.host) and not config.storage.roots:
+            self.storage_roots: Optional[StorageRoots] = None
+        else:
+            self.storage_roots = StorageRoots(
+                config.storage.roots,
+                detect_mounts=not is_loopback(config.server.host),
+                exclude=[config_path.resolve()],
             )
 
         self.log_buffer = configure_logging(config.general.debug, log_file)
@@ -190,11 +196,12 @@ class VbcServer:
         self.store = StateStore(self.bus, config)
         self.commands = CommandService(
             self.bus, self.store, config, config_path,
-            storage_roots=self.storage_roots or None,
+            storage_roots=self.storage_roots,
         )
         self.dirs = _resolve_dirs(config)
         self._exif = None
         self._watchers: list = []
+        self._watchers_lock = threading.Lock()
         self._gpu_monitor = None
         self._thread: Optional[threading.Thread] = None
         self._finished = threading.Event()
@@ -259,11 +266,30 @@ class VbcServer:
             input_dir_entries={Path(e.path): e for e in config.input_dirs if e.enabled},
         )
         self._build_watchers()
+        self.bus.subscribe(InputDirsChanged, self._on_input_dirs_changed)
         return orchestrator
+
+    def _on_input_dirs_changed(self, _event: InputDirsChanged) -> None:
+        """Folders, their manifest and watch flags changed through the API: rebuild
+        the watchers from the new entries (the orchestrator re-reads them itself)."""
+        with self._watchers_lock:
+            old, self._watchers = self._watchers, []
+            for watcher in old:
+                self.bus.unsubscribe(InputDirsChanged, watcher._on_input_dirs_changed)
+                try:
+                    watcher.stop()
+                except Exception:  # noqa: BLE001
+                    logger.exception("watcher stop failed")
+            try:
+                self._build_watchers()
+                for watcher in self._watchers:
+                    watcher.start()
+            except Exception:  # noqa: BLE001
+                logger.exception("Could not start the folder watchers")
 
     def _build_watchers(self) -> None:
         config = self.config
-        active = self.dirs.input_dirs
+        active = [Path(e.path) for e in config.input_dirs if e.enabled]
         inotify_dirs = {
             Path(e.path) for e in config.input_dirs
             if e.metadata and e.watch and e.watch_mode == "inotify"
@@ -302,6 +328,9 @@ class VbcServer:
             nvtop_path=gpu_cfg.nvtop_path,
         )
 
+    def current_storage_roots(self) -> List[Path]:
+        return self.storage_roots.current() if self.storage_roots is not None else []
+
     @property
     def gpu_enabled(self) -> bool:
         return self._gpu_monitor is not None
@@ -313,6 +342,10 @@ class VbcServer:
         self._on_exit.append(callback)
 
     def start(self) -> None:
+        try:
+            self.commands.scan_mounts()  # new media mounts appear in Dirs, disabled
+        except Exception:  # noqa: BLE001
+            logger.exception("Mount scan failed")
         if self._exif is not None:
             self._exif.et.run()
             logger.info("ExifTool started")

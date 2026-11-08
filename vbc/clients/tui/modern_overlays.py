@@ -17,7 +17,7 @@ ją w bardziej przejrzysty i nowoczesny sposób.
 
 import math
 import time
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from rich.console import Console, Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -1036,7 +1036,9 @@ class DirsOverlay:
         output_dir_lines: List[str],
         errors_dir_lines: List[str],
         error_msg: str = "",
+        kinds: Optional[Dict[str, str]] = None,
     ):
+        self.kinds = kinds or {}  # path -> "manifests · watch (polling 10s)" etc.
         self.entries = entries  # (path, status, file_count, size_bytes)
         self.cursor = max(0, min(cursor, max(0, len(entries) - 1)))
         self.input_mode = input_mode
@@ -1111,6 +1113,9 @@ class DirsOverlay:
             badge = self._status_badge(status, fs_status)
             cursor_badge = f"{arrow}{badge}"
             note = self._status_note(status)
+            kind = self.kinds.get(path)
+            if kind:
+                note += f" [{COLORS['accent_blue']}]{safe_markup(kind)}[/]"
 
             display_path = safe_markup(path)
 
@@ -1214,6 +1219,7 @@ class DirsOverlay:
                 f"[white on {COLORS['border']}] Shift+↑↓ [/] swap dirs  "
                 f"[white on {COLORS['border']}] Space [/] toggle  "
                 f"[white on {COLORS['border']}] A [/] add  "
+                f"[white on {COLORS['border']}] R [/] scan mounts  "
                 f"[white on {COLORS['border']}] Del [/] remove  "
                 f"{apply_badge} apply"
                 f"[/]",
@@ -1379,6 +1385,7 @@ def render_dirs_content(
     output_dir_lines: List[str],
     errors_dir_lines: List[str],
     error_msg: str = "",
+    kinds: Optional[Dict[str, str]] = None,
 ) -> RenderableType:
     """Render Dirs tab content (without outer Panel or footer).
 
@@ -1404,6 +1411,7 @@ def render_dirs_content(
         output_dir_lines,
         errors_dir_lines,
         error_msg=error_msg,
+        kinds=kinds,
     )._render_content()
 
 

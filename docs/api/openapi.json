@@ -242,14 +242,64 @@
       },
       "DirEntry": {
         "additionalProperties": false,
+        "description": "One input folder. ``metadata``: the folder holds JSON manifests (multipart\njobs) instead of videos. ``watch``: new files start work without a refresh.\nFields left out (null) keep the saved values of a listed folder; for a new\nfolder the server detects them: manifests inside -> metadata and watch,\nnetwork file system -> polling (inotify misses other hosts' writes).",
         "properties": {
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
           },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
           "path": {
             "title": "Path",
             "type": "string"
+          },
+          "poll_interval_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poll Interval Seconds"
+          },
+          "watch": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Watch"
+          },
+          "watch_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "inotify",
+                  "polling"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Watch Mode"
           }
         },
         "required": [
@@ -270,22 +320,104 @@
             "title": "Exists",
             "type": "boolean"
           },
+          "metadata": {
+            "title": "Metadata",
+            "type": "boolean"
+          },
           "path": {
             "title": "Path",
             "type": "string"
           },
+          "poll_interval_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poll Interval Seconds"
+          },
           "readable": {
             "title": "Readable",
             "type": "boolean"
+          },
+          "watch": {
+            "title": "Watch",
+            "type": "boolean"
+          },
+          "watch_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "inotify",
+                  "polling"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Watch Mode"
           }
         },
         "required": [
           "path",
           "enabled",
+          "metadata",
+          "watch",
           "exists",
           "readable"
         ],
         "title": "DirStatus",
+        "type": "object"
+      },
+      "DirsScanResult": {
+        "additionalProperties": false,
+        "description": "``POST /dirs/scan``: media mounts newly added to the list (disabled).",
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "dirs_rev": {
+            "title": "Dirs Rev",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DirStatus"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "dirs_rev",
+          "entries"
+        ],
+        "title": "DirsScanResult",
         "type": "object"
       },
       "DirsState": {
@@ -1922,6 +2054,35 @@
           }
         },
         "summary": "Put Dirs"
+      }
+    },
+    "/api/v1/dirs/scan": {
+      "post": {
+        "description": "Offer new media mounts as disabled folders.",
+        "operationId": "scan_dirs_api_v1_dirs_scan_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirsScanResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Scan Dirs"
       }
     },
     "/api/v1/errors": {

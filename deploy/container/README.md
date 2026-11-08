@@ -49,11 +49,17 @@ Unpacked size: about 490 MB.
 
 | Input | Environment | Notes |
 |---|---|---|
-| Storage roots | `VBC_STORAGE_ROOTS` | required; comma-separated container paths of the media mounts; input dirs and their `_out`/`_err` siblings must lie inside |
+| Extra storage roots | `VBC_STORAGE_ROOTS` | usually empty: every media mount of the container is a storage root by itself (read from `/proc/self/mountinfo` on each use, no restart); input dirs and their `_out`/`_err` siblings must lie inside a root |
 | Allowed host names | `VBC_ALLOWED_HOSTS` | usually empty: the server accepts its host name, `<hostname>.<domain>` (resolv.conf search domains) and IP addresses by itself; add only other names clients use (e.g. a Pangolin subdomain) |
 | Heartbeat | `HOMESTACK_HEARTBEAT_SECONDS` | set by HomeStack from the manifest (60) |
 
 Input folders are added at run time: `vbc dirs add PATH` or the TUI Dirs tab.
+At start, on `R` in the Dirs tab and on `vbc dirs scan`, the server offers the
+folders directly inside each media mount that hold videos or manifests, as
+**disabled** entries; enable the right ones (Space, then S). Each folder is
+offered once (`storage.discovered` in the config), so a removed one does not
+come back. A folder with JSON manifests gets `metadata` and `watch` by itself,
+and a folder on NFS/CIFS is watched by polling (10 s).
 Media folders need HomeStack external mounts, which are a pending HomeStack
 feature. Mount them at the same path the producers use (identity mounts):
 manifests carry absolute paths.

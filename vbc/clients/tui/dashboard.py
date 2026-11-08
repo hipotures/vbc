@@ -1267,6 +1267,7 @@ class Dashboard:
                 output_dir_lines,
                 errors_dir_lines,
                 error_msg=dirs_error_msg,
+                kinds=dict(self.state.dirs_kinds),
             )
         elif active_tab == "tui":
             content = render_tui_content(dim_level, sparkline_preset, sparkline_palette, sparkline_mode)

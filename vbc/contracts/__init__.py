@@ -287,11 +287,23 @@ class IoView(Envelope):
 
 
 class DirEntry(_Dto):
+    """One input folder. ``metadata``: the folder holds JSON manifests (multipart
+    jobs) instead of videos. ``watch``: new files start work without a refresh.
+    Fields left out (null) keep the saved values of a listed folder; for a new
+    folder the server detects them: manifests inside -> metadata and watch,
+    network file system -> polling (inotify misses other hosts' writes)."""
+
     path: str
     enabled: bool
+    metadata: Optional[bool] = None
+    watch: Optional[bool] = None
+    watch_mode: Optional[Literal["inotify", "polling"]] = None
+    poll_interval_seconds: Optional[float] = Field(default=None, gt=0)
 
 
 class DirStatus(DirEntry):
+    metadata: bool
+    watch: bool
     exists: bool
     readable: bool
 
@@ -299,6 +311,12 @@ class DirStatus(DirEntry):
 class DirsState(Envelope):
     dirs_rev: int
     entries: List[DirStatus]
+
+
+class DirsScanResult(DirsState):
+    """``POST /dirs/scan``: media mounts newly added to the list (disabled)."""
+
+    added: List[str] = Field(default_factory=list)
 
 
 # ── commands ────────────────────────────────────────────────────────────────

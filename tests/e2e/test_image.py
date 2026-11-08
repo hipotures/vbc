@@ -42,6 +42,8 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
     (volume / "config").mkdir(parents=True)
     # Operator-edited config on the volume: the media tree (incl. the manifest dir).
     config = yaml.safe_load(media_tree["config"].read_text())
+    # Only the video folder: the manifest folder is added later through the API.
+    config["input_dirs"] = [e for e in config["input_dirs"] if not e["metadata"]]
     config["general"]["log_path"] = None
     config["general"]["gpu"] = True  # no GPU in the test runtime: must fall back to CPU
     config["server"] = {"host": "0.0.0.0", "port": 8080}
@@ -52,7 +54,7 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
     name = f"vbc-e2e-{port}"
     _run("run", "-d", "--name", name, "-p", f"127.0.0.1:{port}:8080",
          "-v", f"{volume}:/home/app", "-v", f"{root}:{root}",  # identity mount for manifest paths
-         "-e", f"VBC_STORAGE_ROOTS={root}", "-e", "HOMESTACK_HEARTBEAT_SECONDS=10", IMAGE)
+         "-e", "HOMESTACK_HEARTBEAT_SECONDS=10", IMAGE)  # no VBC_STORAGE_ROOTS: the mount is the root
     http = httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=40)
     try:
         deadline = time.monotonic() + 60
@@ -69,6 +71,34 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
             response = http.get("/api/v1/state", params={"since": snapshot["rev"], "wait": 10})
             if response.status_code == 200:
                 snapshot = response.json()
+
+        # Storage roots come from the mounts. A mount scan offers the mount's media
+        # folders disabled (manifests detected); enabling one starts its work.
+        assert str(root) in http.get("/api/v1/io").json()["storage_roots"]
+        # The server scanned at start; a scan offers each folder once.
+        scan = http.post("/api/v1/dirs/scan").json()
+        assert scan["added"] == [], scan
+        meta = str(media_tree["meta"])
+        offered = {e["path"]: e for e in scan["entries"]}
+        assert offered[meta]["enabled"] is False and offered[meta]["metadata"] is True, offered
+        assert offered[str(media_tree["meta_src"])]["enabled"] is False
+        current = [{"path": e["path"], "enabled": e["enabled"]} for e in scan["entries"]]
+        outside = http.put("/api/v1/dirs", json={"entries": current + [{"path": "/opt", "enabled": True}]},
+                           headers={"If-Match": str(scan["dirs_rev"])})
+        assert outside.status_code == 422 and "outside the storage roots" in outside.text
+        enable = [{**e, "enabled": e["enabled"] or e["path"] == meta} for e in current]
+        added = http.put("/api/v1/dirs", json={"entries": enable}, headers={"If-Match": str(scan["dirs_rev"])})
+        assert added.status_code == 200, added.text
+        meta_entry = next(e for e in added.json()["entries"] if e["path"] == meta)
+        assert meta_entry["enabled"] and meta_entry["metadata"] and meta_entry["watch"], meta_entry
+        deadline = time.monotonic() + 300
+        while record_legacy.snapshot(root) != EXPECTED["run1"]["tree"]:
+            assert time.monotonic() < deadline, _run("logs", name, check=False).stdout[-3000:]
+            time.sleep(1)
+        saved = yaml.safe_load((volume / "config" / "vbc.yaml").read_text())
+        assert {"path": meta, "enabled": True, "metadata": True}.items() <= next(
+            e for e in saved["input_dirs"] if e["path"] == meta).items()
+        assert meta in saved["storage"]["discovered"]
 
         after = record_legacy.snapshot(root)
         assert record_legacy.diff(before, after) == EXPECTED["run1"]["changes"]

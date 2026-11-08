@@ -17,6 +17,7 @@ from collections import deque
 from typing import List, Optional, Dict, Any, ClassVar, Tuple, Set
 
 from vbc import contracts as dto
+from vbc.clients.format import dir_kind
 from vbc.clients.tui.gpu_sparkline import (
     DEFAULT_GPU_SPARKLINE_PALETTE,
     DEFAULT_GPU_SPARKLINE_PRESET,
@@ -145,6 +146,7 @@ class ClientState:
         self.dirs_pending_order: List[str] = []          # staged row order (applies on [S])
         self.dirs_config_entries: List[Tuple[str, bool]] = []  # ordered config input_dirs: (path, enabled)
         self.dirs_error_msg: str = ""  # error shown inside Dirs overlay
+        self.dirs_kinds: Dict[str, str] = {}  # path -> manifest/watch label from the server
 
         # GPU Metrics
         self.gpu_data: Optional[Dict[str, Any]] = None
@@ -274,6 +276,7 @@ class ClientState:
     def apply_dirs(self, state: dto.DirsState) -> None:
         with self._lock:
             self.dirs_config_entries = [(e.path, e.enabled) for e in state.entries]
+            self.dirs_kinds = {e.path: dir_kind(e) for e in state.entries if dir_kind(e)}
             self.dirs_status = {e.path: (e.exists, e.readable) for e in state.entries}
             self.dirs_rev = state.dirs_rev
 

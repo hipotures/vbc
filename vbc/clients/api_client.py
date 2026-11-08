@@ -158,6 +158,10 @@ class ApiClient:
         response = self._request("PUT", "/api/v1/dirs", json=body, headers={"If-Match": f'"{dirs_rev}"'})
         return self._parse(dto.DirsState, response)
 
+    def scan_dirs(self) -> dto.DirsScanResult:
+        """Offer new media mounts on the server as disabled folders."""
+        return self._parse(dto.DirsScanResult, self._request("POST", "/api/v1/dirs/scan"))
+
     def set_threads(self, target: int) -> dto.Threads:
         response = self._request("PUT", "/api/v1/threads", json={"target": target})
         return self._parse(dto.ThreadsResult, response).threads
@@ -189,4 +193,8 @@ def extrapolated_percent(progress: dto.ProgressAnchor, now_ms: int) -> float:
 
 
 def replace_dirs(current: List[dto.DirStatus]) -> List[dto.DirEntry]:
-    return [dto.DirEntry(path=d.path, enabled=d.enabled) for d in current]
+    return [
+        dto.DirEntry(path=d.path, enabled=d.enabled, metadata=d.metadata, watch=d.watch,
+                     watch_mode=d.watch_mode, poll_interval_seconds=d.poll_interval_seconds)
+        for d in current
+    ]
