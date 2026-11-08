@@ -53,12 +53,12 @@ class Poller:
             try:
                 self._tick()
             except ApiUnavailable as exc:
-                self.state.set_disconnected(str(exc))
+                self.state.set_disconnected(exc.reason)
                 self._rev = 0  # resynchronise from a full snapshot
                 self._stop.wait(RETRY_S)
             except ApiError as exc:
                 logger.warning(f"API error while polling: {exc}")
-                self.state.set_disconnected(str(exc))
+                self.state.set_disconnected(f"server error {exc.status}")
                 self._stop.wait(RETRY_S)
 
     def _tick(self) -> None:

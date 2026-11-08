@@ -88,11 +88,9 @@ class Serve:
         return snapshot
 
     def stop(self, timeout: float = 120) -> int:
+        """End the server process the only way it ends: a signal (SIGTERM)."""
         if self.proc.poll() is None:
-            try:
-                self.http.post("/api/v1/shutdown", json={"mode": "graceful"})
-            except httpx.HTTPError:
-                pass
+            self.proc.terminate()
             try:
                 self.proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
@@ -123,6 +121,17 @@ def serve_factory(tmp_path: Path) -> Iterator:
     yield start
     for serve in started:
         serve.stop()
+
+
+@pytest.fixture
+def fast_demo(tmp_path: Path) -> Path:
+    """Demo settings whose jobs finish within about a second."""
+    demo = yaml.safe_load((REPO / "conf" / "demo.yaml").read_text())
+    demo["sizes"] = {"distribution": "triangular", "min_mb": 5, "mode_mb": 10, "max_mb": 20}
+    demo["processing"]["throughput_mb_s"] = 40.0
+    path = tmp_path / "fast-demo.yaml"
+    path.write_text(yaml.safe_dump(demo, sort_keys=False))
+    return path
 
 
 @pytest.fixture

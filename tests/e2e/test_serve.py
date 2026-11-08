@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import signal
+import time
 
 import record_legacy
 from conftest import REPO
@@ -77,11 +78,40 @@ def test_commands_and_health(demo_config, serve_factory):
     telemetry = http.get("/.well-known/homestack/status").json()
     assert telemetry["schema"] == 3 and telemetry["status"] == "pass" and telemetry["process_rss_bytes"] > 0
 
-    assert http.post("/api/v1/shutdown", json={"mode": "graceful"}).status_code == 202
-    assert http.post("/api/v1/shutdown", json={"mode": "graceful"}).status_code == 202  # idempotent
-    assert serve.state()["shutdown_requested"] is True
-    assert http.delete("/api/v1/shutdown").status_code == 202
-    assert serve.state()["shutdown_requested"] is False
+    assert http.post("/api/v1/shutdown").status_code in (404, 405)  # the API never ends the server
+
+    serve.proc.send_signal(signal.SIGTERM)
+    assert serve.proc.wait(timeout=60) == 0
+
+
+def test_stop_keeps_the_server_running(demo_config, fast_demo, serve_factory):
+    """POST /stop stops processing only; refresh resumes in the same process."""
+    serve = serve_factory(["--demo", "--config", str(demo_config), "--demo-config", str(fast_demo)])
+    http = serve.http
+    serve.wait_for(lambda s: s["run_status"] == "running" and s["active_jobs"], timeout=30)
+
+    # graceful stop, then cancel: processing continues
+    assert http.post("/api/v1/stop", json={"mode": "graceful"}).status_code == 202
+    assert http.post("/api/v1/stop", json={"mode": "graceful"}).status_code == 202  # idempotent
+    assert serve.state()["stop_requested"] is True
+    assert http.delete("/api/v1/stop").status_code == 202
+    assert serve.state()["stop_requested"] is False
+
+    # graceful stop: running jobs finish, nothing new starts, the server stays up
+    http.post("/api/v1/stop", json={"mode": "graceful"})
+    stopped = serve.wait_for(lambda s: s["run_status"] == "stopped", timeout=60)
+    assert stopped["active_jobs"] == []
+    time.sleep(2)
+    assert serve.proc.poll() is None and serve.state()["counters"] == stopped["counters"]
+
+    # refresh resumes processing in the same process
+    assert http.post("/api/v1/refresh").status_code == 202
+    serve.wait_for(lambda s: s["run_status"] == "running" and s["active_jobs"], timeout=30)
+
+    # interrupt: running jobs are stopped now, the server stays up
+    assert http.post("/api/v1/stop", json={"mode": "interrupt"}).status_code == 202
+    serve.wait_for(lambda s: s["run_status"] == "stopped", timeout=30)
+    assert serve.proc.poll() is None
 
     serve.proc.send_signal(signal.SIGTERM)
     assert serve.proc.wait(timeout=60) == 0
@@ -111,3 +141,20 @@ def test_shutdown_with_open_long_poll_is_clean(demo_config, serve_factory):
     log = serve.log_path.read_text()
     assert "Traceback" not in log and "timeout graceful shutdown exceeded" not in log
     assert rev >= 1
+
+
+def test_stop_and_resume_on_real_media(media_tree, serve_factory):
+    """Interrupt mid-pass, then refresh: the end result on disk is still the legacy one."""
+    root = media_tree["root"]
+    before = record_legacy.snapshot(root)
+    serve = serve_factory(["--config", str(media_tree["config"])])
+    serve.wait_for(lambda s: s["active_jobs"], timeout=120)
+    assert serve.http.post("/api/v1/stop", json={"mode": "interrupt"}).status_code == 202
+    serve.wait_for(lambda s: s["run_status"] == "stopped", timeout=120)
+    assert serve.proc.poll() is None
+
+    assert serve.http.post("/api/v1/refresh").status_code == 202
+    serve.wait_for(lambda s: s["run_status"] == "idle" and s["discovery"]["finished"], timeout=300)
+    after = record_legacy.snapshot(root)
+    assert record_legacy.diff(before, after) == EXPECTED["run1"]["changes"]
+    assert after == EXPECTED["run1"]["tree"]

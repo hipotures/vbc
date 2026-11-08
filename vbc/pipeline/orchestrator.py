@@ -256,6 +256,20 @@ class Orchestrator:
             return [Path(p) for p in input_dirs]
         return [Path(input_dirs)]
 
+    def reset_after_stop(self) -> None:
+        """Clear stop/interrupt state so run() can start again (`vbc serve` resume)."""
+        with self._thread_lock:
+            self._shutdown_requested = False
+            self._shutdown_event.clear()
+            self._wait_event.clear()
+            self._restart_after_wait = False
+            self._pause_requested = False
+            self._pause_message = None
+            self._thread_lock.notify_all()
+        with self._refresh_lock:
+            self._refresh_requested = False
+            self._manifest_paths_requested.clear()
+
     def _thread_bounds(self) -> tuple[int, int]:
         general = self.config.general
         return 1, max(general.max_threads, general.threads)

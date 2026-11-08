@@ -359,14 +359,17 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
         await asyncio.to_thread(commands.refresh)
         return dto.Ack(**envelope())
 
-    @app.post("/api/v1/shutdown", response_model=dto.Ack, status_code=202)
-    async def post_shutdown(body: dto.ShutdownRequest = Body(default_factory=dto.ShutdownRequest)):
-        await asyncio.to_thread(server.request_stop, body.mode)
+    @app.post("/api/v1/stop", response_model=dto.Ack, status_code=202)
+    async def post_stop(body: dto.StopRequest = Body(default_factory=dto.StopRequest)):
+        """Stop processing (graceful: jobs finish; interrupt: now). The server keeps
+        running; POST /refresh resumes. Repeating it is a no-op."""
+        await asyncio.to_thread(commands.stop, body.mode)
         return dto.Ack(**envelope())
 
-    @app.delete("/api/v1/shutdown", response_model=dto.Ack, status_code=202)
-    async def delete_shutdown():
-        await asyncio.to_thread(server.cancel_stop)
+    @app.delete("/api/v1/stop", response_model=dto.Ack, status_code=202)
+    async def delete_stop():
+        """Withdraw a pending graceful stop."""
+        await asyncio.to_thread(commands.cancel_stop)
         return dto.Ack(**envelope())
 
     @app.put("/api/v1/runtime/log-level", response_model=dto.Ack)
@@ -434,11 +437,11 @@ class _UvicornServer(uvicorn.Server):
                 self.force_exit = True
             return
         if self._signals == 1:
-            logger.info(f"signal {signal.Signals(sig).name}: graceful shutdown")
-            threading.Thread(target=self._vbc.request_stop, args=("graceful",), daemon=True).start()
+            logger.info(f"signal {signal.Signals(sig).name}: graceful exit (running jobs finish)")
+            threading.Thread(target=self._vbc.request_exit, args=("graceful",), daemon=True).start()
         else:
             logger.warning("second signal: interrupting running jobs")
-            threading.Thread(target=self._vbc.request_stop, args=("interrupt",), daemon=True).start()
+            threading.Thread(target=self._vbc.request_exit, args=("interrupt",), daemon=True).start()
 
 
 def run_server(vbc: VbcServer) -> int:
@@ -461,6 +464,6 @@ def run_server(vbc: VbcServer) -> int:
         server.run()
     finally:
         if vbc.orchestrator_alive:  # e.g. the port could not be bound
-            vbc.request_stop("interrupt")
+            vbc.request_exit("interrupt")
         vbc.close()
     return 0 if server.started else 1

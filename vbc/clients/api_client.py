@@ -7,6 +7,7 @@ Imports only ``vbc.contracts`` (never server internals). Base URL from
 from __future__ import annotations
 
 import os
+import re
 import time
 from typing import List, Optional, Sequence, Type, TypeVar
 
@@ -24,7 +25,29 @@ def resolve_api_url(explicit: Optional[str] = None) -> str:
 
 
 class ApiUnavailable(Exception):
-    """The server could not be reached (connection refused, timeout, DNS)."""
+    """The server could not be reached (connection refused, timeout, DNS).
+
+    ``reason`` is a short human-readable cause for status lines.
+    """
+
+    def __init__(self, message: str, reason: str = "unreachable") -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
+def _reason(exc: httpx.TransportError) -> str:
+    text = str(exc)
+    if isinstance(exc, httpx.TimeoutException):
+        return "timed out"
+    if "Connection refused" in text:
+        return "connection refused"
+    if "Name or service not known" in text or "nodename nor servname" in text:
+        return "unknown host"
+    if isinstance(exc, httpx.RemoteProtocolError):
+        return "connection closed by the server"
+    if "No route to host" in text:
+        return "no route to host"
+    return re.sub(r"^\[Errno -?\d+\]\s*", "", text).strip().lower() or type(exc).__name__
 
 
 class ApiError(Exception):
@@ -63,7 +86,7 @@ class ApiClient:
         try:
             response = self._http.request(method, path, timeout=timeout or self._timeout, **kwargs)
         except httpx.TransportError as exc:
-            raise ApiUnavailable(f"{self.base_url}: {exc}") from exc
+            raise ApiUnavailable(f"{self.base_url}: {exc}", _reason(exc)) from exc
         if response.status_code >= 400:
             problem = None
             try:
@@ -134,11 +157,12 @@ class ApiClient:
     def refresh(self) -> dto.Ack:
         return self._parse(dto.Ack, self._request("POST", "/api/v1/refresh"))
 
-    def shutdown(self, mode: str = "graceful") -> dto.Ack:
-        return self._parse(dto.Ack, self._request("POST", "/api/v1/shutdown", json={"mode": mode}))
+    def stop(self, mode: str = "graceful") -> dto.Ack:
+        """Stop processing; the server keeps running (refresh resumes)."""
+        return self._parse(dto.Ack, self._request("POST", "/api/v1/stop", json={"mode": mode}))
 
-    def cancel_shutdown(self) -> dto.Ack:
-        return self._parse(dto.Ack, self._request("DELETE", "/api/v1/shutdown"))
+    def cancel_stop(self) -> dto.Ack:
+        return self._parse(dto.Ack, self._request("DELETE", "/api/v1/stop"))
 
     def set_log_level(self, level: str) -> dto.Ack:
         return self._parse(dto.Ack, self._request("PUT", "/api/v1/runtime/log-level", json={"level": level.upper()}))

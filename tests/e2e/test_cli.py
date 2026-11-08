@@ -59,10 +59,11 @@ def test_one_shot_commands(demo_config, serve_factory, tmp_path):
     assert vbc(serve, "log-level", "debug").stdout.strip() == "log level: DEBUG"
     assert vbc(serve, "refresh").returncode == 0
 
-    assert "graceful shutdown requested" in vbc(serve, "shutdown").stdout
-    assert json.loads(vbc(serve, "status", "--json").stdout)["shutdown_requested"] is True
-    vbc(serve, "shutdown", "--cancel")
-    assert json.loads(vbc(serve, "status", "--json").stdout)["shutdown_requested"] is False
+    assert "server keeps running" in vbc(serve, "stop").stdout
+    assert json.loads(vbc(serve, "status", "--json").stdout)["stop_requested"] is True
+    vbc(serve, "stop", "--cancel")
+    assert json.loads(vbc(serve, "status", "--json").stdout)["stop_requested"] is False
+    assert vbc(serve, "shutdown", check=False).returncode == 2  # no such command any more
 
 
 def test_unreachable_server_exit_code():

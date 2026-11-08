@@ -110,8 +110,10 @@ class _State:
     active: Dict[str, _ActiveJob] = field(default_factory=dict)
     recent: Deque[dto.RecentJob] = field(default_factory=lambda: deque(maxlen=RECENT_JOBS_KEPT))
     pending: List = field(default_factory=list)
-    shutdown_requested: bool = False
+    stop_requested: bool = False
     interrupt_requested: bool = False
+    stopped: bool = False
+    exiting: bool = False
     error_paused: bool = False
     pause_reason: Optional[str] = None
     status_message: Optional[str] = None
@@ -301,9 +303,9 @@ class StateStore:
 
     def _on_shutdown_requested(self, event: SetShutdownRequested) -> None:
         def fn(s: _State, now: float) -> bool:
-            if s.shutdown_requested == event.requested:
+            if s.stop_requested == event.requested:
                 return False
-            s.shutdown_requested = event.requested
+            s.stop_requested = event.requested
             return True
 
         self._mutate(fn)
@@ -605,6 +607,34 @@ class StateStore:
 
         self._mutate(fn)
 
+    def set_stopped(self) -> None:
+        """The orchestrator returned after a stop; the server waits for a refresh."""
+        def fn(st: _State, now: float) -> bool:
+            st.stopped = True
+            st.active.clear()
+            return True
+
+        self._mutate(fn)
+
+    def mark_resumed(self) -> None:
+        """A refresh restarts processing after a stop."""
+        def fn(st: _State, now: float) -> bool:
+            st.stopped = False
+            st.stop_requested = False
+            st.interrupt_requested = False
+            st.waiting_for_input = False
+            return True
+
+        self._mutate(fn)
+
+    def set_exiting(self) -> None:
+        """The server process is exiting (signal)."""
+        def fn(st: _State, now: float) -> bool:
+            st.exiting = True
+            return True
+
+        self._mutate(fn)
+
     def set_idle(self) -> None:
         """A pass ended without a following wait (demo mode)."""
         def fn(st: _State, now: float) -> bool:
@@ -643,10 +673,12 @@ class StateStore:
 
     def _run_status_unlocked(self) -> dto.RunStatus:
         s = self._s
-        if s.interrupt_requested:
-            return "interrupted"
-        if s.shutdown_requested and not s.finished:
+        if s.exiting:
             return "shutting_down"
+        if s.stopped:
+            return "stopped"
+        if s.interrupt_requested or s.stop_requested:
+            return "stopping"
         if s.error_paused:
             return "verification_abort" if s.pause_reason == "verification_abort" else "paused_on_error"
         if self._failure is not None:
@@ -732,7 +764,7 @@ class StateStore:
                 eta_at=eta_at,
                 processing_started_at=to_ms(s.processing_started_at),
                 threads=self._threads,
-                shutdown_requested=s.shutdown_requested,
+                stop_requested=s.stop_requested,
                 interrupt_requested=s.interrupt_requested,
                 repair=s.repair.model_copy(),
                 active_jobs=active,

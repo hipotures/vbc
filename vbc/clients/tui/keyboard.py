@@ -12,7 +12,7 @@ from vbc.clients.tui.events import (
     Event,
     InterruptRequested,
     RefreshRequested,
-    RequestShutdown,
+    QuitAfterJobs,
     ThreadControlEvent,
     DirsCursorMove,
     DirsSwapSelected,
@@ -218,6 +218,10 @@ class KeyboardListener:
             return
         try:
             tty.setcbreak(fd)
+            # Let Ctrl+Q / Ctrl+S reach the app instead of XON/XOFF flow control.
+            attrs = termios.tcgetattr(fd)
+            attrs[0] &= ~termios.IXON
+            termios.tcsetattr(fd, termios.TCSANOW, attrs)
             decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
 
             while not self._stop_event.is_set():
@@ -241,6 +245,11 @@ class KeyboardListener:
                     if key == '\x03':
                         self.event_bus.publish(InterruptRequested())
                         break
+
+                    # ── Ctrl+Q (quit after the running jobs) ───────────────
+                    if key == '\x11':
+                        self.event_bus.publish(QuitAfterJobs())
+                        continue
 
                     # ── Dirs add-path input mode ───────────────────────────
                     if self._dirs_input_mode():
@@ -279,9 +288,7 @@ class KeyboardListener:
                         self.event_bus.publish(ThreadControlEvent(change=1))
                     elif key in (',', '<'):
                         self.event_bus.publish(ThreadControlEvent(change=-1))
-                    elif key in ('S', 's'):
-                        if not self._dirs_active():
-                            self.event_bus.publish(RequestShutdown())
+                    # S (shutdown) is not a TUI action: the server keeps running.
                     elif key in ('R', 'r'):
                         self.event_bus.publish(RefreshRequested())
                         self.event_bus.publish(ActionMessage(message="REFRESH requested"))

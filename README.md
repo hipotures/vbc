@@ -1179,10 +1179,11 @@ Until then the application runs from `vbc_legacy/` as `vbc run <dirs>`.
 The headless server already runs: `vbc serve --config conf/vbc.yaml`
 (HTTP API on `127.0.0.1:8770`, OpenAPI in `docs/api/openapi.json`), driven
 by one-shot commands: `vbc status [--watch]`, `vbc threads N`, `vbc refresh`,
-`vbc shutdown [--interrupt|--cancel]`, `vbc dirs [add|remove|enable|disable|set]`,
+`vbc stop [--interrupt|--cancel]`, `vbc dirs [add|remove|enable|disable|set]`,
 `vbc errors`, `vbc logs [--follow]`, `vbc config`, `vbc log-level LEVEL`
 (`--api URL` or `VBC_API`, `--json`), and by the terminal UI `vbc tui`
-(same dashboard as `vbc run`; Ctrl+C detaches, the server keeps running).
+(same dashboard as `vbc run`; Ctrl+Q quits after the running jobs, Ctrl+C
+quits now; the server keeps running).
 See [docs/user-guide/server.md](docs/user-guide/server.md).
 
 ### Running Tests

@@ -16,7 +16,7 @@ from vbc.clients.api_client import ApiClient, ApiError, ApiUnavailable
 from vbc.clients.tui.bus import EventBus
 from vbc.clients.tui.state import MAX_INPUT_DIR_LEN, ClientState
 from vbc.clients.tui.events import (
-    ActionMessage, InterruptRequested, RefreshRequested, RequestShutdown, ThreadControlEvent,
+    ActionMessage, InterruptRequested, QuitAfterJobs, RefreshRequested, ThreadControlEvent,
     DirsCursorMove, DirsSwapSelected, DirsToggleSelected, DirsEnterAddMode, DirsMarkDelete,
     DirsInputChar, DirsConfirmAdd, DirsCancelInput, DirsApplyChanges,
 )
@@ -52,7 +52,7 @@ class TuiController:
 
     def _setup_subscriptions(self):
         self.bus.subscribe(ThreadControlEvent, self.on_thread_control)
-        self.bus.subscribe(RequestShutdown, self.on_shutdown_request)
+        self.bus.subscribe(QuitAfterJobs, self.on_quit_after_jobs)
         self.bus.subscribe(RefreshRequested, self.on_refresh_request)
         self.bus.subscribe(InterruptRequested, self.on_interrupt_request)
         self.bus.subscribe(ActionMessage, self.on_action_message)
@@ -83,7 +83,7 @@ class TuiController:
                 message = call()
             except ApiUnavailable as exc:
                 self.state.set_last_action(f"{label}: server unreachable")
-                self.state.set_disconnected(str(exc))
+                self.state.set_disconnected(exc.reason)
                 return
             except ApiError as exc:
                 self.state.set_last_action(f"{label}: {exc}")
@@ -101,20 +101,24 @@ class TuiController:
             target = self.state.current_threads + event.change
         self._command("Threads", lambda: (self.client.set_threads(target), None)[1])
 
-    def on_shutdown_request(self, event: RequestShutdown):
+    def on_quit_after_jobs(self, event: QuitAfterJobs):
+        """Ctrl+Q: quit once the jobs running now are done. The server is not asked
+        to stop and keeps taking jobs from its queue."""
         with self.state._lock:
-            pending = self.state.shutdown_requested
-        if pending:
-            self._command("Shutdown", lambda: (self.client.cancel_shutdown(), "SHUTDOWN cancelled")[1])
-        else:
-            self._command("Shutdown", lambda: (self.client.shutdown("graceful"),
-                                               "SHUTDOWN requested (press S to cancel)")[1])
+            if self.state.quit_after is not None:
+                return
+            running = {job.id for job, _anchor in self.state._active}
+            self.state.quit_after = running
+        if not running:
+            self.on_detach()
+            return
+        self.state.set_last_action(f"Quitting after {len(running)} running job(s); Ctrl+C = quit now")
 
     def on_refresh_request(self, event: RefreshRequested):
         self._command("Refresh", lambda: (self.client.refresh(), None)[1])
 
     def on_interrupt_request(self, event: InterruptRequested):
-        """Ctrl+C: detach this client; the server keeps running."""
+        """Ctrl+C: quit this client now; the server keeps running."""
         self.on_detach()
 
     def on_action_message(self, event: ActionMessage):
@@ -427,7 +431,7 @@ class TuiController:
             except ApiUnavailable as exc:
                 with self.state._lock:
                     self.state.dirs_error_msg = "Server unreachable; changes not saved"
-                self.state.set_disconnected(str(exc))
+                self.state.set_disconnected(exc.reason)
                 return
             self.state.apply_dirs(saved)
             with self.state._lock:

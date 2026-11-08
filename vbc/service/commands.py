@@ -78,13 +78,19 @@ class CommandService:
         """Full rediscovery; also the only way out of paused_on_error / waiting_for_input."""
         self._bus.publish(RefreshRequested())
 
-    def shutdown(self, mode: Literal["graceful", "interrupt"] = "graceful") -> None:
+    def stop(self, mode: Literal["graceful", "interrupt"] = "graceful") -> None:
+        """Stop processing; the server keeps running and a refresh resumes.
+
+        graceful: running jobs finish, no new ones start. interrupt: running
+        jobs are stopped now.
+        """
         if mode == "interrupt":
             self._bus.publish(InterruptRequested())
         else:
             self._bus.publish(SetShutdownRequested(requested=True))
 
-    def cancel_shutdown(self) -> None:
+    def cancel_stop(self) -> None:
+        """Withdraw a pending graceful stop (running jobs continue, the queue too)."""
         self._bus.publish(SetShutdownRequested(requested=False))
 
     def set_log_level(self, level: str) -> None:

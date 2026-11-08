@@ -25,7 +25,7 @@ from vbc.config.local_registry import LocalConfigRegistry
 from vbc.config.models import AppConfig
 from vbc.config.overrides import CliConfigOverrides
 from vbc.config.rate_control import describe_rate_target
-from vbc.domain.events import InterruptRequested, SetShutdownRequested
+from vbc.domain.events import InterruptRequested, RefreshRequested, SetShutdownRequested
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.exiftool_tmp import cleanup_exiftool_tmp_files
 from vbc.infrastructure.ffmpeg import (
@@ -167,6 +167,8 @@ class VbcServer:
         self._thread: Optional[threading.Thread] = None
         self._finished = threading.Event()
         self._exit_requested = threading.Event()
+        self._resume = threading.Event()
+        self.bus.subscribe(RefreshRequested, lambda _event: self._resume.set())
         self._on_exit: List[Callable[[], None]] = []
         self._stop_timer: Optional[threading.Timer] = None
         self.orchestrator = self._build_orchestrator()
@@ -293,14 +295,34 @@ class VbcServer:
         )
 
     def _run(self) -> None:
+        """Run passes until the process is asked to exit.
+
+        A pass ends only after a stop (POST /stop: graceful or interrupt) or,
+        in demo mode, when the demo is done. The server then waits for a
+        refresh and starts again in the same process; only a signal ends it.
+        """
         try:
-            if self.demo:
-                self.orchestrator.run()
-                self.store.set_idle()
-                # demo has no wait loop: stay idle until shutdown
-                self._exit_requested.wait()
-            else:
-                self.orchestrator.run(self.dirs.input_dirs)
+            while True:
+                if self.demo:
+                    self.orchestrator.run()
+                else:
+                    self.orchestrator.run(self.dirs.input_dirs)
+                if self._exit_requested.is_set():
+                    break
+                snapshot = self.store.snapshot()
+                self._resume.clear()
+                if snapshot.stop_requested or snapshot.interrupt_requested:
+                    logger.info("Processing stopped; waiting for a refresh to resume")
+                    self.store.set_stopped()
+                else:
+                    self.store.set_idle()  # demo finished its files
+                while not (self._resume.wait(0.5) or self._exit_requested.is_set()):
+                    pass
+                if self._exit_requested.is_set():
+                    break
+                logger.info("Refresh received: resuming processing")
+                self.orchestrator.reset_after_stop()
+                self.store.mark_resumed()
         except Exception as exc:  # noqa: BLE001 - reported to clients, process stays up
             from vbc.pipeline.orchestrator import VerificationAbortError
 
@@ -326,9 +348,16 @@ class VbcServer:
         for callback in callbacks:
             callback()
 
-    def request_stop(self, mode: str = "graceful", deadline_s: Optional[float] = None) -> None:
-        """Shutdown path shared by POST /shutdown and signals."""
+    def request_exit(self, mode: str = "graceful", deadline_s: Optional[float] = None) -> None:
+        """Process exit (signals only; the API can stop processing but never the server).
+
+        graceful: running jobs finish, bounded by server.stop_timeout_s, then
+        they are interrupted. interrupt: running jobs are stopped now.
+        """
+        first = not self._exit_requested.is_set()
         self._exit_requested.set()
+        if first:
+            self.store.set_exiting()
         if mode == "interrupt":
             self.bus.publish(InterruptRequested())
             return
@@ -339,16 +368,9 @@ class VbcServer:
             self._stop_timer.daemon = True
             self._stop_timer.start()
 
-    def cancel_stop(self) -> None:
-        self._exit_requested.clear()
-        if self._stop_timer is not None:
-            self._stop_timer.cancel()
-            self._stop_timer = None
-        self.bus.publish(SetShutdownRequested(requested=False))
-
     def _deadline_reached(self) -> None:
         if not self._finished.is_set():
-            logger.warning("Graceful shutdown deadline reached; interrupting running jobs")
+            logger.warning("Graceful exit deadline reached; interrupting running jobs")
             self.bus.publish(InterruptRequested())
 
     def close(self) -> None:

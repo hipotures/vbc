@@ -43,7 +43,7 @@ redesigned.
   exported over the network; the network sees a versioned read model and a small
   command API.
 * **Control plane only, no data plane.** Clients only *steer* the server
-  (add/remove/reorder/enable input folders, threads, refresh, shutdown, log
+  (add/remove/reorder/enable input folders, threads, refresh, stop, log
   level) and *read status*. Video files are never transferred: there is no
   upload, download or streaming of media through the API, and clients need no
   access to the files at all. The server reads inputs and writes outputs,
@@ -160,15 +160,15 @@ All clients are Python and live in `vbc/clients/`; they import only
 A background thread runs the `/state` long-poll and replaces a local snapshot;
 the render loop extrapolates counters from anchors (see below). Keys map to
 commands: `<`/`>` → `PUT /threads` with an absolute target computed from the
-last snapshot, `R` → `POST /refresh`, `S` → `POST`/`DELETE /shutdown`
-depending on `shutdown_requested`, Ctrl+C → detach the client (does **not**
+last snapshot, `R` → `POST /refresh`, no stop/shutdown key (the TUI never
+stops the server), Ctrl+Q → quit after the running jobs, Ctrl+C → quit now (does **not**
 stop the server; interrupting the server is an explicit command). Overlay
 tabs fetch `/config`, `/io`, `/dirs`, `/errors`, `/logs` on demand.
 
 One-shot commands (phase 1): non-interactive commands for scripts and quick
 checks, **peers of `serve` and `tui`** in one flat `vbc` command set (no
 separate `ctl` group), one per endpoint: `vbc status` (one-shot or
-`--watch`), `vbc threads N`, `vbc refresh`, `vbc shutdown
+`--watch`), `vbc threads N`, `vbc refresh`, `vbc stop
 [--interrupt|--cancel]`, `vbc dirs [list|set …]`, `vbc errors`, `vbc logs
 [--follow] [--level]`, `vbc config`. Human-readable output by default,
 `--json` prints the DTOs as-is; non-zero exit status on HTTP/connection errors.
@@ -321,7 +321,7 @@ Read:
 
 | Endpoint | Content |
 |---|---|
-| `GET /api/v1/state?since=<rev>&wait=<s>` | Main snapshot (run status, counters, bytes, throughput anchors, active jobs with progress anchors, last N recent jobs, queue count, `shutdown_requested`, `config_rev`, `errors_last_id`). Long-poll: returns immediately if `rev > since`, otherwise holds up to `wait` (≤30 s) and returns `204 No Content` on timeout (the client simply polls again). Plain polling uses `ETag: "<rev>"` and returns `304` only for a request carrying `If-None-Match`. |
+| `GET /api/v1/state?since=<rev>&wait=<s>` | Main snapshot (run status, counters, bytes, throughput anchors, active jobs with progress anchors, last N recent jobs, queue count, `stop_requested`, `config_rev`, `errors_last_id`). Long-poll: returns immediately if `rev > since`, otherwise holds up to `wait` (≤30 s) and returns `204 No Content` on timeout (the client simply polls again). Plain polling uses `ETag: "<rev>"` and returns `304` only for a request carrying `If-None-Match`. |
 | `GET /api/v1/gpu?since=<seq>` | Latest GPU sample (`gpu_data` today) plus samples newer than `seq` from a bounded history (for the TUI sparkline); `enabled: false` when monitoring is off. Anchors are deferred (see Open decisions). |
 | `GET /api/v1/queue?offset&limit` | Pending files (can be 10k+, never inside the snapshot). |
 | `GET /api/v1/jobs/recent?limit` | Longer activity history (bounded ring, e.g. 500). |
@@ -339,8 +339,8 @@ Commands (absolute and idempotent where possible):
 |---|---|
 | `PUT /api/v1/threads {"target": n}` | New `SetThreadCount` event (replaces client-side ±1). The orchestrator clamps and the response returns the **effective** value; `threads_min`/`threads_max` are exposed in `/config` (today `1..8` hard-coded, to be moved to config). |
 | `POST /api/v1/refresh` | `RefreshRequested`. This is also the **only** way to resume after `paused_on_error` or `waiting_for_input`: it always triggers a full rediscovery; there is no "continue without rescan". |
-| `POST /api/v1/shutdown {"mode": "graceful"\|"interrupt"}` | New absolute `SetShutdownRequested(true)` / `InterruptRequested`. Repeating it is a no-op. |
-| `DELETE /api/v1/shutdown` | `SetShutdownRequested(false)`: cancels a pending graceful shutdown (what today's second "S" does). `RequestShutdown` stays as the TUI toggle, translated to the absolute event. |
+| `POST /api/v1/stop {"mode": "graceful"\|"interrupt"}` | **Stops processing, never the server** (decided: the container runs non-stop). Absolute `SetShutdownRequested(true)` / `InterruptRequested`; repeating it is a no-op. Running jobs finish (graceful) or are interrupted, the server goes to `stopped` and `POST /refresh` resumes in the same process. |
+| `DELETE /api/v1/stop` | `SetShutdownRequested(false)`: withdraws a pending graceful stop. |
 | `PUT /api/v1/runtime/log-level {"level": …}` | Adjust root logger level at runtime |
 | `PUT /api/v1/dirs` + `If-Match: <dirs_rev>` | Validate → `save_dirs_config` → `InputDirsChanged` + `RefreshRequested`; `412` on stale rev |
 
@@ -498,7 +498,7 @@ What the HomeStack contract requires from VBC:
 |---|---|
 | `vbc serve [--config] [--host] [--port]` | `bootstrap` + API, headless, no Rich, no keyboard. Input dirs from config (positional args optional). `--demo` uses `DemoOrchestrator`. |
 | `vbc tui [--api http://host:port]` | TUI client only (phase 1). |
-| `vbc status`, `vbc threads N`, `vbc refresh`, `vbc shutdown`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config` | One-shot API commands (phase 1). `--api` on every client command, also from env (`VBC_API`) or client config; default `http://127.0.0.1:<default port>`. |
+| `vbc status`, `vbc threads N`, `vbc refresh`, `vbc stop`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config` | One-shot API commands (phase 1). `--api` on every client command, also from env (`VBC_API`) or client config; default `http://127.0.0.1:<default port>`. |
 | `vbc run <dirs>` | Today's `vbc <dirs>`. During migration it runs `vbc_legacy`; after legacy is deleted it becomes the launcher (see Open decisions). |
 | `vbc-web --api …` | Web client only (later). |
 
@@ -512,14 +512,15 @@ known subcommand, `vbc` prints `use: vbc run <dirs>` and exits non-zero.
 * **The process outlives the queue.** When processing finishes, the server
   goes to `idle` (keeping state, errors and logs readable) instead of exiting
   as the CLI does today; `POST /refresh` starts a new pass, `input_dirs.watch`
-  starts one automatically. The process ends only on `POST /shutdown` or a
-  signal.
+  starts one automatically. `POST /stop` ends a pass early (status
+  `stopped`, refresh resumes). The process ends **only on a signal**; there is
+  no API to end it.
 * **Threads and signals.** uvicorn owns the main thread and its event loop;
   `bootstrap` returns an object with `start()` / `stop()` that runs the
   orchestrator in its own thread. uvicorn installs its own SIGINT/SIGTERM
   handlers, so the server hooks its shutdown: SIGTERM → `SetShutdownRequested`
   (graceful), a second SIGINT → `InterruptRequested`; uvicorn stops after the
-  orchestrator thread has joined. `POST /shutdown` goes through the same path.
+  orchestrator thread has joined.
 
 ## Behaviours that must be preserved
 
@@ -599,7 +600,14 @@ allowed to fail and be repeated:
 ## Migration steps
 
 Progress: baseline tag `service-split-baseline`; **steps 1–7 done — phase 1
-complete** (server, one-shot commands, TUI client; next: step 8 HomeStack
+complete**. Post-phase-1 fixes from the owner's first run: long-polls are
+released when the server stops (no 3 s hang / traceback); `/shutdown` became
+`/stop` (processing only, server keeps running, refresh resumes —
+`reset_after_stop()` in both orchestrators, statuses `stopping`/`stopped`,
+`shutting_down` only for a signal); TUI: no `S` action, Ctrl+Q = quit after
+the running jobs (IXON disabled so the key arrives), Ctrl+C = quit now;
+connection errors as a short `DISCONNECTED` in the header, the reason in the
+footer and in `~/.local/state/vbc/tui.log` (server, one-shot commands, TUI client; next: step 8 HomeStack
 packaging).
 Step 7 notes: `vbc/clients/tui/` = the legacy renderers copied verbatim
 (`dashboard`, `modern_overlays`, `gpu_sparkline`, `display_text`,
@@ -777,9 +785,13 @@ green and, once it exists, the e2e suite green.
   only for its API conventions, not its implementation stack.
 * Security (decided): plain HTTP, no token, no TLS; trusted network only,
   Host/Origin allowlist, `storage.roots` mandatory off loopback.
+* Stop vs. shutdown (decided 2026-11-08): the API and `vbc stop` stop
+  *processing* only; the server process (a HomeStack container running
+  non-stop) ends only on a signal. The TUI has no stop/shutdown action at all:
+  Ctrl+C quits it now, Ctrl+Q quits after the jobs running at that moment.
 * Command line (decided): one flat set of peer subcommands — `vbc serve`,
   `vbc tui`, `vbc run <dirs>`, `vbc status`, `vbc threads`, `vbc refresh`,
-  `vbc shutdown`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config`. No
+  `vbc stop`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config`. No
   `ctl` group.
 * Delivery order: **server + one-shot commands + `vbc tui` first** (phase 1, steps
   1–7), HomeStack packaging (step 8), web client later (step 9), legacy

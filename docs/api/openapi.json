@@ -1445,22 +1445,6 @@
         "title": "SetThreadsRequest",
         "type": "object"
       },
-      "ShutdownRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "mode": {
-            "default": "graceful",
-            "enum": [
-              "graceful",
-              "interrupt"
-            ],
-            "title": "Mode",
-            "type": "string"
-          }
-        },
-        "title": "ShutdownRequest",
-        "type": "object"
-      },
       "StateSnapshot": {
         "additionalProperties": false,
         "properties": {
@@ -1564,8 +1548,9 @@
               "paused_on_error",
               "waiting_for_input",
               "verification_abort",
+              "stopping",
+              "stopped",
               "shutting_down",
-              "interrupted",
               "idle",
               "failed"
             ],
@@ -1581,11 +1566,6 @@
             "title": "Server Time",
             "type": "integer"
           },
-          "shutdown_requested": {
-            "default": false,
-            "title": "Shutdown Requested",
-            "type": "boolean"
-          },
           "status_message": {
             "anyOf": [
               {
@@ -1596,6 +1576,11 @@
               }
             ],
             "title": "Status Message"
+          },
+          "stop_requested": {
+            "default": false,
+            "title": "Stop Requested",
+            "type": "boolean"
           },
           "threads": {
             "$ref": "#/components/schemas/Threads"
@@ -1634,6 +1619,23 @@
           "queue"
         ],
         "title": "StateSnapshot",
+        "type": "object"
+      },
+      "StopRequest": {
+        "additionalProperties": false,
+        "description": "Stop processing (the server keeps running; refresh resumes).",
+        "properties": {
+          "mode": {
+            "default": "graceful",
+            "enum": [
+              "graceful",
+              "interrupt"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "StopRequest",
         "type": "object"
       },
       "Threads": {
@@ -2227,59 +2229,6 @@
         "summary": "Put Log Level"
       }
     },
-    "/api/v1/shutdown": {
-      "delete": {
-        "operationId": "delete_shutdown_api_v1_shutdown_delete",
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Ack"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Delete Shutdown"
-      },
-      "post": {
-        "operationId": "post_shutdown_api_v1_shutdown_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ShutdownRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Ack"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Shutdown"
-      }
-    },
     "/api/v1/state": {
       "get": {
         "operationId": "get_state_api_v1_state_get",
@@ -2359,6 +2308,61 @@
           }
         },
         "summary": "Get State"
+      }
+    },
+    "/api/v1/stop": {
+      "delete": {
+        "description": "Withdraw a pending graceful stop.",
+        "operationId": "delete_stop_api_v1_stop_delete",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete Stop"
+      },
+      "post": {
+        "description": "Stop processing (graceful: jobs finish; interrupt: now). The server keeps\nrunning; POST /refresh resumes. Repeating it is a no-op.",
+        "operationId": "post_stop_api_v1_stop_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Stop"
       }
     },
     "/api/v1/threads": {

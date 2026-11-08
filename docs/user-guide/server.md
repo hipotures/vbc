@@ -19,11 +19,14 @@ uv run vbc serve --config conf/vbc.yaml --demo   # simulated processing, no file
 * Input folders come from `input_dirs` in the config. Without any, the server
   starts idle and waits for folders added through `vbc dirs add`.
 * After every pass the server stays up (status `idle`) and waits for a refresh
-  (`vbc refresh`, key `R`) or a watcher event. It stops only on `vbc shutdown`
-  or a signal.
+  (`vbc refresh`, key `R`) or a watcher event.
+* `vbc stop` stops processing only (running jobs finish; `--interrupt` stops
+  them now). The server stays up in status `stopped`, and `vbc refresh`
+  resumes. Nothing in the API or the clients ends the server process.
 * Logs go to stdout. Add `--log-file PATH` to also write them to a file.
-* Stopping: the first SIGTERM/SIGINT lets running jobs finish (at most
-  `server.stop_timeout_s`, default 600 s). A second SIGINT interrupts them.
+* The process ends only on a signal. The first SIGTERM/SIGINT lets running
+  jobs finish (at most `server.stop_timeout_s`, default 600 s), and a second
+  SIGINT interrupts them.
 
 ### Settings
 
@@ -63,14 +66,16 @@ these differences:
 | Key | `vbc tui` |
 |---|---|
 | `<` / `>` | change server threads (absolute target sent to the server) |
-| `R` | rescan; also resumes after a pause on error |
-| `S` | request a graceful server shutdown; press again to cancel |
-| `Ctrl+C` | **detach** the client; the server keeps running |
+| `R` | rescan; also resumes after a pause on error or a `vbc stop` |
+| `Ctrl+Q` | quit after the jobs that are running now have finished (the server keeps working) |
+| `Ctrl+C` | quit now; the server keeps running |
+| `S` | no action (stopping processing is `vbc stop`; the TUI never stops the server) |
 | `D` (Dirs tab) | edit the server's folder list; `S` saves the whole list, and errors from the server are shown inline |
 
 Paths in the Dirs and IO tabs are paths on the server. When the connection
-drops, the header shows `DISCONNECTED`. Progress keeps extrapolating, and the
-client reconnects on its own.
+drops, the header shows `DISCONNECTED` and the footer shows the reason. Progress
+keeps extrapolating, and the client reconnects on its own. Connection events
+are logged to `~/.local/state/vbc/tui.log` (override with `--log-file`).
 
 ## One-shot commands
 
@@ -82,7 +87,7 @@ and `--json`.
 | `vbc status [--watch]` | run status, counters, active jobs, queue, recent jobs |
 | `vbc threads N` | set concurrent jobs, prints the clamped value |
 | `vbc refresh` | rescan the input folders |
-| `vbc shutdown [--interrupt \| --cancel]` | stop gracefully, stop now, or cancel a pending stop |
+| `vbc stop [--interrupt \| --cancel]` | stop processing (jobs finish / now) or withdraw a pending stop; the server keeps running |
 | `vbc dirs` | list the input folders and whether they exist on the server |
 | `vbc dirs add\|remove\|enable\|disable PATH`, `vbc dirs set PATH...` | edit the list (put `--api` and `--json` before the subcommand) |
 | `vbc errors [--since ID]` | this session's failed files |

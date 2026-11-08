@@ -3,7 +3,7 @@
 Commands (docs/architecture/service-split.md): ``serve`` (headless server),
 ``run`` (legacy in-process TUI, today's ``vbc <dirs>``; arguments pass through
 unchanged) and the one-shot API commands ``status``, ``threads``, ``refresh``,
-``shutdown``, ``dirs``, ``errors``, ``logs``, ``config``, ``log-level``, and
+``stop``, ``dirs``, ``errors``, ``logs``, ``config``, ``log-level``, and
 ``tui`` (the Rich dashboard as an API client).
 
 Client commands take ``--api URL`` (default ``$VBC_API`` or
@@ -81,7 +81,8 @@ JSON_OPTION = typer.Option(False, "--json", help="Print the API response as JSON
 @app.command()
 def tui(
     api: Optional[str] = API_OPTION,
-    log_file: Optional[Path] = typer.Option(None, "--log-file", help="Write client logs to this file"),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", help="Client log file (default ~/.local/state/vbc/tui.log)"),
 ) -> None:
     """Live dashboard of a running server (keys as in `vbc run`; Ctrl+C detaches, S stops the server)."""
     from vbc.clients.tui.app import run_tui
@@ -122,16 +123,16 @@ def refresh(api: Optional[str] = API_OPTION, as_json: bool = JSON_OPTION) -> Non
 
 
 @app.command()
-def shutdown(
-    interrupt: bool = typer.Option(False, "--interrupt", help="Stop running jobs now"),
-    cancel: bool = typer.Option(False, "--cancel", help="Cancel a pending graceful shutdown"),
+def stop(
+    interrupt: bool = typer.Option(False, "--interrupt", help="Interrupt running jobs now"),
+    cancel: bool = typer.Option(False, "--cancel", help="Withdraw a pending graceful stop"),
     api: Optional[str] = API_OPTION,
     as_json: bool = JSON_OPTION,
 ) -> None:
-    """Stop the server gracefully (running jobs finish), or --interrupt / --cancel."""
+    """Stop processing (running jobs finish); the server keeps running, `vbc refresh` resumes."""
     from vbc.clients import commands
 
-    commands.shutdown(api, interrupt, cancel, as_json)
+    commands.stop(api, interrupt, cancel, as_json)
 
 
 @app.command("log-level")

@@ -128,6 +128,15 @@ class DemoOrchestrator:
         self.event_bus.subscribe(RefreshRequested, self._on_refresh_request)
         self.event_bus.subscribe(InterruptRequested, self._on_interrupt_requested)
 
+    def reset_after_stop(self) -> None:
+        """Clear stop/interrupt state so run() can start again (`vbc serve` resume)."""
+        with self._thread_lock:
+            self._shutdown_requested = False
+            self._shutdown_event.clear()
+            self._thread_lock.notify_all()
+        with self._refresh_lock:
+            self._refresh_requested = False
+
     def _thread_bounds(self) -> tuple[int, int]:
         general = self.config.general
         return 1, max(general.max_threads, general.threads)

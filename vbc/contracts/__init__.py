@@ -22,8 +22,9 @@ RunStatus = Literal[
     "paused_on_error",
     "waiting_for_input",
     "verification_abort",
-    "shutting_down",
-    "interrupted",
+    "stopping",       # POST /stop accepted: running jobs finish (or are interrupted)
+    "stopped",        # processing stopped; the server keeps running, refresh resumes
+    "shutting_down",  # the server process got a signal and is exiting
     "idle",
     "failed",
 ]
@@ -161,7 +162,7 @@ class StateSnapshot(Envelope):
     eta_at: Optional[int] = None
     processing_started_at: Optional[int] = None
     threads: Threads
-    shutdown_requested: bool = False
+    stop_requested: bool = False
     interrupt_requested: bool = False
     repair: Repair
     active_jobs: List[ActiveJob]
@@ -307,7 +308,9 @@ class SetThreadsRequest(_Dto):
     target: int
 
 
-class ShutdownRequest(_Dto):
+class StopRequest(_Dto):
+    """Stop processing (the server keeps running; refresh resumes)."""
+
     mode: Literal["graceful", "interrupt"] = "graceful"
 
 

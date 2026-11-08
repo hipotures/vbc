@@ -8,6 +8,7 @@ stays client-only. Active-job progress is extrapolated from the server's
 anchors on every read (dead reckoning).
 """
 
+import logging
 import threading
 import time
 from datetime import datetime
@@ -21,6 +22,8 @@ from vbc.clients.tui.gpu_sparkline import (
     DEFAULT_GPU_SPARKLINE_PRESET,
 )
 from vbc.clients.tui.views import FileView, JobView, SessionErrorEntry, local_datetime
+
+logger = logging.getLogger("vbc.tui")
 
 STATUS_OK = "✓"
 STATUS_MISSING = "✗"
@@ -76,7 +79,8 @@ class ClientState:
         # Connection to the server
         self.server_url = ""
         self.connected = False
-        self.connection_error: Optional[str] = None
+        self.connection_error: Optional[str] = None  # short reason, e.g. "connection refused"
+        self.ever_connected = False
         self.clock_offset_ms = 0
         self.rev = 0
         self.dirs_rev = 0
@@ -84,6 +88,11 @@ class ClientState:
         self.errors_last_id = 0
         self.gpu_last_seq = 0
         self.dirs_status: Dict[str, Tuple[bool, bool]] = {}  # path -> (exists, readable) on the server
+        self.run_status = ""
+        self.stopped = False
+        self.stopping = False
+        self.server_exiting = False
+        self.quit_after: Optional[Set[str]] = None  # Ctrl+Q: job ids that must finish first
 
         # Job timing tracking
         self.job_start_times: Dict[str, datetime] = {}  # filename -> start time
@@ -178,7 +187,14 @@ class ClientState:
 
     def apply_snapshot(self, snap: dto.StateSnapshot, offset_ms: int) -> None:
         with self._lock:
+            if not self.connected and self.ever_connected:
+                logger.info(f"Reconnected to the server at {self.server_url}")
+                self.last_action = "Reconnected to the server"
+                self.last_action_time = datetime.now()
+            elif not self.ever_connected:
+                logger.info(f"Connected to the server at {self.server_url}")
             self.connected = True
+            self.ever_connected = True
             self.connection_error = None
             self.clock_offset_ms = offset_ms
             self.rev = snap.rev
@@ -209,7 +225,12 @@ class ClientState:
             self.processing_start_time = local_datetime(snap.processing_started_at, offset_ms)
             self.current_threads = snap.threads.current
             status = snap.run_status
-            self.shutdown_requested = snap.shutdown_requested
+            self.run_status = status
+            self.stopping = status == "stopping"
+            self.stopped = status == "stopped"
+            self.server_exiting = status == "shutting_down"
+            # Renderers read `shutdown_requested` for the thread target (0 while stopping).
+            self.shutdown_requested = self.stopping or self.server_exiting
             self.interrupt_requested = snap.interrupt_requested
             self.error_paused = status in ("paused_on_error", "verification_abort", "failed")
             self.error_status_text = "ERROR" if self.error_paused else None
@@ -217,8 +238,8 @@ class ClientState:
             self.repair_active = snap.repair.active
             self.repair_candidate_count = snap.repair.candidates
             self.repair_repaired_count = snap.repair.repaired
-            # `vbc serve` waits for a refresh after every pass: shown as WAITING (R = rescan).
-            self.waiting_for_input = status == "idle"
+            # `vbc serve` waits for a refresh after every pass (or a stop): R resumes.
+            self.waiting_for_input = status in ("idle", "stopped")
             self.finished = False
             self._active = [(JobView.from_active(j), j.progress) for j in snap.active_jobs]
             self.job_start_times = {
@@ -300,10 +321,29 @@ class ClientState:
             if page.samples:
                 self.gpu_last_seq = page.samples[-1].seq
 
-    def set_disconnected(self, message: str) -> None:
+    def quit_ready(self) -> bool:
+        """Ctrl+Q condition: the jobs running at the key press are gone (or no server)."""
         with self._lock:
+            if self.quit_after is None:
+                return False
+            if not self.connected:
+                return True
+            remaining = self.quit_after & {job.id for job, _anchor in self._active}
+            return not remaining
+
+    def quit_remaining(self) -> int:
+        with self._lock:
+            if self.quit_after is None:
+                return 0
+            return len(self.quit_after & {job.id for job, _anchor in self._active})
+
+    def set_disconnected(self, reason: str) -> None:
+        """Mark the server unreachable; logged once per outage, not per retry."""
+        with self._lock:
+            if self.connected or self.connection_error is None or self.connection_error != reason:
+                logger.warning(f"Server unreachable at {self.server_url}: {reason}; retrying")
             self.connected = False
-            self.connection_error = message
+            self.connection_error = reason
 
     @property
     def space_saved_bytes(self) -> int:

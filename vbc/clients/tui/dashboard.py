@@ -729,9 +729,8 @@ class Dashboard:
             # L1: Status + Threads
             indicator = "[green]●[/]"
             if not self.state.connected:
+                # Short status only; the reason is shown in the footer and the log.
                 status = "[bright_red]DISCONNECTED[/]"
-                if self.state.connection_error:
-                    status += f": [red]{safe_markup(truncate_cells(self.state.connection_error, 40))}[/]"
                 indicator = "[red]○[/]"
             elif self.state.error_paused:
                 status = "[bright_red]ERROR[/]"
@@ -739,12 +738,18 @@ class Dashboard:
                     error_summary = truncate_cells(self.state.error_message, 40)
                     status += f": [red]{safe_markup(error_summary)}[/]"
                 indicator = "[red]●[/]"
+            elif self.state.server_exiting:
+                status = "[yellow]SERVER EXITING[/]"
+                indicator = "[yellow]◐[/]"
+            elif self.state.stopped:
+                status = "[yellow]STOPPED[/]"
+                indicator = "[yellow]■[/]"
+            elif self.state.stopping:
+                status = "[yellow]STOPPING[/]"
+                indicator = "[yellow]◐[/]"
             elif self.state.repair_active:
                 status = "[magenta]REPAIR[/]"
                 indicator = "[magenta]◐[/]"
-            elif self.state.shutdown_requested:
-                status = "[yellow]SHUTTING DOWN[/]"
-                indicator = "[yellow]◐[/]"
             elif self.state.waiting_for_input:
                 status = "[yellow]WAITING[/]"
                 indicator = "[yellow]⏸[/]"
@@ -783,7 +788,9 @@ class Dashboard:
                 or self.state.repair_active
             ) else self.state.current_threads
 
-            if active_threads == target_threads:
+            if not self.state.connected:
+                threads_display = "–"  # last known values are stale
+            elif active_threads == target_threads:
                 threads_display = str(active_threads)
             else:
                 threads_display = f"{active_threads} → {target_threads}"
@@ -791,12 +798,19 @@ class Dashboard:
             # 2. Build Left Content (Fixed 3 lines)
             l1 = f"{indicator} {status} • Threads: {threads_display}{paused}"
             l2 = f"ETA: {eta_str} • {throughput_str} • {saved} saved ({(1-ratio)*100:.1f}%)"
-            if self.state.repair_active:
+            if not self.state.connected:
+                l3 = "[dim]Waiting for the server…  │  Ctrl+C = quit[/]"
+            elif self.state.quit_after is not None:
+                l3 = (f"[dim]Quitting after {self.state.quit_remaining()} running job(s)…"
+                      "  │  Ctrl+C = quit now[/]")
+            elif self.state.repair_active:
                 l3 = "[dim]Repairing failed files from this session[/]"
+            elif self.state.stopped:
+                l3 = "[dim]Processing stopped  │  R = resume  │  Ctrl+C = quit[/]"
             elif self.state.waiting_for_input or self.state.error_paused:
-                l3 = "[dim]R = rescan  │  S = stop server  │  Ctrl+C = detach[/]"
+                l3 = "[dim]R = rescan  │  M = menu  │  Ctrl+C = quit[/]"
             else:
-                l3 = "[dim]Press M for menu[/]"
+                l3 = "[dim]M = menu  │  Ctrl+Q = quit after jobs  │  Ctrl+C = quit now[/]"
             left_content = f"{l1}\n{l2}\n{l3}"
 
             # 3. GPU Metrics (Right Side)
@@ -1074,8 +1088,17 @@ class Dashboard:
             
             health_text = " • ".join(parts) if parts else "[green]Health: OK[/]"
             
-            # Left side: Last Action with fading
+            # Left side: connection problem (persistent) or Last Action with fading
             action_text = ""
+            if not self.state.connected:
+                # Full width, nothing else: the counters on the right are stale anyway.
+                where = self.state.server_url.split("://", 1)[-1]
+                reason = self.state.connection_error or "unreachable"
+                grid = Table.grid(expand=True)
+                grid.add_column(width=1)
+                grid.add_column(justify="left", ratio=1, no_wrap=True, overflow="ellipsis")
+                grid.add_row("", f"[red]Server unreachable at {safe_markup(where)} ({safe_markup(reason)}), retrying[/]")
+                return grid
             if self.state.last_action and self.state.last_action_time:
                 age = (datetime.now() - self.state.last_action_time).total_seconds()
                 if age < 15:

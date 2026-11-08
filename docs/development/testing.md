@@ -24,18 +24,25 @@ Location: `tests/e2e/`. Current scenarios (`test_serve.py`):
   log, and a refresh (second pass) changes nothing;
 * **commands and health** – `serve --demo`: thread clamping and idempotence,
   `PUT /dirs` 428/412/422, long-poll `204`, Host/Origin guard, health and
-  HomeStack telemetry, idempotent shutdown and cancel, SIGTERM exit code 0.
+  HomeStack telemetry, no shutdown endpoint, SIGTERM exit code 0;
+* **stop keeps the server running** – graceful stop, cancel, stop to
+  `stopped`, refresh resumes, interrupt; the process stays up;
+* **stop and resume on real media** – interrupt mid-pass, refresh, final disk
+  state equals the legacy oracle;
+* **shutdown with an open long-poll** – SIGINT exits within seconds, the
+  waiting client gets `204`, no traceback.
 
 `test_cli.py` drives `serve --demo` only through the one-shot commands as
 separate processes (`vbc status`, `threads`, `dirs add/disable/remove` with
 the config file checked on disk, `errors`, `logs`, `config`, `log-level`,
-`refresh`, `shutdown` / `--cancel`) and checks exit codes 1 (rejected),
+`refresh`, `stop` / `--cancel`) and checks exit codes 1 (rejected),
 2 (usage) and 3 (server unreachable).
 
 `test_tui.py` starts `vbc tui` in a real pseudo-terminal (controlling tty)
 against `serve --demo`: the dashboard renders, `>` changes the server's
-threads, `C` shows the settings built from `/config`, Ctrl+C detaches with
-exit code 0 and the server keeps running.
+threads, `C` shows the settings built from `/config`, Ctrl+C quits with exit
+code 0 and the server keeps running; a second run checks that `S` does
+nothing and Ctrl+Q quits once the jobs running at that moment are done.
 
 Legacy `vbc run` (until it is deleted) is checked by hand as below.
 

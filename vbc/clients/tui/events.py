@@ -19,15 +19,15 @@ class ActionMessage(Event):
 
 
 class InterruptRequested(Event):
-    """Ctrl+C in the TUI: detach the client (the server keeps running)."""
+    """Ctrl+C in the TUI: quit the client now (the server keeps running)."""
+
+
+class QuitAfterJobs(Event):
+    """Ctrl+Q in the TUI: quit once the jobs running now have finished (server untouched)."""
 
 
 class RefreshRequested(Event):
     """Key R: ask the server for a rescan."""
-
-
-class RequestShutdown(Event):
-    """Key S: request (or cancel) a graceful server shutdown."""
 
 
 class ThreadControlEvent(Event):

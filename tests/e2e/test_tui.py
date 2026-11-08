@@ -74,5 +74,43 @@ def test_tui_renders_sends_commands_and_detaches(demo_config, serve_factory):
             pass
         os.close(master)
 
-    snapshot = serve.state()  # the server keeps running after the client detached
-    assert snapshot["shutdown_requested"] is False and snapshot["run_status"] != "interrupted"
+    snapshot = serve.state()  # the server keeps running after the client quit
+    assert snapshot["stop_requested"] is False and snapshot["run_status"] == "running"
+
+
+def test_tui_ctrl_q_quits_after_running_jobs(demo_config, fast_demo, serve_factory):
+    """Ctrl+Q waits for the jobs running now, then quits; the server is not stopped."""
+    serve = serve_factory(["--demo", "--config", str(demo_config), "--demo-config", str(fast_demo)])
+    serve.wait_for(lambda s: s["run_status"] == "running" and s["active_jobs"], timeout=30)
+    pid, master = pty.fork()
+    if pid == 0:
+        fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", 45, 140, 0, 0))
+        os.chdir(REPO)
+        os.execve(sys.executable, [sys.executable, "-m", "vbc.cli", "tui", "--api",
+                                   f"http://127.0.0.1:{serve.port}"],
+                  {**os.environ, "TERM": "xterm-256color"})
+    buf = bytearray()
+    try:
+        _read(master, buf, 4)
+        os.write(master, b"S")  # no longer a TUI action: nothing may happen to the server
+        _read(master, buf, 1)
+        assert serve.state()["stop_requested"] is False
+        os.write(master, b"\x11")  # Ctrl+Q
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            done, status = os.waitpid(pid, os.WNOHANG)
+            if done:
+                break
+            _read(master, buf, 0.2)
+        else:
+            raise AssertionError("vbc tui did not quit after Ctrl+Q")
+        assert os.waitstatus_to_exitcode(status) == 0
+        assert "Quitting after" in _text(bytes(buf))
+    finally:
+        try:
+            os.kill(pid, 9)
+        except ProcessLookupError:
+            pass
+        os.close(master)
+    snapshot = serve.state()
+    assert snapshot["stop_requested"] is False and snapshot["run_status"] == "running"

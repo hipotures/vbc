@@ -58,8 +58,10 @@ def render_status(snapshot: dto.StateSnapshot, client: ApiClient) -> str:
     lines = [f"VBC {client.base_url}  {snapshot.run_status.upper()}  threads {t.current} ({t.minimum}-{t.maximum})"]
     if snapshot.status_message:
         lines.append(f"  ! {snapshot.status_message}")
-    if snapshot.shutdown_requested and snapshot.run_status != "shutting_down":
-        lines.append("  shutdown requested")
+    if snapshot.run_status == "stopped":
+        lines.append("  processing stopped; `vbc refresh` resumes")
+    elif snapshot.stop_requested and snapshot.run_status != "stopping":
+        lines.append("  stop requested")
     done_since = c.completed - c.completed_at_last_discovery
     lines.append(
         f"Files: {done_since}/{d.files_to_process} done this pass, found {d.files_found}, "
@@ -159,18 +161,18 @@ def refresh(api: Optional[str], as_json: bool) -> None:
     run(api, action)
 
 
-def shutdown(api: Optional[str], interrupt: bool, cancel: bool, as_json: bool) -> None:
+def stop(api: Optional[str], interrupt: bool, cancel: bool, as_json: bool) -> None:
     if interrupt and cancel:
-        typer.echo("vbc shutdown: --interrupt and --cancel exclude each other", err=True)
+        typer.echo("vbc stop: --interrupt and --cancel exclude each other", err=True)
         raise typer.Exit(code=2)
 
     def action(client: ApiClient) -> None:
         if cancel:
-            ack, text = client.cancel_shutdown(), "shutdown cancelled"
+            ack, text = client.cancel_stop(), "stop cancelled: processing continues"
         elif interrupt:
-            ack, text = client.shutdown("interrupt"), "interrupt requested: running jobs are stopped"
+            ack, text = client.stop("interrupt"), "stopping now: running jobs are interrupted (server keeps running)"
         else:
-            ack, text = client.shutdown("graceful"), "graceful shutdown requested: running jobs finish first"
+            ack, text = client.stop("graceful"), "stopping after running jobs finish (server keeps running)"
         emit_json(ack) if as_json else typer.echo(text)
 
     run(api, action)
