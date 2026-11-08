@@ -24,7 +24,7 @@ redesigned.
 │        │                          ▲                                  │
 │        └──────── HTTP JSON API /api/v1 ──────────┘                   │
 └──────────────────────────────────┬───────────────────────────────────┘
-                                   │ HTTP (long-poll), bearer token
+                                   │ HTTP (long-poll), no auth   
             ┌──────────────────────┼──────────────────────┐
             ▼                      ▼                      ▼
      vbc tui (Rich,          vbc status/threads/     vbc-web (later,
@@ -142,7 +142,7 @@ locally, then send the whole ordered list" (`PUT /dirs`).
 
 All clients are Python and live in `vbc/clients/`; they import only
 `vbc/contracts/` and a shared thin HTTP client (`clients/api_client.py`,
-`httpx`: auth header, long-poll loop, clock-skew correction, retries).
+`httpx`: long-poll loop, clock-skew correction, retries).
 
 `vbc tui` (phase 1): the current Rich dashboard and overlays, fed by the API.
 A background thread runs the `/state` long-poll and replaces a local snapshot;
@@ -159,11 +159,11 @@ separate `ctl` group), one per endpoint: `vbc status` (one-shot or
 `--watch`), `vbc threads N`, `vbc refresh`, `vbc shutdown
 [--interrupt|--cancel]`, `vbc dirs [list|set …]`, `vbc errors`, `vbc logs
 [--follow] [--level]`, `vbc config`. Human-readable output by default,
-`--json` prints the DTOs as-is; non-zero exit status on HTTP/auth errors.
+`--json` prints the DTOs as-is; non-zero exit status on HTTP/connection errors.
 
 `vbc-web` (later): separate process, separate entry point, own port. Serves
-static files and proxies `/api/*` to the server, injecting the bearer token
-(backend-for-frontend: no CORS, token never reaches the browser). Replaces
+static files and proxies `/api/*` to the server (same origin for the
+browser, so no CORS configuration on the server). Replaces
 `infrastructure/web_server.py` and the `--web` flag; until it exists, the
 legacy `vbc run <dirs> --web` keeps working.
 
@@ -338,12 +338,24 @@ actions to offer: `discovering`, `running`, `paused_on_error`,
 Security: the listen address is configurable (`vbc serve --host <ip>
 --port <n>`, or `server.host` / `server.port` in config; `0.0.0.0` or a
 specific interface IP for access from other hosts) and defaults to
-`127.0.0.1`. Bearer token from a 0600 file,
-constant-time compare; Host/Origin allowlist (same model as mypowers). When
-bound to anything other than loopback, `storage.roots` (see Paths) is
-**mandatory** and the server refuses to start without it, because otherwise
-`PUT /dirs` lets any token holder point the server at any directory it can
-write to.
+`127.0.0.1`.
+
+**No authentication, no TLS** (decided). The API is plain HTTP for a trusted
+network:
+
+* On loopback a token adds nothing; on a remote link without TLS a token
+  travels in clear text with every request, so it would be protection in
+  name only. Whoever can reach the port can use the API.
+* Kept: a Host/Origin allowlist, which stops web pages open in a local
+  browser from driving the API (CSRF, DNS rebinding) — the realistic threat
+  on loopback.
+* When bound to anything other than loopback, `storage.roots` (see Paths) is
+  **mandatory** and the server refuses to start without it, so that anyone on
+  the network can at most point the server at directories inside the
+  declared roots via `PUT /dirs`.
+* Exposing the server beyond a trusted network is the deployment's job
+  (firewall, SSH tunnel `ssh -L`, WireGuard/Tailscale), not VBC's. Built-in
+  TLS + token can be added later as a separate feature if ever needed.
 
 ## Changing counters without streaming every tick
 
@@ -418,10 +430,10 @@ mechanism without changing the read model.
 | Command | What runs |
 |---|---|
 | `vbc serve [--config] [--host] [--port]` | `bootstrap` + API, headless, no Rich, no keyboard. Input dirs from config (positional args optional). `--demo` uses `DemoOrchestrator`. |
-| `vbc tui [--api http://host:port] [--token-file …]` | TUI client only (phase 1). |
-| `vbc status`, `vbc threads N`, `vbc refresh`, `vbc shutdown`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config` | One-shot API commands (phase 1). `--api`/`--token-file` on every client command, also from env (`VBC_API`, `VBC_TOKEN_FILE`) or client config; default `http://127.0.0.1:<default port>`. |
+| `vbc tui [--api http://host:port]` | TUI client only (phase 1). |
+| `vbc status`, `vbc threads N`, `vbc refresh`, `vbc shutdown`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config` | One-shot API commands (phase 1). `--api` on every client command, also from env (`VBC_API`) or client config; default `http://127.0.0.1:<default port>`. |
 | `vbc run <dirs>` | Today's `vbc <dirs>`. During migration it runs `vbc_legacy`; after legacy is deleted it becomes the launcher (see Open decisions). |
-| `vbc-web --api … --token-file …` | Web client only (later). |
+| `vbc-web --api …` | Web client only (later). |
 
 All of these are **peer subcommands of one Typer app** (`vbc/cli.py`).
 A bare `vbc <dirs>` no longer works, because a directory named like a
@@ -479,7 +491,7 @@ and `vbc run <dirs>` (legacy) working.
 5. **API + `vbc serve`.** `service/bootstrap.py` (wiring cut out of legacy
    `compress()`); FastAPI app with the endpoints above, long-poll via
    `asyncio.Event` set with `loop.call_soon_threadsafe` from the bus
-   callback; auth, health, OpenAPI artifact + drift test; lifecycle and
+   callback; Host/Origin allowlist, health, OpenAPI artifact + drift test; lifecycle and
    signals as in Process model. Integration test: `serve --demo` + HTTP
    client.
 6. **One-shot commands.** `clients/api_client.py` + `vbc status`/`threads`/
@@ -510,6 +522,8 @@ and `vbc run <dirs>` (legacy) working.
 * Language: **Python stays** (decided) for the server and for the clients
   (`vbc tui`, the one-shot commands, `vbc-web`). No Rust rewrite; mypowers is referenced
   only for its API conventions, not its implementation stack.
+* Security (decided): plain HTTP, no token, no TLS; trusted network only,
+  Host/Origin allowlist, `storage.roots` mandatory off loopback.
 * Command line (decided): one flat set of peer subcommands — `vbc serve`,
   `vbc tui`, `vbc run <dirs>`, `vbc status`, `vbc threads`, `vbc refresh`,
   `vbc shutdown`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config`. No
@@ -529,7 +543,7 @@ and `vbc run <dirs>` (legacy) working.
   by `vbc-web` from API data. Recommended: vanilla JS, because HTMX polling
   cannot extrapolate counters.
 * What `vbc run <dirs>` becomes when legacy is deleted. Recommended: a thin
-  launcher that starts `serve` on loopback with a temporary token and
+  launcher that starts `serve` on loopback (free port) and
   attaches `tui` in the same terminal (single code path; no in-process
   dashboard is carried over).
 * GPU metrics: v1 needs the latest sample **and** a bounded history, because
