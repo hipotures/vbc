@@ -11,7 +11,7 @@ Default location: `conf/vbc.yaml`
 Demo mode uses a separate simulation file: `conf/demo.yaml`.
 
 ```bash
-uv run vbc --demo --demo-config conf/demo.yaml
+uv run vbc run --demo --demo-config conf/demo.yaml
 ```
 
 This file controls simulated file counts, size distribution, processing speed, and error mix.
@@ -1097,16 +1097,16 @@ Other settings (for example `prefetch_factor`, `dynamic_quality`, encoder arg li
 
 ```bash
 # Override threads and quality
-uv run vbc /videos --threads 8 --quality 38
+uv run vbc run /videos --threads 8 --quality 38
 
 # Override GPU setting
-uv run vbc /videos --cpu  # Force CPU mode
+uv run vbc run /videos --cpu  # Force CPU mode
 
 # Override camera filtering
-uv run vbc /videos --camera "ILCE-7RM5,DJI"
+uv run vbc run /videos --camera "ILCE-7RM5,DJI"
 
 # Override multiple settings
-uv run vbc /videos \
+uv run vbc run /videos \
   --config custom.yaml \
   --threads 8 \
   --quality 40 \
@@ -1147,13 +1147,13 @@ You can maintain multiple config files:
 
 ```bash
 # Production (high quality, slow)
-uv run vbc /videos --config conf/production.yaml
+uv run vbc run /videos --config conf/production.yaml
 
 # Fast preview (low quality, fast)
-uv run vbc /videos --config conf/preview.yaml
+uv run vbc run /videos --config conf/preview.yaml
 
 # Archival (maximum quality)
-uv run vbc /videos --config conf/archive.yaml
+uv run vbc run /videos --config conf/archive.yaml
 ```
 
 **Example `conf/archive.yaml`:**

@@ -5,7 +5,7 @@ Complete reference for VBC command-line interface.
 ## Basic Syntax
 
 ```bash
-uv run vbc [INPUT_DIR] [OPTIONS]
+uv run vbc run [INPUT_DIR] [OPTIONS]
 ```
 
 ## Positional Arguments
@@ -16,7 +16,7 @@ Optional. Directory containing videos to compress.
 If omitted, VBC uses enabled entries (`enabled: true`) from `input_dirs` in config (CLI overrides config, no merge).
 
 ```bash
-uv run vbc /path/to/videos
+uv run vbc run /path/to/videos
 ```
 
 **Behavior:**
@@ -37,7 +37,7 @@ Path to YAML configuration file.
 **Default:** `conf/vbc.yaml`
 
 ```bash
-uv run vbc /videos --config custom.yaml
+uv run vbc run /videos --config custom.yaml
 ```
 
 #### `--threads INT`, `-t INT`
@@ -47,7 +47,7 @@ Number of concurrent compression threads.
 **Default:** From config (default: 1)
 
 ```bash
-uv run vbc /videos --threads 8
+uv run vbc run /videos --threads 8
 ```
 
 **Note:** Runtime keyboard adjustment (`<`/`>`) clamps to 1-8. Startup value from CLI/config accepts `>0` (practical upper bound: executor `max_workers=16`).
@@ -60,7 +60,7 @@ Quality value (0-63). Lower = better quality.
 **Rule:** Cannot be used with `--quality-mode rate`.
 
 ```bash
-uv run vbc /videos --quality 38
+uv run vbc run /videos --quality 38
 ```
 
 **Recommendations:**
@@ -77,10 +77,10 @@ Select quality control mode: `cq` (default) or `rate`.
 
 ```bash
 # Default behavior (CQ/CRF from encoder args)
-uv run vbc /videos --quality-mode cq --quality 38
+uv run vbc run /videos --quality-mode cq --quality 38
 
 # Bitrate target mode
-uv run vbc /videos --quality-mode rate --bps 200Mbps
+uv run vbc run /videos --quality-mode rate --bps 200Mbps
 ```
 
 **Validation rules:**
@@ -96,8 +96,8 @@ Accepted formats:
 - Relative: `0.8` (input bitrate × 0.8)
 
 ```bash
-uv run vbc /videos --quality-mode rate --bps 200Mbps
-uv run vbc /videos --quality-mode rate --bps 0.8
+uv run vbc run /videos --quality-mode rate --bps 200Mbps
+uv run vbc run /videos --quality-mode rate --bps 0.8
 ```
 
 #### `--minrate TEXT`
@@ -106,7 +106,7 @@ Optional minimum bitrate clamp for `rate` mode.
 Must be the same numeric class as `--bps` (all absolute or all relative).
 
 ```bash
-uv run vbc /videos --quality-mode rate --bps 0.8 --minrate 0.7 --maxrate 0.9
+uv run vbc run /videos --quality-mode rate --bps 0.8 --minrate 0.7 --maxrate 0.9
 ```
 
 #### `--maxrate TEXT`
@@ -124,10 +124,10 @@ Enable/disable GPU acceleration.
 
 ```bash
 # Use GPU (NVENC AV1)
-uv run vbc /videos --gpu
+uv run vbc run /videos --gpu
 
 # Use CPU (SVT-AV1)
-uv run vbc /videos --cpu
+uv run vbc run /videos --cpu
 ```
 
 **Trade-offs:**
@@ -167,10 +167,10 @@ Queue ordering mode.
 
 ```bash
 # Sort by file size (small → large)
-uv run vbc /videos --queue-sort size
+uv run vbc run /videos --queue-sort size
 
 # Process directories in CLI order, sort within each directory
-uv run vbc /dir1,/dir2 --queue-sort dir
+uv run vbc run /dir1,/dir2 --queue-sort dir
 ```
 
 #### `--queue-seed INT`
@@ -178,7 +178,7 @@ uv run vbc /dir1,/dir2 --queue-sort dir
 Seed for deterministic random order when using `--queue-sort rand`.
 
 ```bash
-uv run vbc /videos --queue-sort rand --queue-seed 42
+uv run vbc run /videos --queue-sort rand --queue-seed 42
 ```
 
 ### Filtering
@@ -190,7 +190,7 @@ Skip files already encoded in AV1 codec.
 **Default:** false
 
 ```bash
-uv run vbc /videos --skip-av1
+uv run vbc run /videos --skip-av1
 ```
 
 **Use case:** Mixed library with some AV1 files.
@@ -203,10 +203,10 @@ Only process files from specific camera models (comma-separated).
 
 ```bash
 # Single camera
-uv run vbc /videos --camera "ILCE-7RM5"
+uv run vbc run /videos --camera "ILCE-7RM5"
 
 # Multiple cameras
-uv run vbc /videos --camera "ILCE-7RM5,DJI,DC-GH7"
+uv run vbc run /videos --camera "ILCE-7RM5,DJI,DC-GH7"
 ```
 
 **Matching:** Substring, case-insensitive. Exact model strings are most reliable.
@@ -219,10 +219,10 @@ Minimum input file size in bytes.
 
 ```bash
 # 5 MiB minimum
-uv run vbc /videos --min-size 5242880
+uv run vbc run /videos --min-size 5242880
 
 # No minimum (process all files)
-uv run vbc /videos --min-size 0
+uv run vbc run /videos --min-size 0
 ```
 
 #### `--min-ratio FLOAT`
@@ -233,10 +233,10 @@ Minimum compression ratio required (0.0-1.0).
 
 ```bash
 # Require 20% savings
-uv run vbc /videos --min-ratio 0.2
+uv run vbc run /videos --min-ratio 0.2
 
 # Accept any compression
-uv run vbc /videos --min-ratio 0.0
+uv run vbc run /videos --min-ratio 0.0
 ```
 
 **Behavior:** If savings < threshold, original file copied to output (not compressed version).
@@ -250,7 +250,7 @@ Rotate all videos 180 degrees.
 **Default:** false
 
 ```bash
-uv run vbc /videos --rotate-180
+uv run vbc run /videos --rotate-180
 ```
 
 **Note:** Overrides auto-rotation patterns from config.
@@ -264,7 +264,7 @@ Remove existing `.err` markers on startup and retry those files.
 **Default:** false (skip files with .err)
 
 ```bash
-uv run vbc /videos --clean-errors
+uv run vbc run /videos --clean-errors
 ```
 
 **Use case:** Fixed issue causing errors, want to retry.
@@ -276,7 +276,7 @@ Output verification mode: `false`, `log`, `pause`, or `exit`.
 **Default:** from config (`general.verify_fail_action`, default `false`)
 
 ```bash
-uv run vbc /videos --verify-fail-action pause
+uv run vbc run /videos --verify-fail-action pause
 ```
 
 **Modes:**
@@ -298,7 +298,7 @@ Enable/disable verbose debug logging.
 **Default:** `--no-debug`
 
 ```bash
-uv run vbc /videos --debug
+uv run vbc run /videos --debug
 ```
 
 **Debug logs:**
@@ -314,7 +314,7 @@ Wait for user input after all tasks finish instead of auto-exiting.
 **Default:** `--no-wait`
 
 ```bash
-uv run vbc /videos --wait
+uv run vbc run /videos --wait
 ```
 
 When wait mode is active, VBC shows **WAITING** status and accepts:
@@ -329,7 +329,7 @@ Play a terminal bell (BEL character) as a completion notification.
 **Default:** `--no-bell`
 
 ```bash
-uv run vbc /videos --bell --wait
+uv run vbc run /videos --bell --wait
 ```
 
 Bell triggers:
@@ -344,7 +344,7 @@ The automatic repair pass itself does not emit a bell, because repaired files ar
 Path to log file (overrides config).
 
 ```bash
-uv run vbc /videos --log-path /tmp/vbc/compression.log
+uv run vbc run /videos --log-path /tmp/vbc/compression.log
 ```
 
 **Related diagnostics:**
@@ -361,7 +361,7 @@ Enable read-only HTMX web dashboard.
 **Default:** from config (`web_server.enabled`, default `false`)
 
 ```bash
-uv run vbc /videos --web
+uv run vbc run /videos --web
 ```
 
 #### `--web-port INT`
@@ -371,7 +371,7 @@ Override web dashboard port.
 **Default:** from config (`web_server.port`, default `8765`)
 
 ```bash
-uv run vbc /videos --web --web-port 8765
+uv run vbc run /videos --web --web-port 8765
 ```
 
 ### Demo
@@ -383,7 +383,7 @@ Run simulated processing (no video file processing I/O). The UI and event flow b
 **Note:** `INPUT_DIR` is optional; in demo mode it is ignored.
 
 ```bash
-uv run vbc --demo
+uv run vbc run --demo
 ```
 
 #### `--demo-config PATH`
@@ -393,7 +393,7 @@ Path to demo simulation settings.
 **Default:** `conf/demo.yaml`
 
 ```bash
-uv run vbc --demo --demo-config conf/demo.yaml
+uv run vbc run --demo --demo-config conf/demo.yaml
 ```
 
 ## Examples
@@ -402,28 +402,28 @@ uv run vbc --demo --demo-config conf/demo.yaml
 
 ```bash
 # Default settings (threads=1, quality from encoder args, GPU)
-uv run vbc /videos
+uv run vbc run /videos
 ```
 
 ### High Quality Archive
 
 ```bash
 # CPU mode, low CQ, 4 threads
-uv run vbc /videos --cpu --quality 35 --threads 4
+uv run vbc run /videos --cpu --quality 35 --threads 4
 ```
 
 ### Fast GPU Compression
 
 ```bash
 # GPU mode, 8 threads, standard quality
-uv run vbc /videos --gpu --threads 8 --quality 45
+uv run vbc run /videos --gpu --threads 8 --quality 45
 ```
 
 ### Camera-Specific Processing
 
 ```bash
 # Only ILCE-7RM5 cameras, high quality
-uv run vbc /videos \
+uv run vbc run /videos \
   --camera "ILCE-7RM5" \
   --quality 38 \
   --threads 6
@@ -433,20 +433,20 @@ uv run vbc /videos \
 
 ```bash
 # Remove error markers and retry
-uv run vbc /videos --clean-errors
+uv run vbc run /videos --clean-errors
 ```
 
 ### Debug Run
 
 ```bash
 # Debug logging, fewer threads for clarity
-uv run vbc /videos --threads 2 --debug
+uv run vbc run /videos --threads 2 --debug
 ```
 
 ### Complete Custom Run
 
 ```bash
-uv run vbc /videos \
+uv run vbc run /videos \
   --config conf/production.yaml \
   --threads 12 \
   --quality 40 \
@@ -481,7 +481,7 @@ cpu_encoder:
 ```
 
 ```bash
-uv run vbc /videos --threads 8 --quality 38 --cpu
+uv run vbc run /videos --threads 8 --quality 38 --cpu
 ```
 
 **Result:**
@@ -548,13 +548,13 @@ Hardware is lacking required capabilities
 **Bash:**
 ```bash
 # Add to ~/.bashrc
-eval "$(uv run vbc --show-completion bash)"
+eval "$(uv run vbc run --show-completion bash)"
 ```
 
 **Zsh:**
 ```bash
 # Add to ~/.zshrc
-eval "$(uv run vbc --show-completion zsh)"
+eval "$(uv run vbc run --show-completion zsh)"
 ```
 
 ## Next Steps

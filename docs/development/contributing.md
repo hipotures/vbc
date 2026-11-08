@@ -180,7 +180,7 @@ git commit -m "docs: update CLI reference with new flags"
 git commit -m "refactor: extract metadata caching to separate class"
 
 # Tests
-git commit -m "test: add unit tests for FFmpegAdapter"
+git commit -m "test: add e2e scenario for graceful shutdown"
 
 # Chores
 git commit -m "chore: update dependencies to latest versions"
@@ -208,8 +208,8 @@ git commit -m "chore: update dependencies to latest versions"
 
 ### High Priority
 
-1. **Unit tests**: See [Testing](testing.md)
-2. **Integration tests**: End-to-end workflow tests
+1. **Service split**: see [Service Split Plan](../architecture/service-split.md)
+2. **End-to-end scenarios**: see [Testing](testing.md)
 3. **Documentation**: Improve examples, add tutorials
 4. **Performance**: Profiling and optimization
 
@@ -232,15 +232,11 @@ See [Testing Guide](testing.md) for detailed testing instructions.
 
 **Quick test:**
 ```bash
-# Run all tests
+# Run the end-to-end suite (tests/e2e, once it exists)
 uv run pytest
-
-# Run with coverage
-uv run pytest --cov=vbc --cov-report=html
-
-# Run specific test
-uv run pytest tests/unit/test_config_models.py::test_general_config_defaults
 ```
+
+VBC has no unit tests by design; see the Testing Guide for why.
 
 ## Documentation
 
@@ -281,7 +277,7 @@ API docs are auto-generated from docstrings using `mkdocstrings`.
 ### Before Submitting
 
 - [ ] Code follows style guide
-- [ ] Tests pass (`uv run pytest`)
+- [ ] End-to-end suite passes (`uv run pytest`)
 - [ ] Documentation updated
 - [ ] Commit messages follow conventional format
 - [ ] No merge conflicts with main
@@ -324,7 +320,7 @@ List any breaking changes and migration steps.
 
 **Review criteria:**
 - Code quality (readability, maintainability)
-- Test coverage (new code should have tests)
+- Behaviour covered by an end-to-end scenario where it matters
 - Documentation (public APIs documented)
 - Performance (no obvious inefficiencies)
 - Security (no vulnerabilities)

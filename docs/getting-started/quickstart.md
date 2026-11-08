@@ -19,7 +19,7 @@ mkdir ~/Videos/raw
 cd ~/DEV/vbc
 # Required on first run
 cp conf/vbc.yaml.example conf/vbc.yaml
-uv run vbc ~/Videos/raw
+uv run vbc run ~/Videos/raw
 ```
 
 VBC will:
@@ -74,7 +74,7 @@ ls -lh /tmp/vbc/compression.log
 For NVIDIA GPUs (faster, lower quality ceiling):
 
 ```bash
-uv run vbc ~/Videos/raw --gpu --threads 8
+uv run vbc run ~/Videos/raw --gpu --threads 8
 ```
 
 !!! tip "GPU vs CPU"
@@ -86,7 +86,7 @@ uv run vbc ~/Videos/raw --gpu --threads 8
 For maximum quality (slower):
 
 ```bash
-uv run vbc ~/Videos/raw --cpu --quality 35 --threads 4
+uv run vbc run ~/Videos/raw --cpu --quality 35 --threads 4
 ```
 
 Lower quality value (CQ/CRF) = higher quality (range: 0-63)
@@ -98,7 +98,7 @@ If you have videos from specific cameras (for best results use exact model strin
 ```bash
 # First, create conf/vbc.yaml with dynamic_quality settings
 # Then run with camera filtering
-uv run vbc ~/Videos/raw --camera "ILCE-7RM5,DJI"
+uv run vbc run ~/Videos/raw --camera "ILCE-7RM5,DJI"
 ```
 
 This will only process files from those cameras and apply custom CQ per camera.
@@ -108,7 +108,7 @@ This will only process files from those cameras and apply custom CQ per camera.
 For upside-down drone footage:
 
 ```bash
-uv run vbc ~/Videos/raw --rotate-180
+uv run vbc run ~/Videos/raw --rotate-180
 ```
 
 Or use auto-rotation patterns in `conf/vbc.yaml` (regex-based).
@@ -154,7 +154,7 @@ autorotate:
 Then run:
 
 ```bash
-uv run vbc ~/Videos/raw --config conf/vbc.yaml
+uv run vbc run ~/Videos/raw --config conf/vbc.yaml
 ```
 
 CLI arguments override config file settings.

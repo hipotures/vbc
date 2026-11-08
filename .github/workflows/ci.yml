@@ -11,7 +11,7 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - "vbc/**"
-      - "tests/**"
+      - "vbc_legacy/**"
 
 permissions:
   contents: read
@@ -34,32 +34,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libimage-exiftool-perl
-
       - name: Install dependencies
         run: uv sync --frozen --extra docs --extra dev
 
-      - name: Test docs sync
-        run: uv run pytest tests/test_docs_sync.py -q
-
-      - name: Test unit suite
-        run: uv run pytest tests/unit/ -q
-
-      - name: Test safe integration subset
-        run: >
-          uv run pytest
-          tests/integration/test_metadata_copy.py
-          tests/integration/test_skipping.py
-          tests/integration/test_orchestrator.py
-          tests/integration/test_hw_cap.py
-          tests/integration/test_error_markers.py
-          tests/integration/test_concurrency.py
-          tests/integration/test_color_fix.py
-          tests/integration/test_advanced_errors.py
-          -q
+      - name: CLI smoke check
+        run: |
+          uv run vbc --help
+          uv run vbc run --help
 
       - name: Build docs
-        run: uv run mkdocs build
+        run: uv run mkdocs build --strict

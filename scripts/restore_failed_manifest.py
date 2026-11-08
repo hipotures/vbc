@@ -14,9 +14,9 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from vbc.config.loader import load_config
-from vbc.config.models import AppConfig, InputDirEntry
-from vbc.domain.models import CompressionManifest
+from vbc_legacy.config.loader import load_config
+from vbc_legacy.config.models import AppConfig, InputDirEntry
+from vbc_legacy.domain.models import CompressionManifest
 
 
 class RestoreError(RuntimeError):

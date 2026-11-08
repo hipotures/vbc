@@ -19,13 +19,11 @@ dependencies = [
 ]
 
 [project.scripts]
-vbc = "vbc.main:app"
+vbc = "vbc.cli:app"
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "pytest-cov>=7.0.0",
-    "pytest-mock>=3.12.0",
 ]
 docs = [
     "mkdocs>=1.5.3",
@@ -35,11 +33,11 @@ docs = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["vbc"]
+packages = ["vbc", "vbc_legacy"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["tests"]
+testpaths = ["tests/e2e"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -50,27 +48,8 @@ addopts = [
     "--showlocals",
 ]
 markers = [
-    "slow: marks tests as slow (integration tests with real files)",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
+    "e2e: black-box end-to-end scenario (real processes, real ffmpeg/exiftool)",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
-]
-
-[tool.coverage.run]
-source = ["vbc"]
-omit = [
-    "tests/*",
-    "vbc/__init__.py",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
 ]

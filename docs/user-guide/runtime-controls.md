@@ -214,7 +214,7 @@ When `wait_on_finish: true` (or `--wait` CLI flag) is set, VBC does not exit aut
 
 **Example:**
 ```bash
-uv run vbc /videos --wait --bell
+uv run vbc run /videos --wait --bell
 ```
 
 ```

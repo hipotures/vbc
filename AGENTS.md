@@ -8,34 +8,45 @@ VBC (Video Batch Compression) is a production-grade video batch compression tool
 
 Project uses `uv` for dependency management (Python 3.12+). All commands use `uv run`.
 
+**Migration in progress: service split.** The source of truth is
+`docs/architecture/service-split.md`. Read it before changing code. Summary:
+
+- `vbc_legacy/` is today's complete application, frozen. `vbc run <dirs>`
+  runs it. No new features there; a critical bug fix goes into both trees.
+- `vbc/` is the new tree (server `vbc serve`, clients `vbc tui` and one-shot
+  API commands). It takes over from `vbc_legacy/` only what it needs, by
+  copying whole files or cutting out fragments.
+- The two packages never import each other. The only bridge is the `run`
+  command in `vbc/cli.py`.
+- `vbc_legacy/` is deleted at the end of the migration.
+- If implementation shows that an architectural decision in the plan is
+  wrong, stop. Fix the plan and reimplement from the tag
+  `service-split-baseline` (or from the last good step) on a fresh branch.
+  Do not work around a wrong decision, and never force-push or move tags.
+
 ## Common Commands
 
 ### Run VBC
 ```bash
-# Main application
-uv run vbc /path/to/videos --gpu --threads 8
-uv run vbc /path/to/videos --cpu --quality 35
+# Main application (legacy, in-process TUI)
+uv run vbc run /path/to/videos --gpu --threads 8
+uv run vbc run /path/to/videos --cpu --quality 35
 
 # Rate mode example
-uv run vbc /path/to/videos --quality-mode rate --bps 200Mbps
+uv run vbc run /path/to/videos --quality-mode rate --bps 200Mbps
 
 # Test with a small dataset
-uv run vbc /path/to/test/videos --threads 2 --quality 45
+uv run vbc run /path/to/test/videos --threads 2 --quality 45
 ```
+
+A bare `vbc <dirs>` is rejected with a hint; all commands are peer
+subcommands of `vbc` (`vbc/cli.py`).
 
 ### Documentation
 ```bash
 # Build and serve documentation
 ./scripts/serve-docs.sh  # Serves docs at http://127.0.0.1:8000
-```
-
-### Tests
-```bash
-uv run pytest
-uv run pytest tests/unit/
-uv run pytest tests/integration/
-uv run pytest -m "not slow"
-uv run pytest -m "integration"
+uv run --extra docs mkdocs build --strict
 ```
 
 ### Dependency Management
@@ -43,19 +54,19 @@ uv run pytest -m "integration"
 # Add new dependency
 uv add <package>
 
-# Add dev dependency
-uv add --group dev <package>
+# Add dev dependency (optional extra)
+uv add --optional dev <package>
 
-# Add docs dependency
-uv add --group docs <package>
+# Add docs dependency (optional extra)
+uv add --optional docs <package>
 
 # Sync dependencies
-uv sync
+uv sync --extra dev --extra docs
 ```
 
 ## VBC Architecture
 
-VBC (`vbc/`) follows Clean Architecture with strict layer separation:
+VBC follows Clean Architecture with strict layer separation:
 
 ```
 UI Layer (ui/)               -> Rich dashboard, keyboard listener
@@ -65,10 +76,15 @@ Pipeline Layer (pipeline/)   -> Orchestrator (job lifecycle)
 Infrastructure (infrastructure/) -> FFmpeg, ExifTool, FFprobe adapters
 ```
 
+The target architecture (server read model, command service, HTTP API,
+clients) is described in `docs/architecture/service-split.md`.
+
 ### Directory Structure
 ```
-vbc/
-├── main.py              # Typer CLI entry point
+vbc/                     # new tree (being built)
+└── cli.py               # Typer app: peer subcommands (`run` for now)
+vbc_legacy/              # frozen, today's application
+├── main.py              # legacy Typer command (`vbc run`)
 ├── config/              # Pydantic models + YAML loader
 ├── domain/              # Business logic (models.py, events.py)
 ├── infrastructure/      # External adapters (event_bus, ffmpeg, exif_tool, ffprobe, logging)
@@ -76,7 +92,7 @@ vbc/
 └── ui/                  # Rich Live dashboard (state, manager, keyboard, dashboard)
 ```
 
-### Key Components
+### Key Components (legacy, carried into the new tree)
 
 **Orchestrator** (`pipeline/orchestrator.py`):
 - Discovery, queue management, job lifecycle
@@ -104,14 +120,6 @@ vbc/
 4. Submit-on-demand: Do not queue 10K futures, submit as slots become available
 5. Type safety: Pydantic models for all config and domain entities
 
-### VBC Modification Guidelines
-
-- UI changes: Modify `ui/` components (dashboard panels, keyboard shortcuts)
-- New events: Add to `domain/events.py`, subscribe in `ui/manager.py`
-- FFmpeg changes: Update `infrastructure/ffmpeg.py` (command builder)
-- Job logic: Modify `pipeline/orchestrator.py` (discovery, processing, lifecycle)
-- Config: Add fields to `config/models.py`, update YAML loader
-
 Critical: Preserve event-driven architecture. Do not create direct dependencies between layers.
 Important: Never add `conf/vbc.yaml` to git tracking. If it appears tracked, notify the user immediately.
 
@@ -127,9 +135,9 @@ VBC dependencies:
 - `typer` - CLI framework
 - System: `ffmpeg`, `exiftool` binaries
 
-Optional dependency groups:
-- `pytest`, `pytest-cov`, `pytest-mock` (testing)
-- `mkdocs`, `mkdocs-material`, `mkdocstrings`, `pymdown-extensions` (docs)
+Optional dependency extras:
+- `dev`: `pytest` (runner for the e2e suite)
+- `docs`: `mkdocs`, `mkdocs-material`, `mkdocstrings`, `pymdown-extensions`
 
 Document any new dependencies in `README.md` and relevant `docs/` pages.
 
@@ -138,8 +146,8 @@ Document any new dependencies in `README.md` and relevant `docs/` pages.
 VBC has MkDocs documentation in `docs/`:
 - `getting-started/` - Installation, quickstart, configuration
 - `user-guide/` - CLI, runtime controls, advanced features
-- `architecture/` - Overview, events, pipeline flow
-- `api/` - Auto-generated from code
+- `architecture/` - Overview, events, pipeline flow, service split plan
+- `api/` - Auto-generated from code (points at `vbc_legacy` until modules move to `vbc`)
 - `development/` - Contributing and testing workflow
 
 Build docs: `./scripts/serve-docs.sh`
@@ -148,15 +156,16 @@ For major VBC changes, update relevant docs in `docs/` alongside code.
 
 ## Testing
 
-Automated tests live in `tests/unit/` and `tests/integration/`.
-Useful commands:
+**No unit tests.** The old unit/integration suite was removed. New code is
+covered only by a small black-box end-to-end suite in `tests/e2e/` (created
+from step 5 of the plan). The suite starts real processes with real
+ffmpeg/exiftool, uses media fixtures generated at test time (nothing binary in
+git) and checks only externally visible results. See "Testing strategy" in
+`docs/architecture/service-split.md`.
+
 ```bash
-uv run pytest                    # All tests
-uv run pytest tests/unit/        # Unit tests only
-uv run pytest tests/integration/ # Integration tests only
-uv run pytest -m "not slow"      # Skip integration tests
-uv run pytest --cov=vbc          # With coverage
+uv run pytest            # runs tests/e2e (once it exists)
 ```
 
-Mark slow tests with `@pytest.mark.slow` decorator.
-Use `@pytest.mark.integration` for integration tests.
+Keep the suite fast (minutes). A scenario that keeps breaking for reasons
+other than real regressions gets simplified or deleted.

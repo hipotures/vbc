@@ -580,6 +580,8 @@ allowed to fail and be repeated:
 
 ## Migration steps
 
+Progress: baseline tag `service-split-baseline`; **step 1 done**.
+
 Every step leaves `vbc run <dirs>` (legacy) working, `mkdocs build --strict`
 green and, once it exists, the e2e suite green.
 

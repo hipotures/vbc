@@ -6,7 +6,7 @@ This page documents the Orchestrator, the core processing coordinator.
 
 The Orchestrator is the heart of VBC, coordinating all compression jobs.
 
-::: vbc.pipeline.orchestrator
+::: vbc_legacy.pipeline.orchestrator
     options:
       show_source: true
       heading_level: 3
@@ -19,7 +19,7 @@ The Orchestrator is the heart of VBC, coordinating all compression jobs.
 
 Simulation-mode pipeline used by `--demo`.
 
-::: vbc.pipeline.demo_orchestrator
+::: vbc_legacy.pipeline.demo_orchestrator
     options:
       show_source: true
       heading_level: 3
@@ -28,7 +28,7 @@ Simulation-mode pipeline used by `--demo`.
 
 Helpers for moving files that failed verification or compression.
 
-::: vbc.pipeline.error_file_mover
+::: vbc_legacy.pipeline.error_file_mover
     options:
       show_source: true
       heading_level: 3
@@ -37,7 +37,7 @@ Helpers for moving files that failed verification or compression.
 
 Queue ordering strategies used before submit-on-demand scheduling.
 
-::: vbc.pipeline.queue_sorting
+::: vbc_legacy.pipeline.queue_sorting
     options:
       show_source: true
       heading_level: 3
@@ -46,7 +46,7 @@ Queue ordering strategies used before submit-on-demand scheduling.
 
 Repair loop helpers for corrupted FLV inputs and failed outputs.
 
-::: vbc.pipeline.repair
+::: vbc_legacy.pipeline.repair
     options:
       show_source: true
       heading_level: 3

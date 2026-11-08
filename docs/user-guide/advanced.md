@@ -59,10 +59,10 @@ dynamic_quality:
 
 ```bash
 # Override baseline CQ/CRF in encoder args
-uv run vbc /videos --quality 40
+uv run vbc run /videos --quality 40
 
 # Dynamic Quality still active (from config)
-uv run vbc /videos --config conf/vbc.yaml
+uv run vbc run /videos --config conf/vbc.yaml
 ```
 
 **Note:** `--quality` overrides the base CQ/CRF value but does **not** disable `dynamic_quality`.
@@ -73,7 +73,7 @@ To disable dynamic quality, set `general.dynamic_quality: {}` or `general.use_ex
 Enable debug logging to see CQ decisions:
 
 ```bash
-uv run vbc /videos --debug
+uv run vbc run /videos --debug
 ```
 
 Look for:
@@ -132,7 +132,7 @@ override ignores embedded input rotation metadata.
 
 ```bash
 # Rotate all videos 180° (overrides config patterns)
-uv run vbc /videos --rotate-180
+uv run vbc run /videos --rotate-180
 ```
 
 ## Camera Filtering
@@ -153,7 +153,7 @@ general:
 Or via CLI:
 
 ```bash
-uv run vbc /videos --camera "ILCE-7RM5,DJI"
+uv run vbc run /videos --camera "ILCE-7RM5,DJI"
 ```
 
 ### How It Works
@@ -190,7 +190,7 @@ general:
 Or via CLI:
 
 ```bash
-uv run vbc /videos --min-ratio 0.2  # 20% minimum
+uv run vbc run /videos --min-ratio 0.2  # 20% minimum
 ```
 
 ### How It Works
@@ -235,7 +235,7 @@ general:
 Or via CLI:
 
 ```bash
-uv run vbc /videos --skip-av1
+uv run vbc run /videos --skip-av1
 ```
 
 ### How It Works
@@ -437,20 +437,20 @@ VBC:
 **Option 1:** Reduce thread count to GPU session limit
 ```bash
 # RTX 30-series
-uv run vbc /videos --threads 5
+uv run vbc run /videos --threads 5
 
 # RTX 4090
-uv run vbc /videos --threads 8
+uv run vbc run /videos --threads 8
 ```
 
 **Option 2:** Use CPU mode (no hardware limitations)
 ```bash
-uv run vbc /videos --cpu
+uv run vbc run /videos --cpu
 ```
 
 **Option 3:** Reduce quality for 10-bit issues
 ```bash
-uv run vbc /videos --quality 38
+uv run vbc run /videos --quality 38
 ```
 
 **Option 4:** Upgrade GPU (RTX 40-series has full 10-bit AV1 support and higher session limits)
@@ -488,7 +488,7 @@ color_space=reserved
 ### Debug Logging
 
 ```bash
-uv run vbc /videos --debug
+uv run vbc run /videos --debug
 ```
 
 Look for:

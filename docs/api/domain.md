@@ -6,7 +6,7 @@ This page documents the core domain models and events.
 
 Domain models are framework-agnostic business entities.
 
-::: vbc.domain.models
+::: vbc_legacy.domain.models
     options:
       show_source: true
       heading_level: 3
@@ -15,7 +15,7 @@ Domain models are framework-agnostic business entities.
 
 Domain events enable decoupled communication between components.
 
-::: vbc.domain.events
+::: vbc_legacy.domain.events
     options:
       show_source: true
       heading_level: 3

@@ -52,7 +52,7 @@ uv sync --frozen
 cp conf/vbc.yaml.example conf/vbc.yaml
 
 # Verify CLI works
-uv run vbc --help
+uv run vbc run --help
 ```
 
 ### Method 2: Manual Virtual Environment
@@ -66,7 +66,7 @@ source .venv/bin/activate
 pip install rich pyyaml pyexiftool typer pydantic
 
 # Run VBC
-python -m vbc.main --help
+vbc run --help
 ```
 
 ## Installing FFmpeg
@@ -133,11 +133,11 @@ sudo make install
 
 ```bash
 # Check all dependencies
-uv run vbc --help
+uv run vbc run --help
 
 # You should see the help message without errors.
 # Test with a small input directory
-uv run vbc /path/to/test/videos --threads 1 --quality 45
+uv run vbc run /path/to/test/videos --threads 1 --quality 45
 ```
 
 ## GPU Support (NVIDIA)
@@ -162,7 +162,7 @@ For GPU-accelerated compression with NVENC:
 
 4. **Test GPU encoding**:
    ```bash
-   uv run vbc /path/to/videos --gpu --threads 2
+   uv run vbc run /path/to/videos --gpu --threads 2
    ```
 
 !!! warning "Hardware Limitations"

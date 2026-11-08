@@ -9,7 +9,7 @@ VBC compresses video libraries to AV1 using GPU (NVENC) or CPU (SVT-AV1) with in
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-mkdocs-blue.svg)](docs/)
-[![Tests](https://img.shields.io/badge/tests-pytest-orange.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-e2e-orange.svg)](docs/development/testing.md)
 
 ---
 
@@ -230,7 +230,7 @@ uv sync --frozen
 cp conf/vbc.yaml.example conf/vbc.yaml
 
 # Run VBC on a directory
-uv run vbc /path/to/videos
+uv run vbc run /path/to/videos
 ```
 
 ### What Happens
@@ -327,7 +327,7 @@ uv sync --frozen
 cp conf/vbc.yaml.example conf/vbc.yaml
 
 # Verify installation
-uv run vbc --help
+uv run vbc run --help
 ```
 
 ### Step 4: GPU Support (Optional)
@@ -357,10 +357,10 @@ ffmpeg -codecs | grep nvenc
 
 ```bash
 # Test with a small directory
-uv run vbc /path/to/test/videos --threads 1 --quality 45
+uv run vbc run /path/to/test/videos --threads 1 --quality 45
 
 # Run demo mode (no video file processing I/O; logs are still written)
-uv run vbc --demo
+uv run vbc run --demo
 ```
 
 Full installation details: [docs/getting-started/installation.md](docs/getting-started/installation.md)
@@ -675,7 +675,7 @@ suffix_output_dirs: null       # Disable suffix mode
 **CLI Override**:
 ```bash
 # CLI input always overrides config input_dirs (no merge)
-uv run vbc /custom/path        # Ignores config input_dirs
+uv run vbc run /custom/path        # Ignores config input_dirs
 ```
 
 Full configuration reference: [docs/getting-started/configuration.md](docs/getting-started/configuration.md)
@@ -688,28 +688,28 @@ Full configuration reference: [docs/getting-started/configuration.md](docs/getti
 
 ```bash
 # Process directory with defaults
-uv run vbc /path/to/videos
+uv run vbc run /path/to/videos
 
 # GPU mode with 8 threads
-uv run vbc /path/to/videos --gpu --threads 8
+uv run vbc run /path/to/videos --gpu --threads 8
 
 # CPU mode for archival quality
-uv run vbc /path/to/videos --cpu --quality 35 --threads 4
+uv run vbc run /path/to/videos --cpu --quality 35 --threads 4
 
 # Custom config file
-uv run vbc /path/to/videos --config conf/production.yaml
+uv run vbc run /path/to/videos --config conf/production.yaml
 
 # Camera-specific processing
-uv run vbc /path/to/videos --camera "ILCE-7RM5,DJI" --quality 38
+uv run vbc run /path/to/videos --camera "ILCE-7RM5,DJI" --quality 38
 
 # Rotate all videos 180°
-uv run vbc /path/to/videos --rotate-180
+uv run vbc run /path/to/videos --rotate-180
 
 # Clean error markers and retry failed files
-uv run vbc /path/to/videos --clean-errors
+uv run vbc run /path/to/videos --clean-errors
 
 # Debug mode with verbose logging
-uv run vbc /path/to/videos --debug --threads 2
+uv run vbc run /path/to/videos --debug --threads 2
 ```
 
 ### CLI Reference
@@ -918,7 +918,7 @@ autorotate:
 
 **Manual Override**:
 ```bash
-uv run vbc /videos --rotate-180  # Overrides all patterns
+uv run vbc run /videos --rotate-180  # Overrides all patterns
 ```
 
 ### Camera Filtering
@@ -935,7 +935,7 @@ general:
 
 Or via CLI:
 ```bash
-uv run vbc /videos --camera "ILCE-7RM5,DJI"
+uv run vbc run /videos --camera "ILCE-7RM5,DJI"
 ```
 
 **Matching**: Substring match (case-insensitive). Example:
@@ -978,7 +978,7 @@ VBC automatically detects and handles GPU limitations:
 **Workarounds**:
 ```bash
 # Reduce threads to GPU session limit
-uv run vbc /videos --threads 5   # For RTX 30-series
+uv run vbc run /videos --threads 5   # For RTX 30-series
 
 # Enable CPU fallback (automatic retry on CPU)
 # In conf/vbc.yaml:
@@ -986,7 +986,7 @@ general:
   cpu_fallback: true
 
 # Or use pure CPU mode
-uv run vbc /videos --cpu
+uv run vbc run /videos --cpu
 ```
 
 ### Color Space Fix (FFmpeg 7.x)
@@ -1010,10 +1010,10 @@ Test VBC without processing real files:
 
 ```bash
 # Run demo with defaults
-uv run vbc --demo
+uv run vbc run --demo
 
 # Custom demo config
-uv run vbc --demo --demo-config conf/demo.yaml
+uv run vbc run --demo --demo-config conf/demo.yaml
 ```
 
 **Demo configuration** (`conf/demo.yaml`):
@@ -1050,8 +1050,8 @@ errors:
 **Solutions**:
 ```bash
 # Reduce threads to GPU limit
-uv run vbc /videos --threads 5   # RTX 30-series
-uv run vbc /videos --threads 8   # RTX 4090 (runtime keyboard control max: 8)
+uv run vbc run /videos --threads 5   # RTX 30-series
+uv run vbc run /videos --threads 8   # RTX 4090 (runtime keyboard control max: 8)
 
 # Enable CPU fallback
 # In conf/vbc.yaml:
@@ -1059,7 +1059,7 @@ general:
   cpu_fallback: true
 
 # Switch to CPU mode entirely
-uv run vbc /videos --cpu
+uv run vbc run /videos --cpu
 ```
 
 #### Color Space Errors
@@ -1068,7 +1068,7 @@ uv run vbc /videos --cpu
 
 **Solution**: VBC automatically applies color space fix. Enable debug logging to verify:
 ```bash
-uv run vbc /videos --debug
+uv run vbc run /videos --debug
 # Look for: "FFMPEG_COLORFIX" or "Successfully fixed color space"
 ```
 
@@ -1155,7 +1155,8 @@ find /path/to/videos_err -name "*.err"
 ### Project Structure
 
 ```
-vbc/
+vbc/                         # New tree of the service split (CLI entry point: cli.py)
+vbc_legacy/                  # Current application, frozen during the migration (`vbc run`)
 ├── config/                  # Configuration (Pydantic models + YAML loader)
 ├── domain/                  # Core business logic (models, events)
 ├── infrastructure/          # External adapters (FFmpeg, ExifTool, EventBus)
@@ -1165,32 +1166,25 @@ vbc/
 docs/                        # MkDocs documentation
 ├── getting-started/         # Installation, quickstart, configuration
 ├── user-guide/              # CLI, runtime controls, advanced features
-├── architecture/            # Overview, events, pipeline flow
+├── architecture/            # Overview, events, pipeline flow, service split plan
 └── development/             # Contributing, testing
 
-tests/                       # Pytest test suite
-├── unit/                    # Fast isolated tests
-├── integration/             # Slower end-to-end tests
-└── fixtures/                # Test data
+tests/e2e/                   # End-to-end suite (added during the service split)
 ```
+
+The codebase is being split into a server (`vbc serve`) and clients
+(`vbc tui`, one-shot API commands); see
+[docs/architecture/service-split.md](docs/architecture/service-split.md).
+Until then the application runs from `vbc_legacy/` as `vbc run <dirs>`.
 
 ### Running Tests
 
+VBC has no unit tests by design; behaviour is covered by a small black-box
+end-to-end suite (see the testing guide below).
+
 ```bash
-# All tests
-uv run pytest
-
-# Unit tests only
-uv run pytest tests/unit/
-
-# Skip slow tests
-uv run pytest -m "not slow"
-
-# With coverage
-uv run pytest --cov=vbc --cov-report=html
-
-# Specific test
-uv run pytest tests/unit/test_config_models.py::test_general_config_defaults
+uv sync --extra dev
+uv run pytest            # runs tests/e2e
 ```
 
 ### Documentation
@@ -1214,9 +1208,9 @@ uv sync --extra docs
 # Optional quality tools (not pinned in `pyproject.toml` by default):
 #   uv add --group dev ruff black mypy
 # Then run:
-uv run ruff check vbc/
-uv run black vbc/
-uv run mypy vbc/
+uv run ruff check vbc/ vbc_legacy/
+uv run black vbc/ vbc_legacy/
+uv run mypy vbc/ vbc_legacy/
 ```
 
 Testing guide: [docs/development/testing.md](docs/development/testing.md)

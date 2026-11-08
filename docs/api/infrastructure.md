@@ -6,7 +6,7 @@ This page documents the infrastructure adapters that interact with external syst
 
 Synchronous Pub/Sub event system for decoupled communication.
 
-::: vbc.infrastructure.event_bus
+::: vbc_legacy.infrastructure.event_bus
     options:
       show_source: true
       heading_level: 3
@@ -15,7 +15,7 @@ Synchronous Pub/Sub event system for decoupled communication.
 
 Recursive directory scanner with filtering.
 
-::: vbc.infrastructure.file_scanner
+::: vbc_legacy.infrastructure.file_scanner
     options:
       show_source: true
       heading_level: 3
@@ -24,7 +24,7 @@ Recursive directory scanner with filtering.
 
 Wrapper around pyexiftool for metadata extraction.
 
-::: vbc.infrastructure.exif_tool
+::: vbc_legacy.infrastructure.exif_tool
     options:
       show_source: true
       heading_level: 3
@@ -33,7 +33,7 @@ Wrapper around pyexiftool for metadata extraction.
 
 Wrapper around ffprobe for stream information.
 
-::: vbc.infrastructure.ffprobe
+::: vbc_legacy.infrastructure.ffprobe
     options:
       show_source: true
       heading_level: 3
@@ -42,7 +42,7 @@ Wrapper around ffprobe for stream information.
 
 Wrapper around ffmpeg for video compression.
 
-::: vbc.infrastructure.ffmpeg
+::: vbc_legacy.infrastructure.ffmpeg
     options:
       show_source: true
       heading_level: 3
@@ -51,7 +51,7 @@ Wrapper around ffmpeg for video compression.
 
 Cleanup service for temporary files and error markers.
 
-::: vbc.infrastructure.housekeeping
+::: vbc_legacy.infrastructure.housekeeping
     options:
       show_source: true
       heading_level: 3
@@ -60,7 +60,7 @@ Cleanup service for temporary files and error markers.
 
 Read-only HTMX dashboard server and template rendering helpers.
 
-::: vbc.infrastructure.web_server
+::: vbc_legacy.infrastructure.web_server
     options:
       show_source: true
       heading_level: 3
@@ -69,7 +69,7 @@ Read-only HTMX dashboard server and template rendering helpers.
 
 Background GPU metrics sampler for dashboard sparklines.
 
-::: vbc.infrastructure.gpu_monitor
+::: vbc_legacy.infrastructure.gpu_monitor
     options:
       show_source: true
       heading_level: 3
@@ -78,7 +78,7 @@ Background GPU metrics sampler for dashboard sparklines.
 
 Cleanup helpers for stale ExifTool temporary files.
 
-::: vbc.infrastructure.exiftool_tmp
+::: vbc_legacy.infrastructure.exiftool_tmp
     options:
       show_source: true
       heading_level: 3
@@ -87,7 +87,7 @@ Cleanup helpers for stale ExifTool temporary files.
 
 Logging configuration and setup.
 
-::: vbc.infrastructure.logging
+::: vbc_legacy.infrastructure.logging
     options:
       show_source: true
       heading_level: 3

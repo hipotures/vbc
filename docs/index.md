@@ -62,16 +62,16 @@ All components communicate via **EventBus** for loose coupling and testability.
 
 ```bash
 # Basic usage
-uv run vbc /path/to/videos
+uv run vbc run /path/to/videos
 
 # With custom configuration
-uv run vbc /path/to/videos --config conf/vbc.yaml --threads 8 --quality 40
+uv run vbc run /path/to/videos --config conf/vbc.yaml --threads 8 --quality 40
 
 # GPU acceleration with camera filtering
-uv run vbc /path/to/videos --gpu --camera "ILCE-7RM5,DJI"
+uv run vbc run /path/to/videos --gpu --camera "ILCE-7RM5,DJI"
 
 # CPU mode with rotation and debug logging
-uv run vbc /path/to/videos --cpu --rotate-180 --debug
+uv run vbc run /path/to/videos --cpu --rotate-180 --debug
 ```
 
 ## Runtime Controls

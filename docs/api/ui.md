@@ -6,7 +6,7 @@ This page documents the user interface components (Rich-based interactive dashbo
 
 Thread-safe state container for the dashboard.
 
-::: vbc.ui.state
+::: vbc_legacy.ui.state
     options:
       show_source: true
       heading_level: 3
@@ -15,7 +15,7 @@ Thread-safe state container for the dashboard.
 
 Event subscriber that updates UIState based on domain events.
 
-::: vbc.ui.manager
+::: vbc_legacy.ui.manager
     options:
       show_source: true
       heading_level: 3
@@ -24,7 +24,7 @@ Event subscriber that updates UIState based on domain events.
 
 Non-blocking keyboard input handler.
 
-::: vbc.ui.keyboard
+::: vbc_legacy.ui.keyboard
     options:
       show_source: true
       heading_level: 3
@@ -33,7 +33,7 @@ Non-blocking keyboard input handler.
 
 Rich Live dashboard with status, progress, activity, queue, active job, and overlay surfaces.
 
-::: vbc.ui.dashboard
+::: vbc_legacy.ui.dashboard
     options:
       show_source: true
       heading_level: 3
@@ -42,7 +42,7 @@ Rich Live dashboard with status, progress, activity, queue, active job, and over
 
 Tabbed overlay renderers for Settings, Shortcuts, I/O, Dirs, TUI, Reference, and Logs content.
 
-::: vbc.ui.modern_overlays
+::: vbc_legacy.ui.modern_overlays
     options:
       show_source: true
       heading_level: 3
@@ -51,7 +51,7 @@ Tabbed overlay renderers for Settings, Shortcuts, I/O, Dirs, TUI, Reference, and
 
 Sparkline presets, palettes, and rendering helpers for GPU metrics.
 
-::: vbc.ui.gpu_sparkline
+::: vbc_legacy.ui.gpu_sparkline
     options:
       show_source: true
       heading_level: 3
