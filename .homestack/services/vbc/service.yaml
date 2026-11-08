@@ -37,5 +37,10 @@ persistence:
   directories:
     - config
     - state
-# Control plane for the desktop TUI/CLI inside the LAN; not published (yet).
-exposure: {}
+# Remote access through Pangolin, behind its login (the API has no auth of
+# its own; it controls processing only and never serves media).
+exposure:
+  pangolin:
+    port: http
+    name: VBC
+    subdomain: vbc
