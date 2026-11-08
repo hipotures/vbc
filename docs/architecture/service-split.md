@@ -27,9 +27,9 @@ redesigned.
                                    │ HTTP (long-poll), bearer token
             ┌──────────────────────┼──────────────────────┐
             ▼                      ▼                      ▼
-     vbc tui (Rich,          vbc ctl (CLI:           vbc-web (later,
-     phase 1)                status/commands,        own process/port)
-                             phase 1)                + curl / scripts
+     vbc tui (Rich,          vbc status/threads/     vbc-web (later,
+     phase 1)                refresh/… (one-shot     own process/port)
+                             CLI, phase 1)           + curl / scripts
 ```
 
 * The **server** owns all business state and all side effects (encoding, config
@@ -80,7 +80,7 @@ new clients reach parity, `vbc_legacy/` and `tests/legacy/` are deleted in one
 commit, so no old code survives that was not deliberately carried over.
 
 ```
-vbc_legacy/      # frozen copy of today's vbc/ — `vbc <dirs>` runs from here during migration
+vbc_legacy/      # frozen copy of today's vbc/ — `vbc run <dirs>` runs from here during migration
 tests/legacy/    # today's tests, imports switched to vbc_legacy
 vbc/             # new: domain, config, infrastructure, pipeline, service, contracts, clients
 tests/unit/, tests/integration/   # tests for the new tree
@@ -103,7 +103,7 @@ Rules:
   → `service/bootstrap.py`, Rich panels / overlays / `format_*` helpers →
   `clients/tui/`.
 * **Write new:** `contracts/`, `service/api.py`, `clients/api_client.py`,
-  `clients/ctl/`.
+  `clients/commands.py`, `vbc/cli.py`.
 * **Not carried over:** `UIState`, `UIManager`, `infrastructure/web_server.py`,
   `parse_config_lines`, the `Dirs*` domain events, the delta/toggle command
   events. They disappear with `vbc_legacy/`.
@@ -153,17 +153,19 @@ depending on `shutdown_requested`, Ctrl+C → detach the client (does **not**
 stop the server; interrupting the server is an explicit command). Overlay
 tabs fetch `/config`, `/io`, `/dirs`, `/errors`, `/logs` on demand.
 
-`vbc ctl` (phase 1): non-interactive CLI for scripts and quick checks, one
-subcommand per endpoint: `status` (one-shot or `--watch`), `threads N`,
-`refresh`, `shutdown [--interrupt|--cancel]`, `dirs [list|set …]`, `errors`,
-`logs [--follow] [--level]`, `config`. Human-readable output by default,
+One-shot commands (phase 1): non-interactive commands for scripts and quick
+checks, **peers of `serve` and `tui`** in one flat `vbc` command set (no
+separate `ctl` group), one per endpoint: `vbc status` (one-shot or
+`--watch`), `vbc threads N`, `vbc refresh`, `vbc shutdown
+[--interrupt|--cancel]`, `vbc dirs [list|set …]`, `vbc errors`, `vbc logs
+[--follow] [--level]`, `vbc config`. Human-readable output by default,
 `--json` prints the DTOs as-is; non-zero exit status on HTTP/auth errors.
 
 `vbc-web` (later): separate process, separate entry point, own port. Serves
 static files and proxies `/api/*` to the server, injecting the bearer token
 (backend-for-frontend: no CORS, token never reaches the browser). Replaces
 `infrastructure/web_server.py` and the `--web` flag; until it exists, the
-legacy `vbc <dirs> --web` keeps working.
+legacy `vbc run <dirs> --web` keeps working.
 
 ## Classification of today's `UIState`
 
@@ -416,10 +418,15 @@ mechanism without changing the read model.
 | Command | What runs |
 |---|---|
 | `vbc serve [--config] [--host] [--port]` | `bootstrap` + API, headless, no Rich, no keyboard. Input dirs from config (positional args optional). `--demo` uses `DemoOrchestrator`. |
-| `vbc tui --api http://host:port --token-file …` | TUI client only (phase 1). |
-| `vbc ctl --api … --token-file … <subcommand>` | CLI client (phase 1). `--api`/`--token-file` also from env (`VBC_API`, `VBC_TOKEN_FILE`) or client config. |
+| `vbc tui [--api http://host:port] [--token-file …]` | TUI client only (phase 1). |
+| `vbc status`, `vbc threads N`, `vbc refresh`, `vbc shutdown`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config` | One-shot API commands (phase 1). `--api`/`--token-file` on every client command, also from env (`VBC_API`, `VBC_TOKEN_FILE`) or client config; default `http://127.0.0.1:<default port>`. |
+| `vbc run <dirs>` | Today's `vbc <dirs>`. During migration it runs `vbc_legacy`; after legacy is deleted it becomes the launcher (see Open decisions). |
 | `vbc-web --api … --token-file …` | Web client only (later). |
-| `vbc <dirs>` (today) | During migration: runs unchanged from `vbc_legacy/`. Deleted with legacy; see Open decisions for what replaces it. |
+
+All of these are **peer subcommands of one Typer app** (`vbc/cli.py`).
+A bare `vbc <dirs>` no longer works, because a directory named like a
+subcommand (`./serve`) would be ambiguous; when the first argument is not a
+known subcommand, `vbc` prints `use: vbc run <dirs>` and exits non-zero.
 
 `vbc serve` lifecycle:
 
@@ -438,11 +445,12 @@ mechanism without changing the read model.
 ## Migration steps
 
 Every step leaves both test suites green (`tests/legacy/` and the new tests)
-and `vbc <dirs>` (legacy) working.
+and `vbc run <dirs>` (legacy) working.
 
 1. **Move to legacy.** `git mv vbc vbc_legacy`, `git mv` today's tests to
-   `tests/legacy/`, rewrite imports `vbc.` → `vbc_legacy.`, point the `vbc`
-   entry point at `vbc_legacy.main:app`. Pure mechanical commit; the full
+   `tests/legacy/`, rewrite imports `vbc.` → `vbc_legacy.`; new
+   `vbc/cli.py` with only `vbc run <dirs>` delegating to
+   `vbc_legacy.main`. Pure mechanical commit; the full
    legacy suite must pass unchanged.
 2. **Characterisation tests (on legacy).** A scripted event sequence and a
    `DemoOrchestrator` run, asserting the resulting legacy `UIState` business
@@ -474,38 +482,44 @@ and `vbc <dirs>` (legacy) working.
    callback; auth, health, OpenAPI artifact + drift test; lifecycle and
    signals as in Process model. Integration test: `serve --demo` + HTTP
    client.
-6. **`vbc ctl`.** `clients/api_client.py` + CLI subcommands. Comes before the
+6. **One-shot commands.** `clients/api_client.py` + `vbc status`/`threads`/
+   `refresh`/`shutdown`/`dirs`/`errors`/`logs`/`config`. Comes before the
    TUI because it is small and exercises every endpoint end to end
    (integration tests against `serve --demo`).
 7. **`vbc tui`.** Panels, overlays and `format_*` helpers copied from
    `vbc_legacy/ui/` into `clients/tui/`, data source switched from `UIState`
    to the client-side snapshot (DTOs + client view state); long-poll thread,
    local extrapolation ticker, key → command mapping. Parity check: the same
-   demo session in legacy `vbc --demo` and in `serve --demo` + `vbc tui`
-   shows the same panels. Phase 1 ends here (docs for `serve`, `ctl`, `tui`
+   demo session in legacy `vbc run --demo` and in `serve --demo` + `vbc tui`
+   shows the same panels. Phase 1 ends here (docs for `serve`, `tui`, `run` and the
+   one-shot commands
    land with it).
 8. **Web client (later).** `frontends/web/` (own entry point `vbc-web`):
    static page + small JS client (long-poll loop + local ticker for
    extrapolation) + proxy, reaching parity with the legacy HTMX dashboard.
-9. **Delete legacy.** Once `vbc <dirs>` has its replacement (see Open
+9. **Delete legacy.** Once `vbc run <dirs>` has its replacement (see Open
    decisions) and the web client exists: remove `vbc_legacy/` and
    `tests/legacy/` in one commit. If the web client is still far off, legacy
    may be deleted after step 7 and `--web` dropped until step 8 lands.
 10. **Docs.** `docs/architecture/` (this page → final design), API reference,
-    user guide for `serve`/`ctl`/`tui` (phase 1) and `vbc-web` (later);
+    user guide for `serve`/`tui`/`run`/one-shot commands (phase 1) and `vbc-web` (later);
     README dependency notes (FastAPI, uvicorn, httpx).
 
 ## Decisions
 
 * Language: **Python stays** (decided) for the server and for the clients
-  (`vbc tui`, `vbc ctl`, `vbc-web`). No Rust rewrite; mypowers is referenced
+  (`vbc tui`, the one-shot commands, `vbc-web`). No Rust rewrite; mypowers is referenced
   only for its API conventions, not its implementation stack.
-* Delivery order: **server + `vbc ctl` + `vbc tui` first** (phase 1, steps
+* Command line (decided): one flat set of peer subcommands — `vbc serve`,
+  `vbc tui`, `vbc run <dirs>`, `vbc status`, `vbc threads`, `vbc refresh`,
+  `vbc shutdown`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config`. No
+  `ctl` group.
+* Delivery order: **server + one-shot commands + `vbc tui` first** (phase 1, steps
   1–7), web client later (step 8), legacy deleted in step 9.
 * Code strategy: **legacy package + new tree** (decided): today's code moves
   to `vbc_legacy/`, the new `vbc/` takes over only what it needs, legacy is
   deleted at the end.
-* HTTP framework: **FastAPI + uvicorn** (decided); HTTP client for `ctl`/`tui`:
+* HTTP framework: **FastAPI + uvicorn** (decided); HTTP client for the client commands:
   **httpx**. New runtime dependencies, to be documented in `README.md` and
   `docs/getting-started/` when steps 5–6 land.
 
@@ -514,10 +528,10 @@ and `vbc <dirs>` (legacy) working.
 * Web client: vanilla JS (zero build) vs. keeping Jinja/HTMX fragments rendered
   by `vbc-web` from API data. Recommended: vanilla JS, because HTMX polling
   cannot extrapolate counters.
-* What replaces `vbc <dirs>` when legacy is deleted. Recommended: a thin
-  launcher that starts `vbc serve` on loopback with a temporary token and
-  attaches `vbc tui` (single code path; no in-process dashboard is carried
-  over). Alternative: drop `vbc <dirs>` and document `serve` + `tui`.
+* What `vbc run <dirs>` becomes when legacy is deleted. Recommended: a thin
+  launcher that starts `serve` on loopback with a temporary token and
+  attaches `tui` in the same terminal (single code path; no in-process
+  dashboard is carried over).
 * GPU metrics: v1 needs the latest sample **and** a bounded history, because
   the TUI sparkline shows history today and `vbc tui` is in phase 1:
   `GET /api/v1/gpu?since=<seq>` returns new samples (ring buffer, `410` when
