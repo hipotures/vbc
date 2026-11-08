@@ -50,7 +50,7 @@ Unpacked size: about 490 MB.
 | Input | Environment | Notes |
 |---|---|---|
 | Storage roots | `VBC_STORAGE_ROOTS` | required; comma-separated container paths of the media mounts; input dirs and their `_out`/`_err` siblings must lie inside |
-| Allowed host names | `VBC_ALLOWED_HOSTS` | optional; names clients use to reach **this server** (e.g. `vbc.example.lan`), checked against Host/Origin; IP addresses always pass |
+| Allowed host names | `VBC_ALLOWED_HOSTS` | usually empty: the server accepts its host name, `<hostname>.<domain>` (resolv.conf search domains) and IP addresses by itself; add only other names clients use (e.g. a Pangolin subdomain) |
 | Heartbeat | `HOMESTACK_HEARTBEAT_SECONDS` | set by HomeStack from the manifest (60) |
 
 Input folders are added at run time: `vbc dirs add PATH` or the TUI Dirs tab.

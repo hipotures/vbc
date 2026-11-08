@@ -34,7 +34,7 @@ uv run vbc serve --config conf/vbc.yaml --demo   # simulated processing, no file
 server:
   host: 127.0.0.1        # 0.0.0.0 or an interface IP for access from other hosts
   port: 8770
-  allowed_hosts: []      # extra host names accepted in Host/Origin headers
+  allowed_hosts: []      # extra names; own host name, <host>.<search domain> and IPs pass anyway
   stop_timeout_s: 600
 storage:
   roots: []              # required when host is not loopback

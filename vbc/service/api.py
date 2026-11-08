@@ -88,11 +88,33 @@ def _threadsafe(loop: asyncio.AbstractEventLoop, fn: Callable[[], None]) -> Call
 # ── Host / Origin allowlist ─────────────────────────────────────────────────
 
 
-class HostPolicy:
-    """IP literals always pass (DNS rebinding needs a name); names must be known."""
+def _search_domains(resolv_conf: Path = Path("/etc/resolv.conf")) -> list[str]:
+    """`search` / `domain` entries of resolv.conf (Proxmox writes the CT domain there)."""
+    try:
+        lines = resolv_conf.read_text().splitlines()
+    except OSError:
+        return []
+    domains: list[str] = []
+    for line in lines:
+        parts = line.split()
+        if parts and parts[0] in ("search", "domain"):
+            domains.extend(parts[1:])
+    return domains
 
-    def __init__(self, extra: list[str]) -> None:
-        names = {"localhost", socket.gethostname(), socket.getfqdn()}
+
+class HostPolicy:
+    """IP literals always pass (DNS rebinding needs a name); names must be known.
+
+    Known without configuration: localhost, the host name, its FQDN and the
+    host name in every resolv.conf search domain (in a HomeStack container:
+    `<hostname>.<domain>`). `server.allowed_hosts` adds further names.
+    """
+
+    def __init__(self, extra: list[str], resolv_conf: Path = Path("/etc/resolv.conf")) -> None:
+        hostname = socket.gethostname()
+        names = {"localhost", hostname, socket.getfqdn()}
+        short = hostname.split(".", 1)[0]
+        names.update(f"{short}.{domain}" for domain in _search_domains(resolv_conf))
         names.update(extra)
         self.names = {n.lower().rstrip(".") for n in names if n}
 
