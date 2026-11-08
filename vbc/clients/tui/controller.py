@@ -4,7 +4,7 @@ Port of vbc_legacy/ui/manager.py. View handlers (overlay tabs, dim level,
 sparkline preset/palette/metric, logs page, Dirs editor) are unchanged and
 act on ``ClientState``. Business handlers are gone: counters come from the
 server. Command keys call the API on a worker thread so a slow network never
-blocks the keyboard; Ctrl+C detaches the client (the server keeps running).
+blocks the keyboard; Ctrl+C / Ctrl+Q / q quit the client (the server keeps running).
 """
 
 import concurrent.futures
@@ -16,7 +16,7 @@ from vbc.clients.api_client import ApiClient, ApiError, ApiUnavailable
 from vbc.clients.tui.bus import EventBus
 from vbc.clients.tui.state import MAX_INPUT_DIR_LEN, ClientState
 from vbc.clients.tui.events import (
-    ActionMessage, InterruptRequested, QuitAfterJobs, RefreshRequested, ThreadControlEvent,
+    ActionMessage, QuitRequested, RefreshRequested, ThreadControlEvent,
     DirsCursorMove, DirsSwapSelected, DirsToggleSelected, DirsEnterAddMode, DirsMarkDelete,
     DirsInputChar, DirsConfirmAdd, DirsCancelInput, DirsApplyChanges,
 )
@@ -52,9 +52,8 @@ class TuiController:
 
     def _setup_subscriptions(self):
         self.bus.subscribe(ThreadControlEvent, self.on_thread_control)
-        self.bus.subscribe(QuitAfterJobs, self.on_quit_after_jobs)
         self.bus.subscribe(RefreshRequested, self.on_refresh_request)
-        self.bus.subscribe(InterruptRequested, self.on_interrupt_request)
+        self.bus.subscribe(QuitRequested, self.on_quit_request)
         self.bus.subscribe(ActionMessage, self.on_action_message)
         self.bus.subscribe(ToggleOverlayTab, self.on_toggle_overlay_tab)
         self.bus.subscribe(CycleOverlayTab, self.on_cycle_overlay_tab)
@@ -101,24 +100,11 @@ class TuiController:
             target = self.state.current_threads + event.change
         self._command("Threads", lambda: (self.client.set_threads(target), None)[1])
 
-    def on_quit_after_jobs(self, event: QuitAfterJobs):
-        """Ctrl+Q: quit once the jobs running now are done. The server is not asked
-        to stop and keeps taking jobs from its queue."""
-        with self.state._lock:
-            if self.state.quit_after is not None:
-                return
-            running = {job.id for job, _anchor in self.state._active}
-            self.state.quit_after = running
-        if not running:
-            self.on_detach()
-            return
-        self.state.set_last_action(f"Quitting after {len(running)} running job(s); Ctrl+C = quit now")
-
     def on_refresh_request(self, event: RefreshRequested):
         self._command("Refresh", lambda: (self.client.refresh(), None)[1])
 
-    def on_interrupt_request(self, event: InterruptRequested):
-        """Ctrl+C: quit this client now; the server keeps running."""
+    def on_quit_request(self, event: QuitRequested):
+        """Ctrl+C / Ctrl+Q / q: quit this client now; the server keeps running."""
         self.on_detach()
 
     def on_action_message(self, event: ActionMessage):

@@ -92,7 +92,6 @@ class ClientState:
         self.stopped = False
         self.stopping = False
         self.server_exiting = False
-        self.quit_after: Optional[Set[str]] = None  # Ctrl+Q: job ids that must finish first
 
         # Job timing tracking
         self.job_start_times: Dict[str, datetime] = {}  # filename -> start time
@@ -320,22 +319,6 @@ class ClientState:
                 self.gpu_history_fan.append(sample.fan_pct)
             if page.samples:
                 self.gpu_last_seq = page.samples[-1].seq
-
-    def quit_ready(self) -> bool:
-        """Ctrl+Q condition: the jobs running at the key press are gone (or no server)."""
-        with self._lock:
-            if self.quit_after is None:
-                return False
-            if not self.connected:
-                return True
-            remaining = self.quit_after & {job.id for job, _anchor in self._active}
-            return not remaining
-
-    def quit_remaining(self) -> int:
-        with self._lock:
-            if self.quit_after is None:
-                return 0
-            return len(self.quit_after & {job.id for job, _anchor in self._active})
 
     def set_disconnected(self, reason: str) -> None:
         """Mark the server unreachable; logged once per outage, not per retry."""

@@ -1182,8 +1182,8 @@ by one-shot commands: `vbc status [--watch]`, `vbc threads N`, `vbc refresh`,
 `vbc stop [--interrupt|--cancel]`, `vbc dirs [add|remove|enable|disable|set]`,
 `vbc errors`, `vbc logs [--follow]`, `vbc config`, `vbc log-level LEVEL`
 (`--api URL` or `VBC_API`, `--json`), and by the terminal UI `vbc tui`
-(same dashboard as `vbc run`; Ctrl+Q quits after the running jobs, Ctrl+C
-quits now; the server keeps running).
+(same dashboard as `vbc run`; `Q`, Ctrl+Q or Ctrl+C quit the client, the
+server keeps running).
 See [docs/user-guide/server.md](docs/user-guide/server.md).
 
 ### Running Tests

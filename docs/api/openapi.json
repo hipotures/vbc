@@ -1774,6 +1774,46 @@
         "summary": "Homestack Status"
       }
     },
+    "/api/v1/clients/goodbye": {
+      "post": {
+        "description": "An interactive client ends its session (logged as a disconnect).",
+        "operationId": "clients_goodbye_api_v1_clients_goodbye_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-vbc-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Vbc-Client-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clients Goodbye"
+      }
+    },
     "/api/v1/config": {
       "get": {
         "operationId": "get_config_api_v1_config_get",

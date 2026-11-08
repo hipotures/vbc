@@ -78,39 +78,51 @@ def test_tui_renders_sends_commands_and_detaches(demo_config, serve_factory):
     assert snapshot["stop_requested"] is False and snapshot["run_status"] == "running"
 
 
-def test_tui_ctrl_q_quits_after_running_jobs(demo_config, fast_demo, serve_factory):
-    """Ctrl+Q waits for the jobs running now, then quits; the server is not stopped."""
-    serve = serve_factory(["--demo", "--config", str(demo_config), "--demo-config", str(fast_demo)])
-    serve.wait_for(lambda s: s["run_status"] == "running" and s["active_jobs"], timeout=30)
+def _start_tui(port: int):
     pid, master = pty.fork()
     if pid == 0:
         fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", 45, 140, 0, 0))
         os.chdir(REPO)
         os.execve(sys.executable, [sys.executable, "-m", "vbc.cli", "tui", "--api",
-                                   f"http://127.0.0.1:{serve.port}"],
+                                   f"http://127.0.0.1:{port}"],
                   {**os.environ, "TERM": "xterm-256color"})
-    buf = bytearray()
-    try:
-        _read(master, buf, 4)
-        os.write(master, b"S")  # no longer a TUI action: nothing may happen to the server
-        _read(master, buf, 1)
-        assert serve.state()["stop_requested"] is False
-        os.write(master, b"\x11")  # Ctrl+Q
-        deadline = time.monotonic() + 30
-        while time.monotonic() < deadline:
-            done, status = os.waitpid(pid, os.WNOHANG)
-            if done:
-                break
-            _read(master, buf, 0.2)
-        else:
-            raise AssertionError("vbc tui did not quit after Ctrl+Q")
-        assert os.waitstatus_to_exitcode(status) == 0
-        assert "Quitting after" in _text(bytes(buf))
-    finally:
+    return pid, master
+
+
+def _wait_exit(pid: int, master: int, buf: bytearray, timeout: float = 5.0) -> int:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        done, status = os.waitpid(pid, os.WNOHANG)
+        if done:
+            return os.waitstatus_to_exitcode(status)
+        _read(master, buf, 0.2)
+    raise AssertionError("vbc tui did not quit")
+
+
+def test_tui_quit_keys_and_session_log(demo_config, serve_factory):
+    """q and Ctrl+Q quit at once (S does nothing); the server logs connect and quit."""
+    serve = serve_factory(["--demo", "--config", str(demo_config)])
+    for key in (b"q", b"\x11"):
+        pid, master = _start_tui(serve.port)
+        buf = bytearray()
         try:
-            os.kill(pid, 9)
-        except ProcessLookupError:
-            pass
-        os.close(master)
+            _read(master, buf, 4)
+            os.write(master, b"S")  # not a TUI action: nothing may happen to the server
+            _read(master, buf, 1)
+            assert serve.state()["stop_requested"] is False
+            started = time.monotonic()
+            os.write(master, key)
+            assert _wait_exit(pid, master, buf) == 0
+            assert time.monotonic() - started < 3, "quit must be immediate"
+        finally:
+            try:
+                os.kill(pid, 9)
+            except ProcessLookupError:
+                pass
+            os.close(master)
+    time.sleep(0.5)
+    log = serve.log_path.read_text()
+    assert log.count("Client connected: tui") == 2
+    assert log.count("Client disconnected (quit): tui") == 2
     snapshot = serve.state()
     assert snapshot["stop_requested"] is False and snapshot["run_status"] == "running"

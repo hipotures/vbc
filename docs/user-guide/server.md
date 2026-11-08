@@ -67,8 +67,7 @@ these differences:
 |---|---|
 | `<` / `>` | change server threads (absolute target sent to the server) |
 | `R` | rescan; also resumes after a pause on error or a `vbc stop` |
-| `Ctrl+Q` | quit after the jobs that are running now have finished (the server keeps working) |
-| `Ctrl+C` | quit now; the server keeps running |
+| `Q`, `Ctrl+Q`, `Ctrl+C` | quit the client at once; the server keeps running (in the Dirs path input, `q` is a letter) |
 | `S` | no action (stopping processing is `vbc stop`; the TUI never stops the server) |
 | `D` (Dirs tab) | edit the server's folder list; `S` saves the whole list, and errors from the server are shown inline |
 
@@ -76,6 +75,11 @@ Paths in the Dirs and IO tabs are paths on the server. When the connection
 drops, the header shows `DISCONNECTED` and the footer shows the reason. Progress
 keeps extrapolating, and the client reconnects on its own. Connection events
 are logged to `~/.local/state/vbc/tui.log` (override with `--log-file`).
+
+The server logs each TUI session: `Client connected: tui <id> from <host>`
+on its first request, `Client disconnected (quit)` when it exits, and
+`Client disconnected (no requests for 20 s)` when it vanished (killed,
+network gone). One-shot commands are not logged as sessions.
 
 ## One-shot commands
 

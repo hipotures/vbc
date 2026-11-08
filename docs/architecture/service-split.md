@@ -161,7 +161,7 @@ A background thread runs the `/state` long-poll and replaces a local snapshot;
 the render loop extrapolates counters from anchors (see below). Keys map to
 commands: `<`/`>` → `PUT /threads` with an absolute target computed from the
 last snapshot, `R` → `POST /refresh`, no stop/shutdown key (the TUI never
-stops the server), Ctrl+Q → quit after the running jobs, Ctrl+C → quit now (does **not**
+stops the server), `Q` / Ctrl+Q / Ctrl+C → quit the client (does **not**
 stop the server; interrupting the server is an explicit command). Overlay
 tabs fetch `/config`, `/io`, `/dirs`, `/errors`, `/logs` on demand.
 
@@ -604,8 +604,11 @@ complete**. Post-phase-1 fixes from the owner's first run: long-polls are
 released when the server stops (no 3 s hang / traceback); `/shutdown` became
 `/stop` (processing only, server keeps running, refresh resumes —
 `reset_after_stop()` in both orchestrators, statuses `stopping`/`stopped`,
-`shutting_down` only for a signal); TUI: no `S` action, Ctrl+Q = quit after
-the running jobs (IXON disabled so the key arrives), Ctrl+C = quit now;
+`shutting_down` only for a signal); TUI: no `S` action, `Q` / Ctrl+Q /
+Ctrl+C all quit the client at once (a "quit after the running jobs" mode was
+tried and dropped: the server finishes them anyway; IXON is disabled so
+Ctrl+Q arrives); the server logs TUI sessions (`X-VBC-Client-*` headers,
+`POST /api/v1/clients/goodbye` on quit, 20 s silence = vanished);
 connection errors as a short `DISCONNECTED` in the header, the reason in the
 footer and in `~/.local/state/vbc/tui.log` (server, one-shot commands, TUI client; next: step 8 HomeStack
 packaging).
@@ -788,7 +791,7 @@ green and, once it exists, the e2e suite green.
 * Stop vs. shutdown (decided 2026-11-08): the API and `vbc stop` stop
   *processing* only; the server process (a HomeStack container running
   non-stop) ends only on a signal. The TUI has no stop/shutdown action at all:
-  Ctrl+C quits it now, Ctrl+Q quits after the jobs running at that moment.
+  `Q`, Ctrl+Q and Ctrl+C quit it at once.
 * Command line (decided): one flat set of peer subcommands — `vbc serve`,
   `vbc tui`, `vbc run <dirs>`, `vbc status`, `vbc threads`, `vbc refresh`,
   `vbc stop`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config`. No

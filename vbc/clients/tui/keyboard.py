@@ -10,9 +10,8 @@ from vbc.clients.tui.bus import EventBus
 from vbc.clients.tui.events import (
     ActionMessage,
     Event,
-    InterruptRequested,
+    QuitRequested,
     RefreshRequested,
-    QuitAfterJobs,
     ThreadControlEvent,
     DirsCursorMove,
     DirsSwapSelected,
@@ -241,15 +240,10 @@ class KeyboardListener:
                         self._handle_escape(fd)
                         continue
 
-                    # ── Ctrl+C (interrupt) ─────────────────────────────────
-                    if key == '\x03':
-                        self.event_bus.publish(InterruptRequested())
+                    # ── Ctrl+C / Ctrl+Q: quit the client (server keeps running) ──
+                    if key in ('\x03', '\x11'):
+                        self.event_bus.publish(QuitRequested())
                         break
-
-                    # ── Ctrl+Q (quit after the running jobs) ───────────────
-                    if key == '\x11':
-                        self.event_bus.publish(QuitAfterJobs())
-                        continue
 
                     # ── Dirs add-path input mode ───────────────────────────
                     if self._dirs_input_mode():
@@ -289,6 +283,9 @@ class KeyboardListener:
                     elif key in (',', '<'):
                         self.event_bus.publish(ThreadControlEvent(change=-1))
                     # S (shutdown) is not a TUI action: the server keeps running.
+                    elif key in ('Q', 'q'):
+                        self.event_bus.publish(QuitRequested())
+                        break
                     elif key in ('R', 'r'):
                         self.event_bus.publish(RefreshRequested())
                         self.event_bus.publish(ActionMessage(message="REFRESH requested"))

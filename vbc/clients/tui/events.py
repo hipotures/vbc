@@ -18,12 +18,8 @@ class ActionMessage(Event):
     message: str
 
 
-class InterruptRequested(Event):
-    """Ctrl+C in the TUI: quit the client now (the server keeps running)."""
-
-
-class QuitAfterJobs(Event):
-    """Ctrl+Q in the TUI: quit once the jobs running now have finished (server untouched)."""
+class QuitRequested(Event):
+    """Ctrl+C, Ctrl+Q or q: quit the client now (the server keeps running)."""
 
 
 class RefreshRequested(Event):

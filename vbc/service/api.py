@@ -119,6 +119,62 @@ class HostPolicy:
         return bool(parts.hostname) and self.allows(parts.hostname)
 
 
+# ── long-lived clients (connect / disconnect in the server log) ─────────────
+
+
+class ClientRegistry:
+    """Track interactive clients (``vbc tui``) by the headers they send.
+
+    HTTP long-polling keeps no connection open, so a session is "connected"
+    from its first request until it says goodbye or stays silent for
+    ``timeout_s`` (a TUI polls at least every few seconds). One-shot CLI
+    commands are not tracked.
+    """
+
+    TRACKED_KINDS = {"tui", "web"}
+
+    def __init__(self, timeout_s: float = 20.0) -> None:
+        self.timeout_s = timeout_s
+        self._lock = threading.Lock()
+        self._sessions: dict[str, dict] = {}
+
+    @staticmethod
+    def _describe(info: dict) -> str:
+        return f"{info['kind']} {info['id']} from {info['host']} ({info['addr']})"
+
+    def seen(self, kind: Optional[str], session: Optional[str], host: Optional[str], addr: str) -> None:
+        if kind not in self.TRACKED_KINDS or not session:
+            return
+        now = time.monotonic()
+        with self._lock:
+            info = self._sessions.get(session)
+            if info is None:
+                info = {"kind": kind, "id": session, "host": host or "?", "addr": addr, "since": now}
+                self._sessions[session] = info
+                logger.info(f"Client connected: {self._describe(info)}")
+            info["last"] = now
+
+    def goodbye(self, session: Optional[str]) -> None:
+        with self._lock:
+            info = self._sessions.pop(session or "", None)
+        if info is not None:
+            logger.info(f"Client disconnected (quit): {self._describe(info)}, "
+                        f"after {int(time.monotonic() - info['since'])} s")
+
+    def sweep(self) -> None:
+        now = time.monotonic()
+        with self._lock:
+            gone = [i for i in self._sessions.values() if now - i["last"] > self.timeout_s]
+            for info in gone:
+                del self._sessions[info["id"]]
+        for info in gone:
+            logger.info(f"Client disconnected (no requests for {int(self.timeout_s)} s): {self._describe(info)}")
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._sessions)
+
+
 # ── heartbeat + health (HomeStack contract) ─────────────────────────────────
 
 
@@ -194,6 +250,7 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
     interval = float(os.environ.get("HOMESTACK_HEARTBEAT_SECONDS") or 60)
     beat = Heartbeat(heartbeat_url or f"http://127.0.0.1:{server.config.server.port}/api/v1/state", interval)
     state_notifier: dict[str, _Notifier] = {}
+    clients = ClientRegistry()
     closing = threading.Event()
     loop_ref: dict[str, asyncio.AbstractEventLoop] = {}
 
@@ -222,7 +279,15 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
         store.add_listener(_threadsafe(loop, state_notifier["state"].fire))
         logs.add_listener(_threadsafe(loop, state_notifier["logs"].fire))
         beat.start()
+
+        async def sweep_clients() -> None:
+            while True:
+                await asyncio.sleep(5)
+                clients.sweep()
+
+        sweeper = asyncio.create_task(sweep_clients())
         yield
+        sweeper.cancel()
         beat.stop()
         for notifier in state_notifier.values():
             notifier.fire()
@@ -242,6 +307,12 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
             return _problem(403, "host not allowed", detail=request.headers.get("host"))
         if not policy.allows_origin(request.headers.get("origin")):
             return _problem(403, "origin not allowed", detail=request.headers.get("origin"))
+        if request.url.path != "/api/v1/clients/goodbye":
+            clients.seen(
+                request.headers.get("x-vbc-client-kind"), request.headers.get("x-vbc-client-id"),
+                request.headers.get("x-vbc-client-host"),
+                request.client.host if request.client else "?",
+            )
         return await call_next(request)
 
     @app.exception_handler(CommandError)
@@ -371,6 +442,12 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
         """Withdraw a pending graceful stop."""
         await asyncio.to_thread(commands.cancel_stop)
         return dto.Ack(**envelope())
+
+    @app.post("/api/v1/clients/goodbye", status_code=204)
+    async def clients_goodbye(x_vbc_client_id: Optional[str] = Header(None)):
+        """An interactive client ends its session (logged as a disconnect)."""
+        clients.goodbye(x_vbc_client_id)
+        return Response(status_code=204)
 
     @app.put("/api/v1/runtime/log-level", response_model=dto.Ack)
     async def put_log_level(body: dto.LogLevelRequest):

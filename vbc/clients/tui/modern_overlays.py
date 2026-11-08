@@ -695,7 +695,7 @@ class ShortcutsOverlay:
         """Returns content without outer Panel or footer (for tabbed overlay)."""
 
         key_labels = [
-            "M", "Esc", "Ctrl+C", "Ctrl+Q",
+            "M", "Esc", "Q", "Ctrl+C",
             "C", "F", "D", "E", "L", "T", "I", "W", "P", "G",
             "[", "]", "R", "< ,", "> .",
             "< >", "R",
@@ -719,12 +719,8 @@ class ShortcutsOverlay:
             "Close any overlay"
         )
         nav_table.add_row(
-            key_badge("Ctrl+Q"),
-            "Quit after the running jobs"
-        )
-        nav_table.add_row(
-            key_badge("Ctrl+C"),
-            "Quit now (server keeps running)"
+            key_badge("Q"),
+            "Quit (also Ctrl+Q, Ctrl+C)"
         )
         
         nav_card = Panel(
@@ -814,7 +810,7 @@ class ShortcutsOverlay:
         
         quick_ref.add_row(
             f"{key_badge('< >', COLORS['accent_green'])} Threads",
-            f"{key_badge('Ctrl+Q', COLORS['warning_yellow'])} Quit",
+            f"{key_badge('Q', COLORS['warning_yellow'])} Quit",
             f"{key_badge('R', COLORS['accent_blue'])} Refresh"
         )
         

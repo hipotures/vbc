@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 import time
+import uuid
 from typing import List, Optional, Sequence, Type, TypeVar
 
 import httpx
@@ -60,11 +62,17 @@ class ApiError(Exception):
         super().__init__(f"{status} {title}")
 
 
+CLIENT_HEADERS = ("X-VBC-Client-Kind", "X-VBC-Client-Id", "X-VBC-Client-Host")
+
+
 class ApiClient:
-    def __init__(self, base_url: Optional[str] = None, timeout: float = 10.0) -> None:
+    def __init__(self, base_url: Optional[str] = None, timeout: float = 10.0, kind: str = "cli") -> None:
         self.base_url = resolve_api_url(base_url)
         self._timeout = timeout
-        self._http = httpx.Client(base_url=self.base_url, timeout=timeout)
+        self.kind = kind
+        self.session_id = uuid.uuid4().hex[:8]
+        headers = dict(zip(CLIENT_HEADERS, (kind, self.session_id, socket.gethostname())))
+        self._http = httpx.Client(base_url=self.base_url, timeout=timeout, headers=headers)
         self.clock_offset_ms = 0  # server_time - local time, from the last response
 
     def close(self) -> None:
@@ -163,6 +171,13 @@ class ApiClient:
 
     def cancel_stop(self) -> dto.Ack:
         return self._parse(dto.Ack, self._request("DELETE", "/api/v1/stop"))
+
+    def goodbye(self) -> None:
+        """Tell the server this session ends (best effort, never raises)."""
+        try:
+            self._http.post("/api/v1/clients/goodbye", timeout=1.0)
+        except httpx.HTTPError:
+            pass
 
     def set_log_level(self, level: str) -> dto.Ack:
         return self._parse(dto.Ack, self._request("PUT", "/api/v1/runtime/log-level", json={"level": level.upper()}))

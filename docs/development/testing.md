@@ -41,8 +41,9 @@ the config file checked on disk, `errors`, `logs`, `config`, `log-level`,
 `test_tui.py` starts `vbc tui` in a real pseudo-terminal (controlling tty)
 against `serve --demo`: the dashboard renders, `>` changes the server's
 threads, `C` shows the settings built from `/config`, Ctrl+C quits with exit
-code 0 and the server keeps running; a second run checks that `S` does
-nothing and Ctrl+Q quits once the jobs running at that moment are done.
+code 0 and the server keeps running; a second scenario checks that `S`
+does nothing, `q` and Ctrl+Q quit within a second, and the server log shows
+`Client connected` / `Client disconnected (quit)` for each session.
 
 Legacy `vbc run` (until it is deleted) is checked by hand as below.
 

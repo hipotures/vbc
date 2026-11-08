@@ -799,18 +799,15 @@ class Dashboard:
             l1 = f"{indicator} {status} • Threads: {threads_display}{paused}"
             l2 = f"ETA: {eta_str} • {throughput_str} • {saved} saved ({(1-ratio)*100:.1f}%)"
             if not self.state.connected:
-                l3 = "[dim]Waiting for the server…  │  Ctrl+C = quit[/]"
-            elif self.state.quit_after is not None:
-                l3 = (f"[dim]Quitting after {self.state.quit_remaining()} running job(s)…"
-                      "  │  Ctrl+C = quit now[/]")
+                l3 = "[dim]Waiting for the server…  │  Q = quit[/]"
             elif self.state.repair_active:
                 l3 = "[dim]Repairing failed files from this session[/]"
             elif self.state.stopped:
-                l3 = "[dim]Processing stopped  │  R = resume  │  Ctrl+C = quit[/]"
+                l3 = "[dim]Processing stopped  │  R = resume  │  Q = quit[/]"
             elif self.state.waiting_for_input or self.state.error_paused:
-                l3 = "[dim]R = rescan  │  M = menu  │  Ctrl+C = quit[/]"
+                l3 = "[dim]R = rescan  │  M = menu  │  Q = quit[/]"
             else:
-                l3 = "[dim]M = menu  │  Ctrl+Q = quit after jobs  │  Ctrl+C = quit now[/]"
+                l3 = "[dim]M = menu  │  Q = quit (server keeps running)[/]"
             left_content = f"{l1}\n{l2}\n{l3}"
 
             # 3. GPU Metrics (Right Side)

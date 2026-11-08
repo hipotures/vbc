@@ -43,7 +43,7 @@ def run_tui(api: Optional[str] = None, log_file: Optional[str] = None) -> int:
     for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
-    client = ApiClient(api, timeout=10)
+    client = ApiClient(api, timeout=10, kind="tui")
     state = ClientState(activity_feed_max_items=5)
     state.server_url = client.base_url
     state.ui_title = f"VBC @ {urlsplit(client.base_url).netloc}"
@@ -61,14 +61,13 @@ def run_tui(api: Optional[str] = None, log_file: Optional[str] = None) -> int:
     try:
         with dashboard:
             try:
-                while not detached.wait(0.3):
-                    if state.quit_ready():  # Ctrl+Q: the jobs running at the key press are done
-                        break
+                detached.wait()
             except KeyboardInterrupt:  # no TTY: SIGINT instead of the raw Ctrl+C key
                 pass
     finally:
         keyboard.stop()
         poller.stop()
         controller.close()
+        client.goodbye()
         client.close()
     return 0
