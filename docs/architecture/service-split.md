@@ -580,7 +580,19 @@ allowed to fail and be repeated:
 
 ## Migration steps
 
-Progress: baseline tag `service-split-baseline`; **step 1 done**.
+Progress: baseline tag `service-split-baseline`; **steps 1–2 done**.
+Step 2 artefacts: `tests/e2e/media.py` (fixture generator),
+`tests/e2e/record_legacy.py` (two legacy passes, CPU) and
+`tests/e2e/expected/legacy_run.json`; the recording is deterministic (two
+independent runs identical apart from tool versions). Legacy behaviours it
+pins down: outputs are `.mp4` under `<input>_out/` mirroring subdirectories;
+autorotate rules rotate the picture (checked by a 4×4 first-frame
+fingerprint); files below `min_size_bytes` and non-video files are left
+untouched; a corrupt file is moved to `<input>_err/` with a `.err` marker
+("File is corrupted (ffprobe failed to read). Skipped."); a file already
+tagged `XMP-xmp:VBCEncoder` is **moved** unchanged into `<input>_out/`; a
+manifest produces its `output_path` and is moved to
+`<meta>_out/<date partition>/`; a second pass changes nothing.
 
 Every step leaves `vbc run <dirs>` (legacy) working, `mkdocs build --strict`
 green and, once it exists, the e2e suite green.

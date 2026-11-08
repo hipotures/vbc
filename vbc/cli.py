@@ -48,3 +48,7 @@ def run(ctx: typer.Context) -> None:
     from vbc_legacy.main import app as legacy_app
 
     legacy_app(args=ctx.args, prog_name="vbc run")
+
+
+if __name__ == "__main__":
+    app()

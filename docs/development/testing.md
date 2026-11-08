@@ -39,6 +39,19 @@ Rules:
 Planned scenarios and the legacy comparison are listed under "Testing
 strategy" in the [service split plan](../architecture/service-split.md).
 
+## Legacy reference recording
+
+`tests/e2e/media.py` generates the fixture set; `tests/e2e/record_legacy.py`
+runs legacy `vbc run --cpu` over it twice and writes
+`tests/e2e/expected/legacy_run.json` (files produced, codecs, dimensions,
+picture rotation, error markers, log markers). The new server has to
+reproduce it. Re-record only deliberately:
+
+```bash
+uv run python tests/e2e/record_legacy.py              # rewrites the expected file
+uv run python tests/e2e/record_legacy.py --keep /tmp/vbc-legacy-work
+```
+
 ## Running
 
 ```bash
