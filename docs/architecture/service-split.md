@@ -444,8 +444,17 @@ mechanism without changing the read model.
 
 Final target: VBC is deployed by HomeStack exactly like the owner's other
 services, following the `homestack-service` skill
-(`~/DEV/homestack/.agents/skills/homestack-service/`). What that contract
-requires from VBC:
+(`~/DEV/homestack/.agents/skills/homestack-service/`). Target topology:
+`vbc serve` runs in the HomeStack container, `vbc tui` and the one-shot
+commands stay on the desktop and reach it by its DNS name. Phase 1 runs both
+on one machine against local folders; the container is the next stage.
+
+Input folders: phase 1 keeps today's Dirs editing (type a path, enable /
+disable, remove, reorder), saved through `PUT /dirs`. Later: picking a folder
+from the server's tree under `storage.roots` (`/fs`) instead of typing it,
+and folders provided by HomeStack external mounts.
+
+What the HomeStack contract requires from VBC:
 
 | Area | Requirement | Consequence for this plan |
 |---|---|---|
