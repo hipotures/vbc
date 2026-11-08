@@ -40,6 +40,8 @@ Unpacked size: about 490 MB.
 * On the first start it writes `config/vbc.yaml` from `conf/vbc.yaml.example`:
   no input dirs, CPU encoder, server on `0.0.0.0:8770`. It never overwrites an
   existing config.
+* Storage roots that lie on the volume (e.g. `/home/app/media`) are created at
+  start; roots elsewhere are mounts and must exist (readiness checks them).
 * Nothing durable is written to the root filesystem. Encoder temp files live
   next to the outputs on the media mounts.
 
@@ -48,7 +50,7 @@ Unpacked size: about 490 MB.
 | Input | Environment | Notes |
 |---|---|---|
 | Storage roots | `VBC_STORAGE_ROOTS` | required; comma-separated container paths of the media mounts; input dirs and their `_out`/`_err` siblings must lie inside |
-| Allowed host names | `VBC_ALLOWED_HOSTS` | optional; extra names for the Host/Origin check (IP addresses always pass) |
+| Allowed host names | `VBC_ALLOWED_HOSTS` | optional; names clients use to reach **this server** (e.g. `vbc.example.lan`), checked against Host/Origin; IP addresses always pass |
 | Heartbeat | `HOMESTACK_HEARTBEAT_SECONDS` | set by HomeStack from the manifest (60) |
 
 Input folders are added at run time: `vbc dirs add PATH` or the TUI Dirs tab.

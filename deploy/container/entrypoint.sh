@@ -18,6 +18,17 @@ if [ "${VBC_ALLOW_EPHEMERAL:-0}" != "1" ]; then
 fi
 
 mkdir -p "$home/config" "$home/state"
+
+# Storage roots on the persistent volume (e.g. /home/app/media) are created
+# here; roots elsewhere are mounts and must already exist (readiness checks them).
+old_ifs=$IFS
+IFS=,
+for root in ${VBC_STORAGE_ROOTS:-}; do
+    case "$root" in
+        "$home"/*) mkdir -p "$root" ;;
+    esac
+done
+IFS=$old_ifs
 config="$home/config/vbc.yaml"
 if [ ! -e "$config" ]; then
     cp /opt/vbc/conf/container-default.yaml "$config"
