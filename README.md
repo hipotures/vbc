@@ -1177,7 +1177,11 @@ The codebase is being split into a server (`vbc serve`) and clients
 [docs/architecture/service-split.md](docs/architecture/service-split.md).
 Until then the application runs from `vbc_legacy/` as `vbc run <dirs>`.
 The headless server already runs: `vbc serve --config conf/vbc.yaml`
-(HTTP API on `127.0.0.1:8770`, OpenAPI in `docs/api/openapi.json`).
+(HTTP API on `127.0.0.1:8770`, OpenAPI in `docs/api/openapi.json`), driven
+by one-shot commands: `vbc status [--watch]`, `vbc threads N`, `vbc refresh`,
+`vbc shutdown [--interrupt|--cancel]`, `vbc dirs [add|remove|enable|disable|set]`,
+`vbc errors`, `vbc logs [--follow]`, `vbc config`, `vbc log-level LEVEL`
+(`--api URL` or `VBC_API`, `--json`).
 
 ### Running Tests
 

@@ -2,8 +2,13 @@
 
 Commands (docs/architecture/service-split.md): ``serve`` (headless server),
 ``run`` (legacy in-process TUI, today's ``vbc <dirs>``; arguments pass through
-unchanged). Planned: ``tui`` and the one-shot API commands (``status``,
-``threads``, ...).
+unchanged) and the one-shot API commands ``status``, ``threads``, ``refresh``,
+``shutdown``, ``dirs``, ``errors``, ``logs``, ``config``, ``log-level``.
+Planned: ``tui``.
+
+Client commands take ``--api URL`` (default ``$VBC_API`` or
+http://127.0.0.1:8770) and ``--json``. Exit status: 0 ok, 1 rejected by the
+server, 2 usage error, 3 server unreachable.
 """
 
 from __future__ import annotations
@@ -67,6 +72,164 @@ def serve(
         typer.echo(f"vbc serve: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     raise typer.Exit(code=run_server(server))
+
+
+API_OPTION = typer.Option(None, "--api", help="Server URL (default $VBC_API or http://127.0.0.1:8770)")
+JSON_OPTION = typer.Option(False, "--json", help="Print the API response as JSON")
+
+
+@app.command()
+def status(
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+    watch: bool = typer.Option(False, "--watch", "-w", help="Keep updating (Ctrl+C to stop)"),
+) -> None:
+    """Show the server state: run status, counters, active jobs, queue."""
+    from vbc.clients import commands
+
+    commands.status(api, as_json, watch)
+
+
+@app.command()
+def threads(
+    target: int = typer.Argument(..., help="Number of concurrent jobs (clamped by the server)"),
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Set the number of concurrent jobs (absolute)."""
+    from vbc.clients import commands
+
+    commands.threads(api, target, as_json)
+
+
+@app.command()
+def refresh(api: Optional[str] = API_OPTION, as_json: bool = JSON_OPTION) -> None:
+    """Rescan the input folders (also resumes after a pause on error)."""
+    from vbc.clients import commands
+
+    commands.refresh(api, as_json)
+
+
+@app.command()
+def shutdown(
+    interrupt: bool = typer.Option(False, "--interrupt", help="Stop running jobs now"),
+    cancel: bool = typer.Option(False, "--cancel", help="Cancel a pending graceful shutdown"),
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Stop the server gracefully (running jobs finish), or --interrupt / --cancel."""
+    from vbc.clients import commands
+
+    commands.shutdown(api, interrupt, cancel, as_json)
+
+
+@app.command("log-level")
+def log_level(
+    level: str = typer.Argument(..., help="DEBUG, INFO, WARNING or ERROR"),
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Change the server log level at runtime."""
+    from vbc.clients import commands
+
+    if level.upper() not in ("DEBUG", "INFO", "WARNING", "ERROR"):
+        typer.echo("vbc log-level: use DEBUG, INFO, WARNING or ERROR", err=True)
+        raise typer.Exit(code=2)
+    commands.set_log_level(api, level, as_json)
+
+
+@app.command()
+def errors(
+    since: int = typer.Option(0, "--since", help="Only entries with a larger id"),
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Show this session's error log (failed files)."""
+    from vbc.clients import commands
+
+    commands.errors(api, since, as_json)
+
+
+@app.command()
+def logs(
+    since: int = typer.Option(0, "--since", help="Only records with a larger sequence number"),
+    level: Optional[str] = typer.Option(None, "--level", help="Minimum level"),
+    follow: bool = typer.Option(False, "--follow", "-f", help="Keep printing new records"),
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Show the server application log."""
+    from vbc.clients import commands
+
+    commands.logs(api, since, level, follow, as_json)
+
+
+@app.command("config")
+def show_config(api: Optional[str] = API_OPTION, as_json: bool = JSON_OPTION) -> None:
+    """Show the effective server configuration."""
+    from vbc.clients import commands
+
+    commands.config(api, as_json)
+
+
+dirs_app = typer.Typer(help="Input directories (server paths). Without a subcommand: list them.",
+                       invoke_without_command=True, no_args_is_help=False)
+app.add_typer(dirs_app, name="dirs")
+
+
+@dirs_app.callback()
+def dirs_root(ctx: typer.Context, api: Optional[str] = API_OPTION, as_json: bool = JSON_OPTION) -> None:
+    ctx.obj = {"api": api, "json": as_json}
+    if ctx.invoked_subcommand is None:
+        from vbc.clients import commands
+
+        commands.dirs_list(api, as_json)
+
+
+def _dirs_change(ctx: typer.Context, change) -> None:
+    from vbc.clients import commands
+
+    commands.dirs_change(ctx.obj["api"], ctx.obj["json"], change)
+
+
+@dirs_app.command("add")
+def dirs_add(ctx: typer.Context, path: str = typer.Argument(..., help="Absolute path on the server")) -> None:
+    """Append an enabled directory."""
+    from vbc.clients import commands
+
+    _dirs_change(ctx, commands.add_dir(path))
+
+
+@dirs_app.command("remove")
+def dirs_remove(ctx: typer.Context, path: str) -> None:
+    """Remove a directory from the list."""
+    from vbc.clients import commands
+
+    _dirs_change(ctx, commands.remove_dir(path))
+
+
+@dirs_app.command("enable")
+def dirs_enable(ctx: typer.Context, path: str) -> None:
+    """Enable a listed directory."""
+    from vbc.clients import commands
+
+    _dirs_change(ctx, commands.set_enabled(path, True))
+
+
+@dirs_app.command("disable")
+def dirs_disable(ctx: typer.Context, path: str) -> None:
+    """Disable a listed directory (kept in the list)."""
+    from vbc.clients import commands
+
+    _dirs_change(ctx, commands.set_enabled(path, False))
+
+
+@dirs_app.command("set")
+def dirs_set(ctx: typer.Context, paths: list[str] = typer.Argument(..., help="New ordered list, all enabled")) -> None:
+    """Replace the whole list."""
+    from vbc.clients import commands
+
+    _dirs_change(ctx, commands.replace_all(paths))
 
 
 @app.command(

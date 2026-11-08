@@ -598,7 +598,17 @@ allowed to fail and be repeated:
 
 ## Migration steps
 
-Progress: baseline tag `service-split-baseline`; **steps 1–5 done**.
+Progress: baseline tag `service-split-baseline`; **steps 1–6 done**.
+Step 6 notes: `vbc/clients/api_client.py` (httpx, typed DTOs from
+`vbc.contracts`, `ApiUnavailable` / `ApiError` with the server's `Problem`,
+clock offset from `server_time`, `extrapolated_percent`), `vbc/clients/
+commands.py` + `format.py`, and the peer subcommands in `vbc/cli.py`:
+`status [--watch]`, `threads N`, `refresh`, `shutdown [--interrupt|--cancel]`,
+`log-level LEVEL`, `errors [--since]`, `logs [--since] [--level] [--follow]`,
+`config`, `dirs [add|remove|enable|disable|set]` (read, edit locally, `PUT`
+the whole list with `If-Match`; `--api`/`--json` go before the `dirs`
+subcommand). Exit codes 0 / 1 rejected / 2 usage / 3 unreachable. A client
+config file is not needed yet: `--api` or `VBC_API`.
 Step 5 notes: `vbc serve` = `vbc/service/bootstrap.py` (`VbcServer`: config +
 env overrides `VBC_SERVER_HOST/PORT`, `VBC_ALLOWED_HOSTS`,
 `VBC_STORAGE_ROOTS`; refuses a non-loopback host without `storage.roots`;

@@ -26,6 +26,12 @@ Location: `tests/e2e/`. Current scenarios (`test_serve.py`):
   `PUT /dirs` 428/412/422, long-poll `204`, Host/Origin guard, health and
   HomeStack telemetry, idempotent shutdown and cancel, SIGTERM exit code 0.
 
+`test_cli.py` drives `serve --demo` only through the one-shot commands as
+separate processes (`vbc status`, `threads`, `dirs add/disable/remove` with
+the config file checked on disk, `errors`, `logs`, `config`, `log-level`,
+`refresh`, `shutdown` / `--cancel`) and checks exit codes 1 (rejected),
+2 (usage) and 3 (server unreachable).
+
 Legacy `vbc run` (until it is deleted) is checked by hand as below.
 
 Rules:
