@@ -498,10 +498,19 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
             present = shutil.which(tool) is not None
             ok &= present
             checks[f"{tool}:executable"] = [{"status": "pass" if present else "fail"}]
+        # A root fails readiness only when it is configured or holds an enabled
+        # input folder; an unused, unwritable media mount is only a warning.
+        configured = {str(root) for root in server.config.storage.roots}
+        enabled = [Path(e.path) for e in server.config.input_dirs if e.enabled]
         for root in server.current_storage_roots():
             usable = os.path.isdir(root) and os.access(root, os.W_OK | os.X_OK)
-            ok &= usable
-            checks[f"storage:{root}"] = [{"status": "pass" if usable else "fail"}]
+            needed = str(root) in configured or any(root == d or root in d.parents for d in enabled)
+            ok &= usable or not needed
+            status = "pass" if usable else ("fail" if needed else "warn")
+            check = {"status": status}
+            if not usable:
+                check["output"] = "not writable" + ("" if needed else " (no enabled folder uses it)")
+            checks[f"storage:{root}"] = [check]
         snapshot_status = store.snapshot().run_status
         orchestrator_ok = server.orchestrator_alive and snapshot_status != "failed"
         ok &= orchestrator_ok

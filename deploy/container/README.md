@@ -41,7 +41,9 @@ Unpacked size: about 490 MB.
   no input dirs, CPU encoder, server on `0.0.0.0:8080`. It never overwrites an
   existing config.
 * Storage roots that lie on the volume (e.g. `/home/app/media`) are created at
-  start; roots elsewhere are mounts and must exist (readiness checks them).
+  start; roots elsewhere are mounts and must exist. Readiness fails for a root that is
+  not writable only when it is configured or holds an enabled input folder;
+  an unused unwritable mount is a `warn` check.
 * Nothing durable is written to the root filesystem. Encoder temp files live
   next to the outputs on the media mounts.
 

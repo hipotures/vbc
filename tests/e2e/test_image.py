@@ -50,10 +50,14 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
     (volume / "config" / "vbc.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     before = record_legacy.snapshot(root)
 
+    readonly = tmp_path / "readonly-media" / "clips"  # an unused mount without write access
+    readonly.mkdir(parents=True)
+    (readonly / "a.mp4").write_bytes(b"x")
     port = free_port()
     name = f"vbc-e2e-{port}"
     _run("run", "-d", "--name", name, "-p", f"127.0.0.1:{port}:8080",
          "-v", f"{volume}:/home/app", "-v", f"{root}:{root}",  # identity mount for manifest paths
+         "-v", f"{readonly.parent}:/media-ro:ro",
          "-e", "HOMESTACK_HEARTBEAT_SECONDS=10", IMAGE)  # no VBC_STORAGE_ROOTS: the mount is the root
     http = httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=40)
     try:
@@ -109,6 +113,7 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
         assert live.status_code == 200 and live.json()["checks"]["heartbeat:count"][0]["observedValue"] >= 1
         ready = http.get("/health/ready")
         assert ready.status_code == 200, ready.text
+        assert ready.json()["checks"]["storage:/media-ro"][0]["status"] == "warn"
         telemetry = http.get("/.well-known/homestack/status").json()
         assert telemetry["schema"] == 3 and telemetry["status"] == "pass"
 
