@@ -1,0 +1,70 @@
+name: Image
+
+# Release: tag vbc-X.Y.Z (scripts/tag-image.py) -> ghcr.io/hipotures/vbc:X.Y.Z
+# Test build: manual run -> ghcr.io/hipotures/vbc:dev-<commit>
+# Ordinary pushes never publish an image. Published versions are immutable
+# (scripts/image-admission.sh refuses to overwrite them).
+on:
+  push:
+    tags: ['vbc-[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    concurrency:
+      group: vbc-image-${{ github.event_name == 'workflow_dispatch' && github.sha || github.ref_name }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Image tag
+        id: tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "${{ github.event_name }}" == workflow_dispatch ]]; then
+            echo "tag=dev-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [[ "$RELEASE_TAG" =~ ^vbc-((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$ ]]
+          echo "tag=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Admit immutable image publication
+        id: publication
+        env:
+          IMAGE: ghcr.io/hipotures/vbc:${{ steps.tag.outputs.tag }}
+          REVISION: ${{ github.sha }}
+          VERSION: ${{ steps.tag.outputs.tag }}
+          EVENT: ${{ github.event_name }}
+        run: scripts/image-admission.sh "$IMAGE" "$REVISION" "$VERSION" "$EVENT"
+
+      - uses: docker/build-push-action@v6.18.0
+        if: steps.publication.outputs.publish == 'true'
+        with:
+          platforms: linux/amd64
+          provenance: false
+          context: .
+          file: deploy/container/Containerfile
+          push: true
+          tags: ghcr.io/hipotures/vbc:${{ steps.tag.outputs.tag }}
+          labels: |
+            org.opencontainers.image.title=vbc
+            org.opencontainers.image.source=https://github.com/hipotures/vbc
+            org.opencontainers.image.version=${{ steps.tag.outputs.tag }}
+            org.opencontainers.image.revision=${{ github.sha }}

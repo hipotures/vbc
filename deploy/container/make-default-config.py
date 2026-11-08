@@ -1,0 +1,30 @@
+"""Build the container's first-start config from conf/vbc.yaml.example.
+
+Keeps every encoder/quality/autorotate default of the example (so the image
+behaves like `vbc run` with that file) and changes only what a headless
+container needs. Used at image build time:
+    python make-default-config.py conf/vbc.yaml.example conf/container-default.yaml
+"""
+
+import sys
+from pathlib import Path
+
+import yaml
+
+source, target = map(Path, sys.argv[1:3])
+config = yaml.safe_load(source.read_text())
+config["input_dirs"] = []  # added at runtime through the API (`vbc dirs add`)
+general = config["general"]
+general["gpu"] = False  # CPU (SVT-AV1); GPU passthrough is not part of the image contract
+general["log_path"] = None  # `vbc serve` logs to stdout
+general["wait_on_finish"] = True
+general["bell_on_finish"] = False
+config["gpu_config"]["enabled"] = False
+config["web_server"]["enabled"] = False
+config["server"] = {"host": "0.0.0.0", "port": 8770, "allowed_hosts": [], "stop_timeout_s": 600}
+config["storage"] = {"roots": []}  # set by the VBC_STORAGE_ROOTS deployment input
+target.write_text(
+    "# First-start configuration of the VBC container (generated from vbc.yaml.example).\n"
+    "# Lives on the persistent volume; edit freely, the image never overwrites it.\n"
+    + yaml.safe_dump(config, sort_keys=False, allow_unicode=True)
+)

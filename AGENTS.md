@@ -128,6 +128,18 @@ vbc_legacy/              # frozen, today's application
 Critical: Preserve event-driven architecture. Do not create direct dependencies between layers.
 Important: Never add `conf/vbc.yaml` to git tracking. If it appears tracked, notify the user immediately.
 
+## Container image and releases (HomeStack)
+
+The server image is `deploy/container/Containerfile` (runtime contract:
+`deploy/container/README.md`); the HomeStack manifest is
+`.homestack/services/vbc/`. Release rule: after committing and pushing a
+completed change, decide whether the **image** changes (application code or
+its dependencies, the Containerfile, the entrypoint, the default config). Only
+then run `python3 scripts/tag-image.py` (next `vbc-X.Y.Z`, CI publishes
+`ghcr.io/hipotures/vbc:X.Y.Z`). Changes to the manifest, docs, tests or CI
+alone need no release. Never move or delete release tags; never pick
+versions by hand. Ask the owner before the first release.
+
 ## Dependencies
 
 Package manager: `uv` (defined in `pyproject.toml`)

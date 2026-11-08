@@ -65,6 +65,11 @@ Rules:
 Planned scenarios and the legacy comparison are listed under "Testing
 strategy" in the [service split plan](../architecture/service-split.md).
 
+`test_image.py` (opt-in, `VBC_E2E_IMAGE=vbc:dev`) runs the built container:
+it refuses to start without a mounted `/home/app`; with a volume and an
+identity mount of the media tree a full pass matches the legacy oracle;
+health, readiness and HomeStack telemetry answer; `stop` (SIGTERM) exits 0.
+
 ## Legacy reference recording
 
 `tests/e2e/media.py` generates the fixture set; `tests/e2e/record_legacy.py`

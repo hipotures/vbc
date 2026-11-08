@@ -1,0 +1,58 @@
+# VBC server image for HomeStack (unprivileged Proxmox LXC from this OCI image).
+# Runtime contract and measurements: deploy/container/README.md.
+# Build from the repository root:
+#   podman build -f deploy/container/Containerfile -t vbc:dev .
+
+# Debian testing (owner's decision: the same FFmpeg 9.0.2 as the development
+# host, no regression hunt on older releases), distribution packages only,
+# installed without recommends: FFmpeg 9 with NVENC (av1_nvenc) and SVT-AV1,
+# ExifTool, Python 3.14. testing moves: the base is pinned by digest, the
+# packages are what testing ships at build time. Requirements and why:
+#   * FFmpeg >= 8: multipart (manifest) jobs pass -filter_buffered_frames to
+#     bound memory (Debian trixie's 7.1 rejects it, exit code 8).
+#   * NVENC needs glibc: the NVIDIA driver libraries (libcuda,
+#     libnvidia-encode) loaded at run time are glibc-only, so Alpine/musl
+#     cannot encode on the GPU. Those libraries are NOT in the image: they come
+#     from the host driver (see README.md, GPU).
+# The build checks what VBC needs and fails otherwise.
+FROM docker.io/library/debian:testing-slim@sha256:4bac5c4908af3ecf8b87241323e19df0e93818ccf4efd652926efb831ee6a0da AS runtime-base
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg libimage-exiftool-perl python3 ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && ffmpeg -hide_banner -h full 2>/dev/null | grep -q -- '-filter_buffered_frames' \
+ && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libsvtav1 \
+ && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q av1_nvenc \
+ && ffprobe -version >/dev/null \
+ && exiftool -ver >/dev/null
+
+FROM runtime-base AS build
+COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:c7db1d63057f268a8b6da8af9077850a60461f98d23db23c676a82089a050c91 /uv /usr/local/bin/uv
+WORKDIR /opt/vbc
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PYTHON=/usr/bin/python3
+COPY pyproject.toml uv.lock README.md ./
+# Runtime dependencies only; the project itself is copied as plain source below.
+RUN uv sync --frozen --no-dev --no-install-project
+COPY conf/vbc.yaml.example conf/exiftool.conf conf/demo.yaml conf/
+COPY deploy/container/make-default-config.py /tmp/
+RUN /opt/vbc/.venv/bin/python /tmp/make-default-config.py conf/vbc.yaml.example conf/container-default.yaml
+COPY vbc vbc
+
+FROM runtime-base
+WORKDIR /opt/vbc
+COPY --from=build /opt/vbc/.venv /opt/vbc/.venv
+COPY --from=build /opt/vbc/conf /opt/vbc/conf
+COPY --from=build /opt/vbc/vbc /opt/vbc/vbc
+COPY --chmod=0755 deploy/container/entrypoint.sh /usr/local/bin/vbc-entrypoint
+# The persistent home volume (mp0) is mounted here by HomeStack; it must stay a
+# real, empty directory in the image.
+RUN mkdir -p /home/app && /opt/vbc/.venv/bin/python -m compileall -q /opt/vbc/vbc
+ENV PATH=/opt/vbc/.venv/bin:$PATH \
+    PYTHONPATH=/opt/vbc \
+    PYTHONUNBUFFERED=1 \
+    VBC_HOME=/home/app \
+    VBC_SERVER_HOST=0.0.0.0 \
+    VBC_SERVER_PORT=8770
+EXPOSE 8770
+# Runs as container root: an unprivileged LXC maps it to an unprivileged host user.
+ENTRYPOINT ["/usr/local/bin/vbc-entrypoint"]

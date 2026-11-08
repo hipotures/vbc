@@ -1,0 +1,11 @@
+# Build context of deploy/container/Containerfile (docker and podman): only what the image copies.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!conf/vbc.yaml.example
+!conf/exiftool.conf
+!conf/demo.yaml
+!vbc/**
+!deploy/container/**
+**/__pycache__

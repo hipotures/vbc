@@ -600,7 +600,14 @@ allowed to fail and be repeated:
 ## Migration steps
 
 Progress: baseline tag `service-split-baseline`; **steps 1–7 done — phase 1
-complete**. Post-phase-1 fixes from the owner's first run: long-polls are
+complete**; **step 8 (HomeStack packaging) in progress**: image
+`deploy/container/` on `debian:testing-slim` (FFmpeg 9.0.2 with NVENC; Debian
+trixie's 7.1 lacks `-filter_buffered_frames`, Alpine has no NVENC/glibc,
+Ubuntu 26.10 has 8.1.2 — owner chose testing to match the dev host), schema-3
+manifest `.homestack/services/vbc/`, `scripts/tag-image.py`,
+`scripts/image-admission.sh`, `.github/workflows/image.yml`; image e2e
+passes. Open: GPU in the LXC (devices + host driver libraries), real
+deployment test on Proxmox, first release. Post-phase-1 fixes from the owner's first run: long-polls are
 released when the server stops (no 3 s hang / traceback); `/shutdown` became
 `/stop` (processing only, server keeps running, refresh resumes —
 `reset_after_stop()` in both orchestrators, statuses `stopping`/`stopped`,

@@ -1,0 +1,29 @@
+schema: 3
+id: vbc
+name: VBC
+image:
+  repository: ghcr.io/hipotures/vbc
+runtime:
+  telemetry: homestack
+  ports:
+    - name: http
+      port: 8770
+      protocol: tcp
+  healthcheck:
+    type: http
+    port: http
+    path: /health/ready
+    expected_status: 200
+    heartbeat_seconds: 60
+# GPU (NVENC): /dev/nvidia* are attached manually in Proxmox first, then
+# declared here as runtime.devices; see deploy/container/README.md (GPU).
+# Config (incl. the Dirs list saved through the API) and state live on the
+# home volume; media trees are external mounts (pending HomeStack feature).
+persistence:
+  mount: /home/app
+  size: 1G
+  directories:
+    - config
+    - state
+# Control plane for the desktop TUI/CLI inside the LAN; not published (yet).
+exposure: {}

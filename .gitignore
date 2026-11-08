@@ -78,6 +78,15 @@ tests/data/
 # Generated API description (scripts/export-openapi.py)
 !docs/api/openapi.json
 
+# Container image and HomeStack deployment
+!.dockerignore
+!deploy/
+!deploy/container/
+!deploy/container/*
+!.homestack/
+!.homestack/**/
+!.homestack/**/*.yaml
+
 # Ignore Python cache
 __pycache__/
 *.pyc
