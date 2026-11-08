@@ -72,6 +72,11 @@ tests/data/
 !tests/
 !tests/**/
 !tests/**/*.py
+!tests/e2e/expected/
+!tests/e2e/expected/*.json
+
+# Generated API description (scripts/export-openapi.py)
+!docs/api/openapi.json
 
 # Ignore Python cache
 __pycache__/

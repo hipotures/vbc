@@ -1,0 +1,327 @@
+{
+  "description": "Legacy `vbc run --cpu` over tests/e2e/media.py; paths relative to the work root.",
+  "tools": {
+    "ffmpeg": "ffmpeg version n9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "exiftool": "13.55",
+    "vbc_commit": "b0547df"
+  },
+  "inputs": {
+    "meta/req_001.json": {},
+    "meta_src/part_1.mp4": {
+      "audio": [
+        "aac"
+      ],
+      "codec": "h264",
+      "width": 640,
+      "height": 360,
+      "rotation": null,
+      "duration_s": 2
+    },
+    "meta_src/part_2.mp4": {
+      "audio": [
+        "aac"
+      ],
+      "codec": "h264",
+      "width": 640,
+      "height": 360,
+      "rotation": null,
+      "duration_s": 2
+    },
+    "videos/GOPR0001.MP4": {
+      "audio": [
+        "aac"
+      ],
+      "codec": "h264",
+      "width": 640,
+      "height": 360,
+      "rotation": null,
+      "duration_s": 2
+    },
+    "videos/IMG_0001.MOV": {
+      "audio": [
+        "aac"
+      ],
+      "codec": "h264",
+      "width": 640,
+      "height": 360,
+      "rotation": null,
+      "duration_s": 2
+    },
+    "videos/av1_source.mp4": {
+      "audio": [],
+      "codec": "av1",
+      "width": 640,
+      "height": 360,
+      "rotation": null,
+      "duration_s": 2
+    },
+    "videos/broken.mp4": {
+      "probe": "failed"
+    },
+    "videos/camera_model.mp4": {
+      "audio": [
+        "aac"
+      ],
+      "codec": "h264",
+      "width": 640,
+      "height": 360,
+      "rotation": null,
+      "duration_s": 2
+    },
+    "videos/clip_001.mp4": {
+      "audio": [
+        "aac"
+      ],
+      "codec": "h264",
+      "width": 640,
+      "height": 360,
+      "rotation": null,
+      "duration_s": 2
+    },
+    "videos/notes.txt": {},
+    "videos/small.mp4": {},
+    "videos/sub/clip_002.mov": {
+      "audio": [
+        "aac"
+      ],
+      "codec": "h264",
+      "width": 640,
+      "height": 360,
+      "rotation": null,
+      "duration_s": 2
+    },
+    "videos/vbc_tagged.mp4": {
+      "audio": [
+        "aac"
+      ],
+      "codec": "h264",
+      "width": 640,
+      "height": 360,
+      "rotation": null,
+      "duration_s": 2
+    }
+  },
+  "run1": {
+    "exit_code": 0,
+    "log_markers": {
+      "MANIFEST_DONE": 1,
+      "MANIFEST_GROUP_DONE": 1,
+      "MANIFEST_GROUP_START": 1,
+      "MANIFEST_LOADED": 1,
+      "MANIFEST_OUTPUT_MTIME": 1,
+      "MANIFEST_PREFLIGHT_START": 1,
+      "MANIFEST_PROFILE_DEFAULT": 1,
+      "MANIFEST_QUEUED": 1,
+      "MANIFEST_READY": 1
+    },
+    "tree": {
+      "meta_out/20260101/req_001.json": {},
+      "meta_src/part_1.mp4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "h264",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2
+      },
+      "meta_src/part_2.mp4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "h264",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2
+      },
+      "meta_target/rec_20260101_120000.mp4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "av1",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 4
+      },
+      "videos/GOPR0001.MP4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "h264",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2
+      },
+      "videos/IMG_0001.MOV": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "h264",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2
+      },
+      "videos/av1_source.mp4": {
+        "audio": [],
+        "codec": "av1",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2
+      },
+      "videos/camera_model.mp4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "h264",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2
+      },
+      "videos/clip_001.mp4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "h264",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2
+      },
+      "videos/notes.txt": {},
+      "videos/small.mp4": {},
+      "videos/sub/clip_002.mov": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "h264",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2
+      },
+      "videos_err/broken.err": {
+        "err_first_line": "File is corrupted (ffprobe failed to read). Skipped."
+      },
+      "videos_err/broken.mp4": {
+        "probe": "failed"
+      },
+      "videos_out/GOPR0001.mp4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "av1",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2,
+        "source": "videos/GOPR0001.MP4",
+        "picture_rotation_cw": 180
+      },
+      "videos_out/IMG_0001.mp4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "av1",
+        "width": 360,
+        "height": 640,
+        "rotation": null,
+        "duration_s": 2,
+        "source": "videos/IMG_0001.MOV",
+        "picture_rotation_cw": 90
+      },
+      "videos_out/av1_source.mp4": {
+        "audio": [],
+        "codec": "av1",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2,
+        "source": "videos/av1_source.mp4",
+        "picture_rotation_cw": 0
+      },
+      "videos_out/camera_model.mp4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "av1",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2,
+        "source": "videos/camera_model.mp4",
+        "picture_rotation_cw": 0
+      },
+      "videos_out/clip_001.mp4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "av1",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2,
+        "source": "videos/clip_001.mp4",
+        "picture_rotation_cw": 0
+      },
+      "videos_out/sub/clip_002.mp4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "av1",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2,
+        "source": "videos/sub/clip_002.mov",
+        "picture_rotation_cw": 0
+      },
+      "videos_out/vbc_tagged.mp4": {
+        "audio": [
+          "aac"
+        ],
+        "codec": "h264",
+        "width": 640,
+        "height": 360,
+        "rotation": null,
+        "duration_s": 2
+      }
+    },
+    "changes": {
+      "added": [
+        "meta_out/20260101/req_001.json",
+        "meta_target/rec_20260101_120000.mp4",
+        "videos_err/broken.err",
+        "videos_err/broken.mp4",
+        "videos_out/GOPR0001.mp4",
+        "videos_out/IMG_0001.mp4",
+        "videos_out/av1_source.mp4",
+        "videos_out/camera_model.mp4",
+        "videos_out/clip_001.mp4",
+        "videos_out/sub/clip_002.mp4",
+        "videos_out/vbc_tagged.mp4"
+      ],
+      "removed": [
+        "meta/req_001.json",
+        "videos/broken.mp4",
+        "videos/vbc_tagged.mp4"
+      ],
+      "changed": []
+    }
+  },
+  "run2": {
+    "exit_code": 0,
+    "log_markers": {},
+    "changes": {
+      "added": [],
+      "removed": [],
+      "changed": []
+    }
+  }
+}
