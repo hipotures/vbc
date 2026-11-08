@@ -7,7 +7,7 @@ runtime:
   telemetry: homestack
   ports:
     - name: http
-      port: 8770
+      port: 8080
       protocol: tcp
   healthcheck:
     type: http

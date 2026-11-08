@@ -21,7 +21,7 @@ general["wait_on_finish"] = True
 general["bell_on_finish"] = False
 config["gpu_config"]["enabled"] = False
 config["web_server"]["enabled"] = False
-config["server"] = {"host": "0.0.0.0", "port": 8770, "allowed_hosts": [], "stop_timeout_s": 600}
+config["server"] = {"host": "0.0.0.0", "port": 8080, "allowed_hosts": [], "stop_timeout_s": 600}
 config["storage"] = {"roots": []}  # set by the VBC_STORAGE_ROOTS deployment input
 target.write_text(
     "# First-start configuration of the VBC container (generated from vbc.yaml.example).\n"

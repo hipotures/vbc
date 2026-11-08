@@ -30,7 +30,7 @@ Unpacked size: about 490 MB.
 |---|---|
 | Entrypoint | `vbc-entrypoint` → `vbc serve --config /home/app/config/vbc.yaml` |
 | User | container root (an unprivileged LXC maps it to an unprivileged host user) |
-| Port | `8770/tcp` HTTP: API, `/health/live`, `/health/ready`, `/.well-known/homestack/status` |
+| Port | `8080/tcp` (HomeStack convention; local `vbc serve` defaults to 8770) HTTP: API, `/health/live`, `/health/ready`, `/.well-known/homestack/status` |
 | Persistent volume | `/home/app` (`config/vbc.yaml` incl. the Dirs list, `state/`) |
 | Logs | stdout/stderr |
 | Stop | SIGTERM → running jobs finish (≤ `server.stop_timeout_s`, 600 s), then exit 0 |
@@ -38,7 +38,7 @@ Unpacked size: about 490 MB.
 * The entrypoint refuses to start unless `/home/app` is a mounted volume.
   `VBC_ALLOW_EPHEMERAL=1` overrides this, for throwaway tests only.
 * On the first start it writes `config/vbc.yaml` from `conf/vbc.yaml.example`:
-  no input dirs, CPU encoder, server on `0.0.0.0:8770`. It never overwrites an
+  no input dirs, CPU encoder, server on `0.0.0.0:8080`. It never overwrites an
   existing config.
 * Storage roots that lie on the volume (e.g. `/home/app/media`) are created at
   start; roots elsewhere are mounts and must exist (readiness checks them).

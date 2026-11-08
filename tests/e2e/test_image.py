@@ -43,13 +43,13 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
     # Operator-edited config on the volume: the media tree (incl. the manifest dir).
     config = yaml.safe_load(media_tree["config"].read_text())
     config["general"]["log_path"] = None
-    config["server"] = {"host": "0.0.0.0", "port": 8770}
+    config["server"] = {"host": "0.0.0.0", "port": 8080}
     (volume / "config" / "vbc.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     before = record_legacy.snapshot(root)
 
     port = free_port()
     name = f"vbc-e2e-{port}"
-    _run("run", "-d", "--name", name, "-p", f"127.0.0.1:{port}:8770",
+    _run("run", "-d", "--name", name, "-p", f"127.0.0.1:{port}:8080",
          "-v", f"{volume}:/home/app", "-v", f"{root}:{root}",  # identity mount for manifest paths
          "-e", f"VBC_STORAGE_ROOTS={root}", "-e", "HOMESTACK_HEARTBEAT_SECONDS=10", IMAGE)
     http = httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=40)
