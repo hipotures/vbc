@@ -517,6 +517,20 @@ known subcommand, `vbc` prints `use: vbc run <dirs>` and exits non-zero.
   (graceful), a second SIGINT → `InterruptRequested`; uvicorn stops after the
   orchestrator thread has joined. `POST /shutdown` goes through the same path.
 
+## Behaviours that must be preserved
+
+Critical requirements carried over from legacy unchanged. The e2e suite checks
+them.
+
+* **A file already encoded by VBC is moved into the output tree, never left
+  in the input tree and never sent to the error tree.** Detected by the
+  `VBCEncoder` tag (XMP or format tag), it is moved unchanged to
+  `<input>_out/` (same relative path). Reason: the owner keeps sources after
+  compression and treats "nothing left to compress" as "every source in the
+  input tree has a compressed version and may be deleted". A VBC output left
+  in the input tree would be deleted as if it were a source with a backup; one
+  in the error tree would look like a failure.
+
 ## Testing strategy
 
 Decided: **no unit tests; a small end-to-end suite only.** Today's suite
@@ -580,7 +594,19 @@ allowed to fail and be repeated:
 
 ## Migration steps
 
-Progress: baseline tag `service-split-baseline`; **steps 1–2 done**.
+Progress: baseline tag `service-split-baseline`; **steps 1–3 done**.
+Step 3 notes: the copied core (`vbc/`, no Rich, no UI imports) run headless
+on the e2e media reproduces `expected/legacy_run.json` exactly (both passes).
+`job_id` lives on `VideoFile` (set when a worker starts an attempt) and
+`CompressionJob.job_id` reads it, so preflight, failure and completion events
+of one attempt share it; events outside an attempt (an ffprobe failure during
+discovery) use a stable `path:<source>` id. New config field
+`general.max_threads` (default 8; effective bound `max(max_threads,
+threads)`, also the worker pool size) exists only in the new tree, so it is
+not added to `conf/vbc.yaml.example` while legacy reads the same file.
+`repair.process_repairs` reports progress through an optional `on_progress`
+callback instead of Rich; the input-dir status icons/lines (Rich markup) are
+left for `clients/tui/` in step 7.
 Step 2 artefacts: `tests/e2e/media.py` (fixture generator),
 `tests/e2e/record_legacy.py` (two legacy passes, CPU) and
 `tests/e2e/expected/legacy_run.json`; the recording is deterministic (two

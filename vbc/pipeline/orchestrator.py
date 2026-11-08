@@ -17,6 +17,7 @@ Key responsibilities:
 import re
 import os
 import hashlib
+import uuid
 import json
 import threading
 import concurrent.futures
@@ -72,8 +73,8 @@ from vbc.domain.events import (
     QueueUpdated,
     ProcessingFinished,
     RefreshFinished,
-    RequestShutdown,
-    ThreadControlEvent,
+    SetShutdownRequested,
+    SetThreadCount,
     InterruptRequested,
 )
 from vbc.pipeline.error_file_mover import collect_error_entries, move_failed_files
@@ -243,8 +244,8 @@ class Orchestrator:
     def _setup_subscriptions(self):
         from vbc.domain.events import RefreshRequested, InputDirsChanged
 
-        self.event_bus.subscribe(RequestShutdown, self._on_shutdown_request)
-        self.event_bus.subscribe(ThreadControlEvent, self._on_thread_control)
+        self.event_bus.subscribe(SetShutdownRequested, self._on_shutdown_request)
+        self.event_bus.subscribe(SetThreadCount, self._on_thread_control)
         self.event_bus.subscribe(RefreshRequested, self._on_refresh_request)
         self.event_bus.subscribe(InterruptRequested, self._on_interrupt_requested)
         self.event_bus.subscribe(InputDirsChanged, self._on_input_dirs_changed)
@@ -254,32 +255,36 @@ class Orchestrator:
             return [Path(p) for p in input_dirs]
         return [Path(input_dirs)]
 
-    def _on_shutdown_request(self, event: RequestShutdown):
+    def _thread_bounds(self) -> tuple[int, int]:
+        general = self.config.general
+        return 1, max(general.max_threads, general.threads)
+
+    def _on_shutdown_request(self, event: SetShutdownRequested):
         with self._thread_lock:
-            # Toggle shutdown state (press S again to cancel)
-            if self._shutdown_requested:
+            if event.requested == self._shutdown_requested:
+                message = None
+            elif event.requested:
+                self._shutdown_requested = True
+                message = "SHUTDOWN requested"
+                self._wait_event.set()  # Wake up wait loop if waiting
+            else:
                 self._shutdown_requested = False
                 message = "SHUTDOWN cancelled"
-            else:
-                self._shutdown_requested = True
-                message = "SHUTDOWN requested (press S to cancel)"
-                self._wait_event.set()  # Wake up wait loop if waiting
             self._thread_lock.notify_all()
-        # Publish feedback message
-        from vbc.domain.events import ActionMessage
+        if message is not None:
+            from vbc.domain.events import ActionMessage
 
-        self.event_bus.publish(ActionMessage(message=message))
+            self.event_bus.publish(ActionMessage(message=message))
 
-    def _on_thread_control(self, event: ThreadControlEvent):
+    def _on_thread_control(self, event: SetThreadCount):
         if self._shutdown_requested:
             return
 
+        low, high = self._thread_bounds()
         old_val = self._current_max_threads
         with self._thread_lock:
-            requested = self._current_max_threads + event.change
-            self._current_max_threads = max(1, min(8, requested))
+            self._current_max_threads = max(low, min(high, event.target))
             self._thread_lock.notify_all()
-        # Publish feedback message (like old vbc.py lines 769, 776)
         from vbc.domain.events import ActionMessage
 
         if self._current_max_threads != old_val:
@@ -288,11 +293,11 @@ class Orchestrator:
                     message=f"Threads: {old_val} → {self._current_max_threads}"
                 )
             )
-        elif requested > self._current_max_threads:
+        elif event.target > self._current_max_threads:
             self.event_bus.publish(
                 ActionMessage(message=f"Threads: {self._current_max_threads} (max)")
             )
-        elif requested < self._current_max_threads:
+        elif event.target < self._current_max_threads:
             self.event_bus.publish(
                 ActionMessage(message=f"Threads: {self._current_max_threads} (min)")
             )
@@ -1702,6 +1707,7 @@ class Orchestrator:
             source_mtime_ns=video_file.source_mtime_ns,
             metadata=group_metadata,
             metadata_request=group_request,
+            job_id=video_file.job_id,
         )
 
     def _route_manifest_success(self, request: MetadataRequest) -> Path:
@@ -3296,6 +3302,8 @@ class Orchestrator:
 
             self._active_threads += 1
 
+        video_file.job_id = uuid.uuid4().hex[:12]
+
         if video_file.metadata_request is not None:
             manifest_path = video_file.metadata_request.manifest_path
             with self._manifest_inflight_lock:
@@ -4115,7 +4123,7 @@ class Orchestrator:
         # Refresh the first page after its metadata has been resolved.
         self.event_bus.publish(QueueUpdated(pending_files=[vf for vf in pending]))
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self._thread_bounds()[1]) as executor:
 
             def submit_batch():
                 """Submit files up to max_inflight limit"""

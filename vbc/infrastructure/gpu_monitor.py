@@ -6,8 +6,8 @@ import threading
 import time
 import logging
 import re
-from typing import Optional
-from vbc.ui.state import UIState
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Protocol
 
 # Number parsing regex
 NUM_RE = re.compile(r"(-?\d+(?:\.\d+)?)")
@@ -44,13 +44,42 @@ def parse_fan_speed(s: str) -> Optional[float]:
     # (the UI will handle displaying "-" for None values)
     return None
 
+@dataclass(frozen=True)
+class GpuSample:
+    """One nvtop reading; ``raw`` is None when the read failed."""
+
+    raw: Optional[Dict[str, Any]]
+    temp_c: Optional[float] = None
+    power_w: Optional[float] = None
+    gpu_util_pct: Optional[float] = None
+    mem_util_pct: Optional[float] = None
+    fan_pct: Optional[float] = None
+
+    @classmethod
+    def from_nvtop(cls, gpu: Dict[str, Any]) -> "GpuSample":
+        return cls(
+            raw=gpu,
+            temp_c=parse_temp(gpu.get("temp")),
+            power_w=parse_watts(gpu.get("power_draw")),
+            gpu_util_pct=parse_percent(gpu.get("gpu_util")),
+            mem_util_pct=parse_percent(gpu.get("mem_util")),
+            fan_pct=parse_fan_speed(gpu.get("fan_speed")),
+        )
+
+
+class GpuSink(Protocol):
+    """Receiver of GPU samples (the server read model)."""
+
+    def add_gpu_sample(self, sample: GpuSample) -> None: ...
+
+
 class GpuMonitor:
     """Monitors GPU metrics using nvtop -s in a background thread."""
 
-    def __init__(self, state: UIState, refresh_rate: int = 5,
+    def __init__(self, sink: GpuSink, refresh_rate: int = 5,
                  device_index: int = 0, device_name: Optional[str] = None,
                  nvtop_path: Optional[str] = None):
-        self.state = state
+        self.sink = sink
         self.refresh_rate = refresh_rate
         self.device_index = device_index
         self.device_name = device_name
@@ -68,7 +97,7 @@ class GpuMonitor:
             self._nvtop_available = nvtop_which is not None
 
     def _poll(self):
-        """Polls nvtop and updates state with compensated sleep."""
+        """Polls nvtop and forwards samples to the sink with compensated sleep."""
         next_tick = time.time()
 
         while not self._stop_event.is_set():
@@ -96,15 +125,7 @@ class GpuMonitor:
                             gpu = data[self.device_index]
 
                         if gpu:
-                            with self.state._lock:
-                                self.state.gpu_data = gpu
-
-                                # Append history
-                                self.state.gpu_history_temp.append(parse_temp(gpu.get("temp")))
-                                self.state.gpu_history_pwr.append(parse_watts(gpu.get("power_draw")))
-                                self.state.gpu_history_gpu.append(parse_percent(gpu.get("gpu_util")))
-                                self.state.gpu_history_mem.append(parse_percent(gpu.get("mem_util")))
-                                self.state.gpu_history_fan.append(parse_fan_speed(gpu.get("fan_speed")))
+                            self.sink.add_gpu_sample(GpuSample.from_nvtop(gpu))
             except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError) as e:
                 # Log once if nvtop disappears during runtime (edge case)
                 if isinstance(e, FileNotFoundError) and not hasattr(self, '_logged_not_found'):
@@ -112,14 +133,8 @@ class GpuMonitor:
                     self._logged_not_found = True
                 elif not isinstance(e, FileNotFoundError):
                     self.logger.debug(f"GPU Monitor: failed to fetch data: {e}")
-                # Append None to history on error
-                with self.state._lock:
-                    self.state.gpu_data = None
-                    self.state.gpu_history_temp.append(None)
-                    self.state.gpu_history_pwr.append(None)
-                    self.state.gpu_history_gpu.append(None)
-                    self.state.gpu_history_mem.append(None)
-                    self.state.gpu_history_fan.append(None)
+                # A failed read is recorded as an empty sample (gap in history)
+                self.sink.add_gpu_sample(GpuSample(raw=None))
 
             # Compensated sleep
             next_tick += self.refresh_rate

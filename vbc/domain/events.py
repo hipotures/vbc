@@ -103,7 +103,7 @@ class RefreshRequested(Event):
     manifest_paths: List[Path] = Field(default_factory=list)
 
 class InputDirsChanged(Event):
-    """Event emitted when active input_dirs list changes (Dirs tab apply)."""
+    """Emitted when the active input_dirs list changes (e.g. after PUT /dirs)."""
     active_dirs: List[str]
 
 class RefreshFinished(Event):
@@ -112,16 +112,23 @@ class RefreshFinished(Event):
     removed: int = 0
 
 
-class ThreadControlEvent(Event):
-    """Event emitted to adjust thread count (Keys '<' or '>')."""
+class SetThreadCount(Event):
+    """Set the number of concurrent jobs to an absolute target.
 
-    change: int  # +1 or -1
+    Idempotent: repeating it changes nothing. The orchestrator clamps the
+    target to ``1..max(general.max_threads, general.threads)``.
+    """
+
+    target: int
 
 
-class RequestShutdown(Event):
-    """Event emitted when user requests graceful shutdown (Key 'S')."""
+class SetShutdownRequested(Event):
+    """Request (``True``) or cancel (``False``) a graceful shutdown.
 
-    pass
+    Idempotent: requesting twice keeps the request; it never toggles.
+    """
+
+    requested: bool = True
 
 
 class InterruptRequested(Event):
@@ -164,52 +171,4 @@ class ProcessingPausedOnError(Event):
 class WaitingForInput(Event):
     """Emitted by orchestrator when wait_on_finish=True and processing is done.
     Signals UI to display WAITING status and R/S hint."""
-    pass
-
-
-# ── Dirs tab events ────────────────────────────────────────────────────────────
-
-class DirsCursorMove(Event):
-    """Move cursor up/down in the Dirs tab list."""
-    direction: int  # -1 = up, +1 = down
-
-
-class DirsSwapSelected(Event):
-    """Swap the entry under cursor with adjacent entry (-1 up, +1 down)."""
-    direction: int  # -1 = up, +1 = down
-
-
-class DirsToggleSelected(Event):
-    """Toggle enabled/disabled state of the entry under cursor."""
-    pass
-
-
-class DirsEnterAddMode(Event):
-    """Enter add-path input mode in Dirs tab."""
-    pass
-
-
-class DirsMarkDelete(Event):
-    """Mark the entry under cursor for deletion (pending)."""
-    pass
-
-
-class DirsInputChar(Event):
-    """Append a character to the add-path input buffer.
-    Use char='\\x7f' for backspace (removes last character)."""
-    char: str
-
-
-class DirsConfirmAdd(Event):
-    """Confirm the current input buffer as a new pending directory."""
-    pass
-
-
-class DirsCancelInput(Event):
-    """Cancel add-path input mode without saving."""
-    pass
-
-
-class DirsApplyChanges(Event):
-    """Apply all pending Dirs changes, save to YAML, and trigger refresh."""
     pass

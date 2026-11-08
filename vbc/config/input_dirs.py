@@ -1,9 +1,7 @@
 import os
-import unicodedata
 from pathlib import Path
 from typing import List, Tuple, Optional
 
-from rich.markup import escape
 
 MAX_INPUT_DIRS = 50
 MAX_INPUT_DIR_LEN = 150
@@ -162,20 +160,3 @@ def evaluate_input_dirs(
             errors_dir_map[path] = errors_path
 
     return valid_dirs, status_entries, output_dir_map, errors_dir_map
-
-
-def render_status_icon(status: str) -> str:
-    style = "green" if status == STATUS_OK else "red"
-    icon = status if status == STATUS_NO_ACCESS else f"{status} "
-    return f"[{style}]{icon}[/]"
-
-
-def build_input_dir_lines(status_entries: List[Tuple[str, str]]) -> List[str]:
-    lines: List[str] = []
-    for idx, (status, entry) in enumerate(status_entries):
-        display_entry = "".join(
-            " " if unicodedata.category(char) == "Cc" else char
-            for char in entry
-        )
-        lines.append(f"  {render_status_icon(status)}{idx + 1}. {escape(display_entry)}")
-    return lines

@@ -245,6 +245,9 @@ class VideoFile(BaseModel):
     source_mtime_ns: int = Field(default=0, ge=0)
     metadata: Optional[VideoMetadata] = None
     metadata_request: Optional[MetadataRequest] = None
+    # Identity of the current processing attempt; set by the orchestrator when
+    # a worker picks the file up, shared by every CompressionJob of that attempt.
+    job_id: Optional[str] = None
 
     @property
     def identity_path(self) -> Path:
@@ -287,6 +290,17 @@ class CompressionJob(BaseModel):
         expected_video_frames: Decoded source frames reported by FFmpeg, adjusted
             for any duplicated or dropped frames.
     """
+
+    @property
+    def job_id(self) -> str:
+        """Stable id of this processing attempt (see VideoFile.job_id).
+
+        Events published outside a worker attempt (e.g. an ffprobe failure
+        during discovery) fall back to a path-based id, which is stable for
+        the same source path.
+        """
+        return self.source_file.job_id or f"path:{self.source_file.path}"
+
 
     source_file: VideoFile
     status: JobStatus = JobStatus.PENDING

@@ -3,6 +3,7 @@ import logging
 import random
 import threading
 import time
+import uuid
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
@@ -22,10 +23,10 @@ from vbc.domain.events import (
     JobStarted,
     ProcessingFinished,
     QueueUpdated,
-    RequestShutdown,
+    SetShutdownRequested,
     RefreshRequested,
     RefreshFinished,
-    ThreadControlEvent,
+    SetThreadCount,
 )
 from vbc.domain.models import CompressionJob, JobStatus, VideoFile, VideoMetadata
 from vbc.infrastructure.event_bus import EventBus
@@ -121,37 +122,52 @@ class DemoOrchestrator:
         self._setup_subscriptions()
 
     def _setup_subscriptions(self):
-        self.event_bus.subscribe(RequestShutdown, self._on_shutdown_request)
-        self.event_bus.subscribe(ThreadControlEvent, self._on_thread_control)
+        self.event_bus.subscribe(SetShutdownRequested, self._on_shutdown_request)
+        self.event_bus.subscribe(SetThreadCount, self._on_thread_control)
         self.event_bus.subscribe(RefreshRequested, self._on_refresh_request)
         self.event_bus.subscribe(InterruptRequested, self._on_interrupt_requested)
 
-    def _on_shutdown_request(self, event: RequestShutdown):
+    def _thread_bounds(self) -> tuple[int, int]:
+        general = self.config.general
+        return 1, max(general.max_threads, general.threads)
+
+    def _on_shutdown_request(self, event: SetShutdownRequested):
         with self._thread_lock:
-            if self._shutdown_requested:
+            if event.requested == self._shutdown_requested:
+                message = None
+            elif event.requested:
+                self._shutdown_requested = True
+                message = "SHUTDOWN requested"
+            else:
                 self._shutdown_requested = False
                 message = "SHUTDOWN cancelled"
-            else:
-                self._shutdown_requested = True
-                message = "SHUTDOWN requested (press S to cancel)"
             self._thread_lock.notify_all()
-        self.event_bus.publish(ActionMessage(message=message))
+        if message is not None:
+            self.event_bus.publish(ActionMessage(message=message))
 
-    def _on_thread_control(self, event: ThreadControlEvent):
+    def _on_thread_control(self, event: SetThreadCount):
         if self._shutdown_requested:
             return
 
+        low, high = self._thread_bounds()
         old_val = self._current_max_threads
         with self._thread_lock:
-            requested = self._current_max_threads + event.change
-            self._current_max_threads = max(1, min(8, requested))
+            self._current_max_threads = max(low, min(high, event.target))
             self._thread_lock.notify_all()
         if self._current_max_threads != old_val:
-            self.event_bus.publish(ActionMessage(message=f"Threads: {old_val} → {self._current_max_threads}"))
-        elif requested > self._current_max_threads:
-            self.event_bus.publish(ActionMessage(message=f"Threads: {self._current_max_threads} (max)"))
-        elif requested < self._current_max_threads:
-            self.event_bus.publish(ActionMessage(message=f"Threads: {self._current_max_threads} (min)"))
+            self.event_bus.publish(
+                ActionMessage(
+                    message=f"Threads: {old_val} → {self._current_max_threads}"
+                )
+            )
+        elif event.target > self._current_max_threads:
+            self.event_bus.publish(
+                ActionMessage(message=f"Threads: {self._current_max_threads} (max)")
+            )
+        elif event.target < self._current_max_threads:
+            self.event_bus.publish(
+                ActionMessage(message=f"Threads: {self._current_max_threads} (min)")
+            )
 
     def _on_refresh_request(self, event: RefreshRequested):
         with self._refresh_lock:
@@ -347,6 +363,7 @@ class DemoOrchestrator:
 
             self._active_threads += 1
 
+        video_file.job_id = uuid.uuid4().hex[:12]
         job = CompressionJob(source_file=video_file, status=JobStatus.PENDING)
         try:
             if plan.outcome == DemoOutcome.FFPROBE_FAILED:
@@ -461,7 +478,7 @@ class DemoOrchestrator:
 
         self.event_bus.publish(QueueUpdated(pending_files=list(pending)))
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self._thread_bounds()[1]) as executor:
             def submit_batch():
                 max_inflight = self.config.general.prefetch_factor * self._current_max_threads
                 while len(in_flight) < max_inflight and pending and not self._shutdown_requested:

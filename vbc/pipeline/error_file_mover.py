@@ -3,7 +3,6 @@ import shutil
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from rich.progress import Progress, BarColumn, SpinnerColumn, TextColumn, TimeRemainingColumn
 
 
 def _find_sources_for_error(
@@ -95,41 +94,32 @@ def move_failed_files(
     if logger:
         logger.info(f"Relocating {total} failed files to errors directories.")
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total}"),
-        TimeRemainingColumn(),
-    ) as progress:
-        task = progress.add_task("Moving failed files", total=total)
-        for input_dir, output_dir, errors_dir, err_file in error_entries:
-            rel_err = err_file.relative_to(output_dir)
-            dest_err = errors_dir / rel_err
-            dest_err.parent.mkdir(parents=True, exist_ok=True)
-            if err_file.exists() and err_file != dest_err:
-                shutil.move(str(err_file), str(dest_err))
-                if logger:
-                    logger.info(f"Moved error marker: {err_file} -> {dest_err}")
+    for input_dir, output_dir, errors_dir, err_file in error_entries:
+        rel_err = err_file.relative_to(output_dir)
+        dest_err = errors_dir / rel_err
+        dest_err.parent.mkdir(parents=True, exist_ok=True)
+        if err_file.exists() and err_file != dest_err:
+            shutil.move(str(err_file), str(dest_err))
+            if logger:
+                logger.info(f"Moved error marker: {err_file} -> {dest_err}")
 
-            source_paths = _find_sources_for_error(input_dir, rel_err, extensions)
-            if source_paths:
-                for source_path in source_paths:
-                    if not source_path.exists():
-                        continue
-                    rel_source = source_path.relative_to(input_dir)
-                    dest_source = errors_dir / rel_source
-                    dest_source.parent.mkdir(parents=True, exist_ok=True)
-                    if source_path != dest_source:
-                        shutil.move(str(source_path), str(dest_source))
-                        moved_video_files.append(dest_source)
-                        if logger:
-                            logger.info(f"Moved source file: {source_path} -> {dest_source}")
-            else:
-                if logger:
-                    logger.warning(f"Failed source file not found for {rel_err}")
+        source_paths = _find_sources_for_error(input_dir, rel_err, extensions)
+        if source_paths:
+            for source_path in source_paths:
+                if not source_path.exists():
+                    continue
+                rel_source = source_path.relative_to(input_dir)
+                dest_source = errors_dir / rel_source
+                dest_source.parent.mkdir(parents=True, exist_ok=True)
+                if source_path != dest_source:
+                    shutil.move(str(source_path), str(dest_source))
+                    moved_video_files.append(dest_source)
+                    if logger:
+                        logger.info(f"Moved source file: {source_path} -> {dest_source}")
+        else:
+            if logger:
+                logger.warning(f"Failed source file not found for {rel_err}")
 
-            progress.advance(task)
 
     if logger:
         logger.info("Failed file relocation finished.")

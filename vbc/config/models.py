@@ -216,6 +216,8 @@ class GeneralConfig(BaseModel):
 
     Attributes:
         threads: Max concurrent compression jobs (default 1, min 1).
+        max_threads: Upper bound for runtime thread changes (default 8); the
+            effective bound is max(max_threads, threads).
         prefetch_factor: Submit-on-demand multiplier (jobs = threads * prefetch_factor).
         preflight_in_worker: Run metadata preflight inside an active worker slot.
         gpu: Use GPU (NVENC) instead of CPU (SVT-AV1) encoder.
@@ -247,6 +249,7 @@ class GeneralConfig(BaseModel):
     """
 
     threads: int = Field(default=1, gt=0)
+    max_threads: int = Field(default=8, gt=0)
     prefetch_factor: int = Field(default=1, ge=1)
     preflight_in_worker: bool = False
     gpu: bool = True
