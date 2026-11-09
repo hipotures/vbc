@@ -19,7 +19,7 @@ import math
 import time
 from typing import Dict, List, Optional, Tuple
 from rich.console import Console, Group, RenderableType
-from rich.panel import Panel
+from vbc.clients.tui.panels import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.rule import Rule

@@ -9,7 +9,7 @@ from typing import Optional, List, Tuple, Any
 from rich.live import Live
 from rich.cells import cell_len
 from rich.console import Console, Group, RenderableType
-from rich.panel import Panel
+from vbc.clients.tui.panels import BOTTOM, Panel, joined
 from rich.table import Table
 from rich.layout import Layout
 from rich.progress_bar import ProgressBar
@@ -944,12 +944,12 @@ class Dashboard:
         # Top border: "VBC"; bottom border: server version (left), host:port (right).
         version = single_line(f"v{self.state.server_version}" if self.state.server_version else "v?")
         host = single_line(self.state.server_netloc or "")
-        inner = max(0, self.console.size.width - 4)  # corners and the spaces Rich adds
-        gap = max(1, inner - len(version) - len(host) - 4)
-        subtitle = (Text.assemble(f"{version} ", ("─" * gap, "cyan"), f" {host}")
-                    if host else Text(version))
+        inner = max(0, self.console.size.width - 4)  # corners and one line each side
+        gap = max(1, inner - len(version) - len(host) - 8)
+        subtitle = (Text.assemble(joined(version, BOTTOM), "─" * gap, joined(host, BOTTOM))
+                    if host else joined(version, BOTTOM))
         return Panel(content, border_style="cyan", title=Text("VBC"),
-                     subtitle=subtitle, subtitle_align="left")
+                     subtitle=subtitle, subtitle_align="left", subtitle_raw=True)
 
     def _generate_progress(self, h_lines: int) -> Panel:
         """Progress bar + counters (size-based progress)."""
