@@ -349,7 +349,8 @@ class Dashboard:
         for entry in entries:
             file_line = self._format_logs_file_line(entry)
             err_line = single_line(entry.error_message or "Unknown error").strip()
-            table.add_row(f"[white]{safe_markup(file_line)}[/]")
+            stamp = entry.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            table.add_row(f"[dim]{stamp}[/] [white]{safe_markup(file_line)}[/]")
             table.add_row(f"[#f85149]{safe_markup(err_line)}[/]")
 
         if total_pages <= 1:
