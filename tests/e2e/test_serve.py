@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import signal
+import subprocess
 import time
 
 import record_legacy
@@ -37,6 +39,14 @@ def test_full_pass_matches_legacy(media_tree, serve_factory):
     ]
     recent = {job["name"] for job in serve.http.get("/api/v1/jobs/recent").json()["items"]}
     assert "vbc_tagged.mp4" in recent and "broken.mp4" in recent
+
+    # Every output names the VBC version that produced it (git describe here).
+    output = next((root / "videos_out").rglob("clip_001.mp4"))
+    version = subprocess.run(
+        ["exiftool", "-config", str(REPO / "conf" / "exiftool.conf"), "-s3", "-XMP:VBCVersion", str(output)],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert re.match(r"\d+\.\d+\.\d+", version), version
 
     # A refresh is a second pass: nothing changes on disk.
     rev = final["rev"]

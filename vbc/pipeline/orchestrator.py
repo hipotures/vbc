@@ -82,6 +82,7 @@ from vbc.pipeline.error_file_mover import collect_error_entries, move_failed_fil
 from vbc.pipeline.output_timestamps import apply_output_timestamps
 from vbc.pipeline.queue_sorting import sort_files
 from vbc.pipeline.repair import process_repairs
+from vbc.version import vbc_version
 
 _REQUIRED_VBC_VERIFY_TAGS = {
     "vbcoriginalname",
@@ -1175,6 +1176,7 @@ class Orchestrator:
             f"-XMP:VBCEncoder={encoder}",
             f"-XMP:VBCFinishedAt={finished_at}",
             f"-XMP:VBCSourceParts={source_parts}",
+            f"-XMP:VBCVersion={vbc_version()}",
         ]
         if vbc_json_notes:
             tags.append(f"-XMP:VBCJsonNotes={vbc_json_notes}")

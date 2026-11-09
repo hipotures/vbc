@@ -365,6 +365,7 @@ VBC uses `conf/exiftool.conf` to define custom VBC tags:
     VBCEncoder => { },
     VBCFinishedAt => { },
     VBCSourceParts => { },
+    VBCVersion => { },
 );
 ```
 

@@ -63,6 +63,8 @@ jobs:
           file: deploy/container/Containerfile
           push: true
           tags: ghcr.io/hipotures/vbc:${{ steps.tag.outputs.tag }}
+          build-args: |
+            VBC_VERSION=${{ steps.tag.outputs.tag }}
           labels: |
             org.opencontainers.image.title=vbc
             org.opencontainers.image.source=https://github.com/hipotures/vbc
