@@ -35,35 +35,15 @@ def apply_output_timestamps(
     for output_path in paths:
         if output_path.is_symlink() or not output_path.is_file():
             raise OSError(f"output is not a regular file: {output_path}")
-        # NFS: data still cached on the client reaches the server later and the
-        # server then sets mtime to "now", wiping the time set here. Flush first,
-        # set, flush again, and check that the time stuck.
-        _flush(output_path)
-        for _attempt in range(3):
-            output_stat = output_path.stat()
-            if output_stat.st_mtime_ns == source_mtime_ns:
-                break
+        output_stat = output_path.stat()
+        if output_stat.st_mtime_ns != source_mtime_ns:
             os.utime(
                 output_path,
                 ns=(output_stat.st_atime_ns, source_mtime_ns),
                 follow_symlinks=False,
             )
-            _flush(output_path)
-            if output_path not in files_updated:
-                files_updated.append(output_path)
-        else:
-            if output_path.stat().st_mtime_ns != source_mtime_ns:
-                raise OSError(f"output mtime does not stay set (filesystem rewrites it): {output_path}")
+            files_updated.append(output_path)
 
     return TimestampUpdate(
         file_paths=tuple(files_updated),
     )
-
-
-def _flush(path: Path) -> None:
-    """Write the file's cached data out to its storage (server, for NFS)."""
-    fd = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
