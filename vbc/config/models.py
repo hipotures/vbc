@@ -250,6 +250,10 @@ class GeneralConfig(BaseModel):
 
     threads: int = Field(default=1, gt=0)
     max_threads: int = Field(default=8, gt=0)
+    # Seconds between two size/mtime measurements of newly found files; a file
+    # that changed in between is still being written (copied) and is left for
+    # the next scan. Also re-checked right before a job starts. 0 = off.
+    stability_check_s: float = Field(default=1.0, ge=0)
     prefetch_factor: int = Field(default=1, ge=1)
     preflight_in_worker: bool = False
     gpu: bool = True

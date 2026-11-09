@@ -91,6 +91,11 @@ general:
   # Can be adjusted at runtime with < and > keys.
   threads: 4
 
+  # Copy guard: newly found files are measured twice (size + mtime) this many
+  # seconds apart; files still changing (being copied) wait for the next scan.
+  # Re-checked right before a job starts. 0 disables it; e.g. 0.1, 1.0, 5.
+  stability_check_s: 1.0
+
   # Submit-on-demand queue multiplier (1-5).
   # Formula: max_queued = prefetch_factor * threads.
   prefetch_factor: 1

@@ -2528,6 +2528,7 @@ class Orchestrator:
                 if parent in active_dirs and self._is_metadata_input_dir(parent):
                     exact_paths_by_dir.setdefault(parent, []).append(manifest_path)
         all_files = []
+        plain_files: List[VideoFile] = []  # found in folders (not from manifests)
         total_stats = {
             "files_found": 0,
             "files_to_process": 0,
@@ -2703,12 +2704,18 @@ class Orchestrator:
             total_stats["ignored_err_entries"].extend(folder_ignored_err_entries)
 
             all_files.extend(folder_files_to_process)
+            plain_files.extend(folder_files_to_process)
 
             if self.config.general.debug:
                 self.logger.info(
                     f"DISCOVERY_END ({input_dir.name}): found={folder_total_files}, to_process={len(folder_files_to_process)}, "
                     f"already_compressed={folder_already_compressed}, ignored_small={folder_ignored_small}, ignored_err={folder_ignored_err}"
                 )
+
+        unstable = self._unstable_files(plain_files)
+        if unstable:
+            all_files = [f for f in all_files if id(f) not in unstable]
+            self._retry_unstable([f for f in plain_files if id(f) in unstable], input_dirs)
 
         # Sort all files by filename for deterministic processing order
         all_files = sort_files(
@@ -3320,10 +3327,73 @@ class Orchestrator:
                 job=job,
             )
 
+    def _unstable_files(self, files: List[VideoFile]) -> set:
+        """Measure size and mtime again after stability_check_s; return ids of
+        files that changed (still being written). They stay for the next scan."""
+        delay = self.config.general.stability_check_s
+        if delay <= 0 or not files:
+            return set()
+        time.sleep(delay)
+        unstable = set()
+        for video_file in files:
+            try:
+                st = video_file.path.stat()
+            except OSError:
+                unstable.add(id(video_file))
+                continue
+            if st.st_size != video_file.size_bytes or (
+                video_file.source_mtime_ns and st.st_mtime_ns != video_file.source_mtime_ns
+            ):
+                unstable.add(id(video_file))
+                self.logger.info(
+                    "SKIPPED_UNSTABLE: %s (still changing: %s -> %s bytes in %.1fs); next scan takes it",
+                    video_file.path, video_file.size_bytes, st.st_size, delay,
+                )
+        return unstable
+
+    def _retry_unstable(self, files: List[VideoFile], input_dirs: List[Path]) -> None:
+        """Watched folders only see new names, so a file skipped while still
+        being written would wait forever: rescan its watched folder shortly.
+        Unwatched folders wait for an explicit refresh, as always."""
+        from vbc.domain.events import RefreshRequested
+
+        retry = []
+        for video_file in files:
+            folder = next((d for d in input_dirs if d in video_file.path.parents), None)
+            entry = self._input_dir_entries.get(folder) if folder is not None else None
+            if entry is not None and entry.watch and folder not in retry:
+                retry.append(folder)
+        if not retry:
+            return
+        delay = max(5.0, self.config.general.stability_check_s * 5)
+        timer = threading.Timer(delay, lambda: self.event_bus.publish(
+            RefreshRequested(automatic=True, input_dirs=retry)))
+        timer.daemon = True
+        timer.start()
+
+    def _changed_since_discovery(self, video_file: VideoFile) -> bool:
+        """Right before a job: the file must still look as it did at discovery."""
+        if self.config.general.stability_check_s <= 0 or video_file.metadata_request is not None:
+            return False
+        try:
+            st = video_file.path.stat()
+        except OSError:
+            return False  # missing files are reported by the normal job path
+        return st.st_size != video_file.size_bytes or bool(
+            video_file.source_mtime_ns and st.st_mtime_ns != video_file.source_mtime_ns
+        )
+
     def _process_file(self, video_file: VideoFile, input_dir: Optional[Path] = None):
         """Processes a single file with dynamic concurrency control."""
         filename = video_file.path.name
         start_time = time.monotonic() if self.config.general.debug else None
+
+        if self._changed_since_discovery(video_file):
+            self.logger.info(
+                "SKIPPED_UNSTABLE: %s (changed since the scan; still being written?); next scan takes it",
+                video_file.path,
+            )
+            return
 
         if self.config.general.debug:
             thread_id = threading.get_ident()
