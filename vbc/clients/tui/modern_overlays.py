@@ -522,6 +522,10 @@ class ReferenceOverlay:
             f"[{COLORS['muted']}]Historic errors (.err file on disk)[/]"
         )
         status_left.add_row(
+            f"[bold {COLORS['warning_yellow']}]warn[/]",
+            f"[{COLORS['muted']}]Compressed, but a warning (source not deleted)[/]"
+        )
+        status_left.add_row(
             f"[bold {COLORS['warning_yellow']}]hw_cap[/]",
             f"[{COLORS['muted']}]Out of NVENC encoder slots[/]"
         )
@@ -567,7 +571,7 @@ class ReferenceOverlay:
         )
         symbols_table.add_row(
             f"[{COLORS['accent_green']}]⇉[/] Multiple outputs",
-            "",
+            f"[{COLORS['warning_yellow']}]![/] Done, source not deleted",
             "",
             "",
         )

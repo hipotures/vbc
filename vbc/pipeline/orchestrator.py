@@ -1877,20 +1877,20 @@ class Orchestrator:
         request: MetadataRequest,
         *,
         reason: str = "output_verified",
-    ) -> None:
+    ) -> Tuple[int, Optional[str]]:
+        """Apply the manifest source policy; returns (deleted count, warning)."""
         if request.source_policy == "keep":
-            return
+            return 0, None
         if request.source_policy == "delete_after_success":
-            self._delete_manifest_sources(
+            return self._delete_manifest_sources(
                 request,
                 request.remaining_input_paths,
                 reason=reason,
             )
-            return
 
         source_paths = request.remaining_input_paths
         if not source_paths:
-            return
+            return 0, None
 
         move_root = request.move_after_success_dir
         if move_root is None:
@@ -1898,7 +1898,7 @@ class Orchestrator:
                 "MANIFEST_SOURCE_MOVE_KEEP: json=%s reason=destination_not_configured",
                 request.manifest_path,
             )
-            return
+            return 0, None
 
         username = request.manifest.producer.username
         if username in ("", ".", "..") or Path(username).name != username:
@@ -1907,7 +1907,7 @@ class Orchestrator:
                 request.manifest_path,
                 username,
             )
-            return
+            return 0, None
 
         try:
             if not move_root.is_dir():
@@ -1953,7 +1953,7 @@ class Orchestrator:
                 move_root,
                 exc,
             )
-            return
+            return 0, None
 
         moved: List[tuple[Path, Path]] = []
         try:
@@ -1984,6 +1984,7 @@ class Orchestrator:
                 exc,
                 rollback_errors,
             )
+        return 0, None
 
     def _delete_manifest_sources(
         self,
@@ -1991,11 +1992,25 @@ class Orchestrator:
         source_paths: List[Path],
         *,
         reason: str,
-    ) -> None:
+    ) -> Tuple[int, Optional[str]]:
+        """Delete manifest sources; returns (deleted count, warning or None)."""
+        deleted = 0
+        failures: List[str] = []
         for source_path in source_paths:
             if source_path.exists():
-                source_size = source_path.stat().st_size
-                source_path.unlink()
+                try:
+                    source_size = source_path.stat().st_size
+                    source_path.unlink()
+                except OSError as exc:
+                    failures.append(f"{source_path.name}: {exc.strerror or exc}")
+                    self.logger.warning(
+                        "MANIFEST_SOURCE_DELETE_FAILED: source=%s json=%s error=%s",
+                        source_path,
+                        request.manifest_path,
+                        exc,
+                    )
+                    continue
+                deleted += 1
                 self.logger.info(
                     "MANIFEST_SOURCE_DELETED: source=%s size_bytes=%s "
                     "json=%s reason=%s",
@@ -2004,6 +2019,8 @@ class Orchestrator:
                     request.manifest_path,
                     reason,
                 )
+        warning = ("source not deleted: " + "; ".join(failures)) if failures else None
+        return deleted, warning
 
     def _get_manifest_part_info(self, source_path: Path) -> Dict[str, Any]:
         """Probe each unchanged manifest part at most once during this run."""
@@ -3295,7 +3312,7 @@ class Orchestrator:
             job.expected_video_frames = total_expected_frames or None
             job.verification_passed = True
             job.output_size_bytes = total_output_size
-            self._apply_manifest_source_policy(request)
+            job.sources_deleted, job.warning = self._apply_manifest_source_policy(request)
             timestamp_update = self._apply_output_timestamps(
                 completed_output_paths,
                 request.manifest.producer.source_latest_mtime_ns,
@@ -3888,14 +3905,26 @@ class Orchestrator:
                         raise RuntimeError(
                             "Refusing to delete source because output matches source"
                         )
-                    source_size = video_file.path.stat().st_size
-                    video_file.path.unlink()
-                    self.logger.info(
-                        "SOURCE_DELETED: source=%s size_bytes=%s output=%s",
-                        video_file.path,
-                        source_size,
-                        job.output_path,
-                    )
+                    try:
+                        source_size = video_file.path.stat().st_size
+                        video_file.path.unlink()
+                    except OSError as exc:
+                        # The output is verified and kept: a warning, not a failure.
+                        job.warning = f"source not deleted: {exc.strerror or exc}"
+                        self.logger.warning(
+                            "SOURCE_DELETE_FAILED: source=%s output=%s error=%s",
+                            video_file.path,
+                            job.output_path,
+                            exc,
+                        )
+                    else:
+                        job.sources_deleted = 1
+                        self.logger.info(
+                            "SOURCE_DELETED: source=%s size_bytes=%s output=%s",
+                            video_file.path,
+                            source_size,
+                            job.output_path,
+                        )
                 self.event_bus.publish(JobCompleted(job=job))
                 if self.config.general.debug and start_time:
                     elapsed = time.monotonic() - start_time

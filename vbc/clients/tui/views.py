@@ -101,6 +101,7 @@ class JobView:
     output_size_bytes: Optional[int] = None
     duration_seconds: Optional[float] = None
     progress_percent: float = 0.0
+    warning: Optional[str] = None
 
     @classmethod
     def from_active(cls, job: dto.ActiveJob) -> "JobView":
@@ -121,7 +122,7 @@ class JobView:
             quality_display=job.quality, quality_value=job.quality_value,
             rotation_angle=job.rotation_angle, config_source=ConfigSourceView.parse(job.config_source),
             error_message=job.error_message, output_size_bytes=job.output_bytes,
-            duration_seconds=job.duration_s,
+            duration_seconds=job.duration_s, warning=job.warning,
         )
 
 

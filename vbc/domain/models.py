@@ -317,3 +317,7 @@ class CompressionJob(BaseModel):
     verification_passed: bool = False
     verification_error: Optional[str] = None
     expected_video_frames: Optional[int] = None
+    # Source handling after success: how many source files were deleted, and a
+    # warning when the output is fine but a source could not be deleted.
+    sources_deleted: int = 0
+    warning: Optional[str] = None

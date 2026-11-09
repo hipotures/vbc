@@ -49,6 +49,9 @@ class ClientState:
         self.hw_cap_count = 0
         self.cam_skipped_count = 0
         self.min_ratio_skip_count = 0  # Files copied instead of compressed (ratio too low)
+        self.sources_deleted_count = 0  # sources deleted after success (server session)
+        self.warnings_count = 0         # completed with a warning (e.g. source not deleted)
+        self.source_deletion = True     # False: no policy deletes sources -> "deleted: off"
         self.interrupted_count = 0  # Files interrupted by Ctrl+C
         self.completed_count_at_last_discovery = 0
         self.failed_count_at_last_discovery = 0
@@ -218,6 +221,9 @@ class ClientState:
             self.hw_cap_count = c.hw_cap
             self.cam_skipped_count = c.cam_skipped
             self.min_ratio_skip_count = c.min_ratio_skip
+            self.sources_deleted_count = c.sources_deleted
+            self.warnings_count = c.warnings
+            self.source_deletion = snap.source_deletion
             self.interrupted_count = c.interrupted
             self.ignored_av1_count = c.ignored_av1
             self.completed_count_at_last_discovery = c.completed_at_last_discovery

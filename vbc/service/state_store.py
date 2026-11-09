@@ -161,6 +161,7 @@ class StateStore:
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._clock = clock
+        self._config = config
         self._lock = threading.Lock()
         self._changed = threading.Condition(self._lock)
         self._listeners: List[Callable[[int], None]] = []
@@ -364,6 +365,7 @@ class StateStore:
             output_bytes=output_bytes,
             duration_s=duration,
             error_message=error,
+            warning=getattr(job, "warning", None),
             **_display_fields(job),
         )
 
@@ -382,6 +384,9 @@ class StateStore:
             if job.error_message and "kept original" in job.error_message:
                 s.counters.min_ratio_skip += 1
             s.counters.completed += 1
+            s.counters.sources_deleted += getattr(job, "sources_deleted", 0) or 0
+            if getattr(job, "warning", None):
+                s.counters.warnings += 1
             s.total_input_bytes += job.source_file.size_bytes
             s.total_output_bytes += output_size
             self._record_throughput_unlocked(s, now, job.source_file.size_bytes)
@@ -680,6 +685,15 @@ class StateStore:
 
     # ── snapshots ───────────────────────────────────────────────────────────
 
+    def _source_deletion(self) -> bool:
+        """Whether any policy in force can delete sources (manifest policy None
+        means each manifest decides, so deletion is possible)."""
+        cfg = self._config
+        if cfg is None:
+            return True
+        meta = getattr(cfg.metadata, "source_policy", None)
+        return cfg.general.source_policy == "delete_after_success" or meta in (None, "delete_after_success")
+
     def _run_status_unlocked(self) -> dto.RunStatus:
         s = self._s
         if s.exiting:
@@ -790,6 +804,7 @@ class StateStore:
                 encoder=self._encoder,
                 encoder_note=self._encoder_note,
                 server_version=vbc_version(),
+                source_deletion=self._source_deletion(),
             )
 
     def queue(self, offset: int = 0, limit: int = 100) -> dto.QueuePage:

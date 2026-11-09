@@ -92,6 +92,7 @@ class RecentJob(_Dto):
     output_bytes: Optional[int] = None
     duration_s: Optional[float] = None
     error_message: Optional[str] = None
+    warning: Optional[str] = None   # completed, but e.g. the source could not be deleted
     quality: Optional[str] = None
     quality_value: Optional[int] = None
     rotation_angle: Optional[int] = None
@@ -111,6 +112,8 @@ class Counters(_Dto):
     completed_at_last_discovery: int = 0
     failed_at_last_discovery: int = 0
     session_completed_base: int = 0
+    sources_deleted: int = 0   # source files deleted after success since the server started
+    warnings: int = 0          # completed jobs with a warning (e.g. source not deleted)
 
 
 class Discovery(_Dto):
@@ -178,7 +181,8 @@ class StateSnapshot(Envelope):
     # encoder_note says why the GPU is not used.
     encoder: Optional[Literal["gpu", "cpu"]] = None
     encoder_note: Optional[str] = None
-    server_version: Optional[str] = None  # VBC version of the server (image release)
+    server_version: Optional[str] = None
+    source_deletion: bool = True  # False: no policy in force deletes sources ("deleted: off")  # VBC version of the server (image release)
 
 
 # ── paginated reads ─────────────────────────────────────────────────────────

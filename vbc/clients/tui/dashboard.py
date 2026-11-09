@@ -581,7 +581,10 @@ class Dashboard:
         if job.status == JobStatus.COMPLETED:
             verified = bool(getattr(job, "verification_passed", False))
             multiple_outputs = getattr(job, "output_count", 1) > 1
-            if multiple_outputs:
+            if getattr(job, "warning", None):
+                # Compressed and kept, but e.g. the source could not be deleted.
+                icon = "[yellow]![/]"
+            elif multiple_outputs:
                 icon = "[green]⇉[/]"
             else:
                 icon = "[green]✔[/]" if verified else "[green]✓[/]"
@@ -1033,7 +1036,11 @@ class Dashboard:
                 levels = [("dynamic", 2)]
             # Never show "...+N more" for active jobs panel
             table = self._render_list(jobs, h_lines, levels, self._render_active_job, show_more=False)
-            return Panel(table, title="ACTIVE JOBS", border_style="cyan")
+            # Sources deleted after success since the server started ("off": no policy deletes).
+            deleted = (f"deleted: {self.state.sources_deleted_count}"
+                       if getattr(self.state, "source_deletion", True) else "deleted: off")
+            return Panel(table, title="ACTIVE JOBS", border_style="cyan",
+                         subtitle=Text(deleted), subtitle_align="right")
 
     def _generate_activity_panel(self, h_lines: int) -> Panel:
         with self.state._lock:
@@ -1064,6 +1071,7 @@ class Dashboard:
             err = self.state.ignored_err_count
             hw = self.state.hw_cap_count
             kept = self.state.min_ratio_skip_count
+            warn = getattr(self.state, "warnings_count", 0)
             small = self.state.ignored_small_count
             av1 = self.state.ignored_av1_count
             cam = self.state.cam_skipped_count
@@ -1087,6 +1095,7 @@ class Dashboard:
 
             add(failed, "fail", "red")
             add(err, "err", "red")
+            add(warn, "warn", "yellow")
             add(hw, "hw_cap", "yellow")
             add(skipped, "skip", "yellow")
             add(kept, "kept", "dim white")
