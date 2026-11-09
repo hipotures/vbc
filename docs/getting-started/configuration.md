@@ -577,28 +577,28 @@ verified replacement.
 `scripts/repair_output_mtimes.py` recursively scans a directory without using metadata
 manifests. For every regular file whose name contains a valid `YYYYMMDD_HHMMSS` value, it
 sets the file mtime to that local date and time. The file may have any extension or no
-extension. Each directory containing matching files directly receives the newest timestamp
-found among those files. Symlinks are ignored.
+extension. Directory modification times and file access times are preserved. Symlinks are ignored.
+The script uses only Python's standard library.
 
 ```bash
 # Inspect the planned changes
-uv run python scripts/repair_output_mtimes.py \
+TZ=Europe/Warsaw python3 scripts/repair_output_mtimes.py \
   /path/to/compressed \
   --dry-run
 
 # Apply the changes
-uv run python scripts/repair_output_mtimes.py \
+TZ=Europe/Warsaw python3 scripts/repair_output_mtimes.py \
   /path/to/compressed
 ```
 
-Use `--files-only` to modify matching files without touching directories. Use
-`--user-dirs-only` to modify only user directories that are direct children of the supplied
-directory, without touching files. These two switches are mutually exclusive; without
-either switch, the script updates both files and their direct parent directories.
-
 Because filenames do not contain a timezone offset, timestamps are interpreted in the
-machine's local timezone. Rich output reports scanned and changed files and directories,
-invalid date-like names, ignored symlinks, and filesystem errors.
+process's local timezone. Set `TZ` to the timezone used when naming the recordings;
+the example uses Warsaw time, including the summer/winter offset for each recording date.
+Without `TZ`, the machine's local timezone is used. Invalid dates and nonexistent local
+times during a spring clock change are skipped. A repeated autumn hour is ambiguous
+without an offset in the filename; Python's default first occurrence is used.
+The script prints each changed file with its target date and UTC offset, followed by
+changed/skipped/error counts. `--dry-run` performs no writes.
 
 ### Restoring a failed manifest and moved sources
 
