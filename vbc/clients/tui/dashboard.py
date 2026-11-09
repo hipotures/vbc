@@ -1475,15 +1475,15 @@ class Dashboard:
         if not getattr(self.state, "locked", False):
             return display
         strong = time.monotonic() < getattr(self.state, "lock_flash_until", 0.0)
-        width = min(max(self.console.size.width, 1), 46)
-        text = Text.from_markup(
-            ("[bold yellow]🔒  LOCKED[/]\n\n" if strong else "[yellow]🔒  LOCKED[/]\n\n")
-            + "Keys and pasted text are ignored.\n"
-            + ("[bold white on dark_orange] Shift+U [/] [bold]to unlock[/]" if strong else "[bold]Shift+U[/] to unlock"),
-            justify="center",
-        )
-        panel = Panel(text, border_style="bold yellow" if strong else "yellow", width=width, padding=(1, 2))
-        overlay = _Overlay(display, panel, overlay_width=width, dim_level="dark" if strong else "light")
+        if strong:
+            text = Text.from_markup("[bold yellow]🔒 LOCKED[/]   [bold white on dark_orange] Shift+U [/]", justify="center")
+            border, dim = "bold yellow", "dark"
+        else:
+            text = Text.from_markup("[grey42]🔒 locked · Shift+U[/]", justify="center")
+            border, dim = "grey27", "light"
+        width = min(max(self.console.size.width, 1), 34)
+        panel = Panel(text, border_style=border, width=width, padding=(0, 1))
+        overlay = _Overlay(display, panel, overlay_width=width, dim_level=dim)
         overlay.center = True
         return overlay
 
