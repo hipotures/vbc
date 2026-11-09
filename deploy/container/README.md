@@ -36,6 +36,10 @@ Unpacked size: about 670 MB (about 180 MB of it the bundled NVIDIA libraries).
 | Stop | SIGTERM → running jobs finish (≤ `server.stop_timeout_s`, 600 s), then exit 0 |
 
 * The entrypoint refuses to start unless `/home/app` is a mounted volume.
+* `VBC_UID`/`VBC_GID` (default 0): run the server as that user, e.g. the media
+  owner's 1000, so it has exactly that user's permissions (no ACLs). The
+  container's uid must map to the same host uid (`lxc.idmap`, root on the
+  host); the entrypoint hands the volume to that user at start.
   `VBC_ALLOW_EPHEMERAL=1` overrides this, for throwaway tests only.
 * On the first start it writes `config/vbc.yaml` from `conf/vbc.yaml.example`:
   no input dirs, CPU encoder, server on `0.0.0.0:8080`. It never overwrites an

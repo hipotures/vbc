@@ -65,4 +65,17 @@ if ! ldconfig -p | grep -q 'libcuda.so.1 '; then
     fi
 fi
 
+# Run as the owner's user when VBC_UID is set (e.g. 1000): files the server
+# creates belong to that user and it deletes only what that user may delete.
+# Needs the container's uid VBC_UID mapped to the same host uid (lxc.idmap);
+# without it the default (container root) keeps working as before.
+uid="${VBC_UID:-0}"
+gid="${VBC_GID:-$uid}"
+if [ "$uid" != "0" ]; then
+    # The persistent volume (config, state) must be writable by that user.
+    find "$home" -xdev \( ! -uid "$uid" -o ! -gid "$gid" \) -exec chown -h "$uid:$gid" {} + 2>/dev/null || true
+    echo "vbc: running as uid $uid gid $gid"
+    exec setpriv --reuid="$uid" --regid="$gid" --clear-groups --inh-caps=-all \
+        python -m vbc.cli serve --config "$config" "$@"
+fi
 exec python -m vbc.cli serve --config "$config" "$@"
