@@ -255,6 +255,12 @@ class Dashboard:
                 return f"{int(fps)}fps"
         return ""
 
+    @staticmethod
+    def format_codec(metadata) -> str:
+        """Source video codec as ffprobe names it (h264, hevc, av1, ...); "" if unknown."""
+        codec = getattr(metadata, "codec", None) if metadata else None
+        return single_line(str(codec)).lower() if codec else ""
+
     def _format_quality_display_for_ui(self, quality_display: str) -> str:
         """Normalize quality display text for compact UI readability."""
         text = str(quality_display).strip()
@@ -466,7 +472,9 @@ class Dashboard:
         if job.status == JobStatus.PREFLIGHT:
             meta_text = f"in {size}"
         else:
-            meta_text = f"dur {dur} • {fps} • in {size}{self._active_quality_meta_suffix(job)}"
+            codec = self.format_codec(meta)
+            codec_part = f"{codec} • " if codec else ""
+            meta_text = f"dur {dur} • {fps} • {codec_part}in {size}{self._active_quality_meta_suffix(job)}"
         safe_meta_text = safe_markup(meta_text)
 
         # Calculate widths for layout decision
@@ -577,8 +585,11 @@ class Dashboard:
             ratio = (diff / in_s) * 100 if in_s > 0 else 0
             dur = self.format_time(job.duration_seconds)
 
-            # Show config source prefix (G/L/C)
+            # Show config source prefix (G/L/C), then the source codec
             source_prefix = job.config_source.value if job.config_source else "G"
+            codec = self.format_codec(job.source_file.metadata)
+            if codec:
+                source_prefix = f"{source_prefix} • {codec}"
             if job.quality_display:
                 quality_text = self._format_quality_display_for_ui(job.quality_display)
                 q_val = f"{source_prefix} • {quality_text} • "
