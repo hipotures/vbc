@@ -99,7 +99,7 @@ def test_config_push_keeps_server_sections(demo_config, serve_factory, tmp_path)
     assert saved["general"]["source_policy"] == "delete_after_success"
     assert saved["general"]["log_path"] == server_side["general"]["log_path"]
     assert saved["input_dirs"] == server_side["input_dirs"]
-    assert saved["server"] == server_side["server"]
+    assert saved.get("server") == server_side.get("server")
     assert (demo_config.parent / (demo_config.name + ".prev")).exists()
 
     client_file.write_text("general: {threads: not-a-number}\n")

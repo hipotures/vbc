@@ -4329,7 +4329,14 @@ class Orchestrator:
                     full_refresh, ready_manifest_paths = (
                         self._take_refresh_request()
                     )
-                    if full_refresh or ready_manifest_paths:
+                    # A watcher's folder-scoped refresh is merged while jobs run
+                    # too (not only when the queue is empty).
+                    scoped_dirs = (
+                        []
+                        if full_refresh or ready_manifest_paths
+                        else self._take_dirs_request(list(self._folder_mapping.keys()))
+                    )
+                    if full_refresh or ready_manifest_paths or scoped_dirs:
                         if full_refresh and self._pending_input_dirs is not None:
                             refresh_dirs = self._pending_input_dirs
                             self._pending_input_dirs = None
@@ -4337,14 +4344,15 @@ class Orchestrator:
                             for old_dir in list(self._folder_mapping.keys()):
                                 if old_dir not in refresh_set:
                                     del self._folder_mapping[old_dir]
+                        elif scoped_dirs:
+                            refresh_dirs = scoped_dirs
                         else:
                             refresh_dirs = list(self._folder_mapping.keys())
 
                         new_files, new_stats = self._perform_discovery(
                             refresh_dirs,
-                            manifest_paths=(
-                                None if full_refresh else ready_manifest_paths
-                            ),
+                            manifest_paths=(ready_manifest_paths or None)
+                            if not full_refresh else None,
                         )
                         if self._shutdown_requested:
                             self._defer_refresh_request(

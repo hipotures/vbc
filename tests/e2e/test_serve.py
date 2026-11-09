@@ -202,3 +202,38 @@ def test_stopped_server_ignores_new_files_until_refresh(media_tree, serve_factor
         timeout=300,
     )
     assert list((videos.parent / "videos_out").rglob("late_arrival.mp4"))
+
+
+def test_watched_folder_feeds_the_queue_while_jobs_run(tmp_path, serve_factory):
+    """A file arriving in a watched folder joins the queue while a job is still
+    encoding (no manual refresh, no waiting for an empty queue)."""
+    import shutil
+
+    import yaml
+
+    from media import _noisy_clip
+
+    videos = tmp_path / "w" / "videos"
+    _noisy_clip(videos / "long.mp4", seconds=40, size="1280x720")
+    _noisy_clip(tmp_path / "late.mp4", seconds=2)
+    root = tmp_path / "w"
+    config = record_legacy.write_config(root, root / "meta", videos)
+    data = yaml.safe_load(config.read_text())
+    data["general"]["threads"] = 1
+    data["input_dirs"] = [
+        {"path": str(videos), "enabled": True, "watch": True,
+         "watch_mode": "polling", "poll_interval_seconds": 1}
+    ]
+    config.write_text(yaml.safe_dump(data, sort_keys=False))
+
+    serve = serve_factory(["--config", str(config)])
+    serve.wait_for(lambda s: s["active_jobs"], timeout=120)
+    shutil.copy(tmp_path / "late.mp4", videos / "late_arrival.mp4")
+
+    state = serve.wait_for(
+        lambda s: s["queue"]["count"] >= 1 or s["counters"]["completed"] >= 1, timeout=60
+    )
+    assert state["active_jobs"], "the long job finished before the late file was seen"
+    assert state["queue"]["count"] == 1
+    page = serve.http.get("/api/v1/queue").json()
+    assert [i["name"] for i in page["items"]] == ["late_arrival.mp4"]
