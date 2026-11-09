@@ -153,7 +153,7 @@ Recommended approach, in order:
 
 1. **Identity mounts (deployment rule, no code change).** Mount every storage
    root at the *same* path on the server as on the host where producers write
-   (`/srv/producer` → `/srv/producer`, `/data/videos` + `T_out` + `T_err`, or their common
+   (`/srv/producer` → `/srv/producer`, `/data/videos` + `videos_out` + `videos_err`, or their common
    parent). Manifests, suffix outputs and existing configs keep working
    unchanged. Alternatively use explicit `output_dirs`/`errors_dirs` inside the
    mounted tree instead of suffix mode.
@@ -162,7 +162,7 @@ Recommended approach, in order:
    ```yaml
    storage:
      roots:
-       - {name: tk, path: /srv/producer}
+       - {name: producer, path: /srv/producer}
        - {name: videos, path: /data/videos}
    ```
 
@@ -176,7 +176,7 @@ Recommended approach, in order:
    * `/io` and `/dirs` report per-directory `exists`/`writable`, so a missing
      mount is visible in the window instead of failing at the first job.
 3. **Path mapping (only if identity mounts are impossible).** Optional
-   `storage.path_map: {"/srv/producer": "/data/ai"}` applied to manifest `inputs` and
+   `storage.path_map: {"/srv/producer": "/data/producer"}` applied to manifest `inputs` and
    `output_path` on load (and reversed in anything reported back to the
    producer). Kept as a fallback because it adds a second set of names for the
    same files.
