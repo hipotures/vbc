@@ -233,15 +233,20 @@ class SettingsOverlay:
         queue_sort = self._get("queue_sort", "name")
         cpu_threads = self._get("cpu_fallback", "").split("CPU threads per worker: ")[-1] if "CPU threads" in self._get("cpu_fallback", "") else "auto"
         
+        source_line = self._get("source_after_success", "")
+        source_files = source_line.split(" | ")[0] if source_line else "—"
+        source_manifests = source_line.split("Manifest sources: ")[-1] if "Manifest sources: " in source_line else "—"
         processing_data = [
             ("Threads", threads),
             ("Prefetch", prefetch),
             ("Queue Sort", queue_sort),
             ("CPU Threads", cpu_threads),
+            ("Source after OK", source_files),
+            ("Manifest sources", source_manifests),
         ]
         processing_card = make_card(
             "PROCESSING",
-            make_kv_table(processing_data, {"Threads"}),
+            make_kv_table(processing_data, {"Threads", "Source after OK", "Manifest sources"}),
             icon=ICONS['processing'],
             title_color=COLORS['accent_blue']
         )
@@ -307,20 +312,6 @@ class SettingsOverlay:
             "Strip Unicode", f"[white]{safe_markup(strip_unicode)}[/]"
         )
         
-        source_line = self._get("source_after_success", "")
-        source_files = source_line.split(" | ")[0] if source_line else "—"
-        source_manifests = source_line.split("Manifest sources: ")[-1] if "Manifest sources: " in source_line else "—"
-
-        def _policy(value: str) -> str:
-            color = COLORS['accent_orange'] if value.startswith(("delete", "move")) else COLORS['dim']
-            return f"[bold {color}]{safe_markup(value)}[/]"
-
-        meta_table.add_row(
-            "Source (files)", _policy(source_files),
-            "Source (manifests)", _policy(source_manifests),
-            "", "",
-        )
-
         metadata_card = make_card(
             "METADATA & CLEANUP",
             meta_table,
