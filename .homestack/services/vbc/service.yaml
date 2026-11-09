@@ -5,6 +5,7 @@ image:
   repository: ghcr.io/hipotures/vbc
 runtime:
   telemetry: homestack
+  stop_timeout_seconds: 600
   ports:
     - name: http
       port: 8080
