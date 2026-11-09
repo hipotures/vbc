@@ -269,7 +269,7 @@ display = sanitize(filename)
 | `R` or `r` | `RefreshRequested()` | Orchestrator re-scans directory |
 | `P` or `p` | `ToggleOverlayTab(tab="settings")` | UIManager toggles Prefs tab |
 | `F` or `f` | `ToggleOverlayTab(tab="io")` | UIManager toggles I/O tab |
-| `K` or `k` | `ToggleOverlayTab(tab="shortcuts")` | UIManager toggles Keys tab |
+| `K` or `M` | `ToggleOverlayTab(tab="shortcuts")` | UIManager toggles Keys tab |
 | `D` or `d` | `ToggleOverlayTab(tab="dirs")` | UIManager toggles Dirs tab |
 | `T` or `t` | `ToggleOverlayTab(tab="tui")` | UIManager toggles TUI tab |
 | `E` or `e` | `ToggleOverlayTab(tab="reference")` | UIManager toggles Ref tab |

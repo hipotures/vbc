@@ -89,7 +89,7 @@ While VBC is running, use these keyboard shortcuts:
 | `D` | Open Dirs tab |
 | `L` | Open Logs tab (session errors) |
 | `E` | Open Ref tab |
-| `K` | Open Keys tab |
+| `K` or `M` | Open the menu (Keys tab) |
 | `T` | Open TUI tab |
 | `I` | Cycle overlay dim level |
 | `G` | Rotate GPU metric |

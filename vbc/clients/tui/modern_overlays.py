@@ -704,7 +704,7 @@ class ShortcutsOverlay:
         """Returns content without outer Panel or footer (for tabbed overlay)."""
 
         key_labels = [
-            "K", "Esc", "Q", "Ctrl+C",
+            "K M", "Esc", "Q", "Ctrl+C",
             "P", "F", "D", "E", "L", "T", "I", "W", "O", "G",
             "[", "]", "R", "< ,", "> .",
             "< >", "R",
@@ -720,8 +720,8 @@ class ShortcutsOverlay:
         nav_table.add_column()
         
         nav_table.add_row(
-            key_badge("K"),
-            "Toggle Keys tab"
+            key_badge("K M"),
+            "Menu (opens on Keys)"
         )
         nav_table.add_row(
             key_badge("Esc"),

@@ -383,7 +383,7 @@ class KeyboardListener:
                         self.event_bus.publish(ToggleOverlayTab(tab="logs"))
                     elif key in ('E', 'e'):
                         self.event_bus.publish(ToggleOverlayTab(tab="reference"))
-                    elif key in ('K', 'k'):
+                    elif key in ('K', 'k', 'M', 'm'):  # M = menu: opens on its first tab (Keys)
                         self.event_bus.publish(ToggleOverlayTab(tab="shortcuts"))
                     elif key in ('F', 'f'):
                         self.event_bus.publish(ToggleOverlayTab(tab="io"))

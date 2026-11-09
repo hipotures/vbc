@@ -15,7 +15,7 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | `D` or `d` | Overlay: Dirs | Toggle Dirs tab |
 | `E` or `e` | Overlay: Ref | Toggle Ref tab |
 | `L` or `l` | Overlay: Logs | Toggle logs tab (session errors) |
-| `K` or `k` | Overlay: Keys | Toggle Keys tab |
+| `K` or `M` | Overlay: Keys (menu) | Open the menu on the Keys tab |
 | `T` or `t` | Overlay: TUI | Toggle TUI tab |
 | `Tab` | Cycle overlay tabs | Next tab: Keys -> Prefs -> I/O -> Dirs -> TUI -> Ref -> Logs |
 | `[` | Logs previous page | Previous page in Logs tab |

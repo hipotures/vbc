@@ -932,7 +932,13 @@ class Dashboard:
         gap = max(1, inner - len(version) - len(host) - 8)
         subtitle = (Text.assemble(joined(version, BOTTOM), "─" * gap, joined(host, BOTTOM))
                     if host else joined(version, BOTTOM))
-        return Panel(content, border_style="cyan", title=Text("VBC"),
+        # Top border: "VBC" centred, the menu hotkey on the right (M yellow, like the tabs).
+        menu = tight(Text.assemble(("M", "bold yellow"), ("enu", "grey62")), TOP)
+        name = joined("VBC", TOP)
+        left = max(1, (inner - name.cell_len) // 2)
+        mid = max(1, inner - left - name.cell_len - menu.cell_len - 1)
+        title = Text.assemble("─" * left, name, "─" * mid, menu, "─")
+        return Panel(content, border_style="cyan", title=title, title_align="left", title_raw=True,
                      subtitle=subtitle, subtitle_align="left", subtitle_raw=True)
 
     def _generate_progress(self, h_lines: int) -> Panel:
