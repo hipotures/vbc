@@ -307,6 +307,20 @@ class SettingsOverlay:
             "Strip Unicode", f"[white]{safe_markup(strip_unicode)}[/]"
         )
         
+        source_line = self._get("source_after_success", "")
+        source_files = source_line.split(" | ")[0] if source_line else "—"
+        source_manifests = source_line.split("Manifest sources: ")[-1] if "Manifest sources: " in source_line else "—"
+
+        def _policy(value: str) -> str:
+            color = COLORS['accent_orange'] if value.startswith(("delete", "move")) else COLORS['dim']
+            return f"[bold {color}]{safe_markup(value)}[/]"
+
+        meta_table.add_row(
+            "Source (files)", _policy(source_files),
+            "Source (manifests)", _policy(source_manifests),
+            "", "",
+        )
+
         metadata_card = make_card(
             "METADATA & CLEANUP",
             meta_table,

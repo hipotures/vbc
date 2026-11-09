@@ -91,6 +91,8 @@ def build_config_lines(view: dto.ConfigView, io: dto.IoView) -> List[str]:
         ]
     lines += [
         f"Auto repair errors: {general.get('auto_repair_errors')}",
+        f"Source after success: {general.get('source_policy')} | "
+        f"Manifest sources: {metadata.get('source_policy') or 'per manifest'}",
         f"Clean errors: {general.get('clean_errors')} | Strip Unicode: {general.get('strip_unicode_display')}",
         f"Debug logging: {general.get('debug')}",
     ]
