@@ -8,7 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from vbc_legacy.utils.flv_repair_core import copy_from_offset, find_flv_header_offset
+from vbc.utils.flv_repair_core import copy_from_offset, find_flv_header_offset
 
 
 def run_cmd(cmd, check=True):

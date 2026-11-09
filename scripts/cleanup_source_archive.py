@@ -25,10 +25,10 @@ from rich.progress import (
 from rich.table import Table
 from rich.text import Text
 
-from vbc_legacy.config.loader import load_config
-from vbc_legacy.config.models import AppConfig
-from vbc_legacy.domain.models import CompressionManifest, recording_date_partition
-from vbc_legacy.infrastructure.ffprobe import FFprobeAdapter
+from vbc.config.loader import load_config
+from vbc.config.models import AppConfig
+from vbc.domain.models import CompressionManifest, recording_date_partition
+from vbc.infrastructure.ffprobe import FFprobeAdapter
 
 _PART_SUFFIX = re.compile(r"^(?P<base>.+)_part(?P<number>\d+)$", re.I)
 _TAG_BATCH_SIZE = 200

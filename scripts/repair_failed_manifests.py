@@ -30,16 +30,16 @@ from scripts.restore_failed_manifest import (
     restore_failed_sources,
     rollback_restored_sources,
 )
-from vbc_legacy.config.loader import load_config
-from vbc_legacy.config.models import AppConfig, InputDirEntry
-from vbc_legacy.domain.events import JobCompleted, JobFailed, JobProgressUpdated, JobStarted
-from vbc_legacy.domain.models import CompressionManifest
-from vbc_legacy.infrastructure.event_bus import EventBus
-from vbc_legacy.infrastructure.exif_tool import ExifToolAdapter
-from vbc_legacy.infrastructure.ffmpeg import FFmpegAdapter
-from vbc_legacy.infrastructure.ffprobe import FFprobeAdapter
-from vbc_legacy.infrastructure.file_scanner import FileScanner
-from vbc_legacy.pipeline.orchestrator import Orchestrator
+from vbc.config.loader import load_config
+from vbc.config.models import AppConfig, InputDirEntry
+from vbc.domain.events import JobCompleted, JobFailed, JobProgressUpdated, JobStarted
+from vbc.domain.models import CompressionManifest
+from vbc.infrastructure.event_bus import EventBus
+from vbc.infrastructure.exif_tool import ExifToolAdapter
+from vbc.infrastructure.ffmpeg import FFmpegAdapter
+from vbc.infrastructure.ffprobe import FFprobeAdapter
+from vbc.infrastructure.file_scanner import FileScanner
+from vbc.pipeline.orchestrator import Orchestrator
 
 MAX_FFMPEG_MEMORY_BYTES = 50 * 1024**3
 MAX_ERROR_MARKER_BYTES = 1024 * 1024
