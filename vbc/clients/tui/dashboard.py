@@ -17,6 +17,7 @@ from rich.align import Align
 from rich.segment import Segment
 from rich._loop import loop_last
 from rich.text import Text
+from rich.color import Color
 from rich.rule import Rule
 from rich.box import ROUNDED, SIMPLE
 from rich.style import Style
@@ -104,6 +105,16 @@ class _Overlay:
             pos = seg_end
         return result
 
+    @staticmethod
+    def _wash_background(segment: Segment, keep: float) -> Segment:
+        style = segment.style
+        if segment.control or style is None or style.bgcolor is None or style.bgcolor.is_default:
+            return segment
+        base = (0x30, 0x30, 0x30)
+        rgb = style.bgcolor.get_truecolor()
+        faded = Color.from_rgb(*(b + (c - b) * keep for b, c in zip(base, rgb)))
+        return Segment(segment.text, style + Style(bgcolor=faded), segment.control)
+
     def __rich_console__(self, console, options):
         width, height = options.size
         center = getattr(self, "center", False)
@@ -118,8 +129,12 @@ class _Overlay:
                 "dark": "#2f2f2f",
             }.get(self.dim_level, "#5a5a5a")
             wash_style = Style(color=wash_color)
+            # Backgrounds (key badges, the active tab) fade toward dark grey too;
+            # otherwise coloured fills stay bright under the wash.
+            keep = {"light": 0.35, "mid": 0.25, "dark": 0.12}.get(self.dim_level, 0.25)
             bg_lines = [
-                list(Segment.apply_style(line, dim_style, post_style=wash_style))
+                [self._wash_background(seg, keep)
+                 for seg in Segment.apply_style(line, dim_style, post_style=wash_style)]
                 for line in bg_lines
             ]
         
