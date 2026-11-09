@@ -351,7 +351,7 @@ class Dashboard:
     # --- Render Logic ---
 
     def _render_list(self, items: List[Any], available_lines: int,
-                     levels: List[Tuple[str, int]], render_func, show_more: bool = True) -> Table:
+                     levels: List[Tuple[str, int]], render_func) -> Tuple[Table, int]:
         """Generic list renderer with density degradation.
 
         Args:
@@ -359,60 +359,28 @@ class Dashboard:
             available_lines: Available content lines (without borders)
             levels: List of (level_name, lines_per_item) tuples
             render_func: Function to render each item
-            show_more: If False, never show "...+N more" line (default True)
+
+        Returns the table and how many items did not fit.
         """
         table = Table(show_header=False, box=None, padding=(0, 0), expand=True)
         table.add_column("Content", ratio=1)
-        
-        if available_lines <= 0:
-            return table
-            
-        if not items:
-            # table.add_row("[dim]Empty[/]") 
-            # Better to show nothing for empty lists to save space visual noise
-            return table
 
-        selected_level = levels[-1][0] # Default to lowest density
-        items_to_show = []
-        has_more = False
-        more_count = 0
-        
-        # Select highest density that allows showing at least 1 item
+        if available_lines <= 0 or not items:
+            return table, 0
+
+        selected_level = levels[-1][0]  # Default to lowest density
+        items_to_show: List[Any] = []
+        # Highest density that shows at least one item
         for level_name, lines_per_item in levels:
             max_items = available_lines // lines_per_item
             if max_items >= 1:
                 selected_level = level_name
-                # Check if we need "more" line
-                if len(items) <= max_items:
-                    items_to_show = items
-                    has_more = False
-                elif show_more and available_lines >= lines_per_item + 1: # Reserve 1 line for "... +N more"
-                     max_items_res = (available_lines - 1) // lines_per_item
-                     if max_items_res >= 1:
-                         items_to_show = items[:max_items_res]
-                         more_count = len(items) - max_items_res
-                         has_more = True
-                     else:
-                         # Not enough space for more line, show what fits
-                         items_to_show = items[:max_items]
-                         has_more = False # Or just implicit cut
-                else:
-                    # show_more=False or not enough space: just show what fits
-                    items_to_show = items[:max_items]
-                    has_more = False
-                    more_count = 0
+                items_to_show = items[:max_items]
                 break
-        
-        # Render items
-        for i, item in enumerate(items_to_show):
-            content = render_func(item, selected_level)
-            table.add_row(content)
-            # Add spacer if needed? No, strict lines packing.
-            
-        if has_more and more_count > 0:
-            table.add_row(f"[dim]… +{more_count} more")
-            
-        return table
+
+        for item in items_to_show:
+            table.add_row(render_func(item, selected_level))
+        return table, len(items) - len(items_to_show)
 
     def _render_active_job(self, job, level: str) -> RenderableType:
         """Render active job with dynamic layout based on available width."""
@@ -1025,7 +993,7 @@ class Dashboard:
 
     def _generate_active_jobs_panel(self, h_lines: int) -> Panel:
         with self.state._lock:
-            # Limit jobs to max_active_jobs to avoid "...+N more" when at exactly the limit
+            # Limit jobs to max_active_jobs
             jobs = self.state.active_jobs[:self.max_active_jobs]
             # Dynamic layout: reserve space based on terminal width
             term_w = self.console.size.width
@@ -1035,8 +1003,7 @@ class Dashboard:
             else:
                 # Narrow mode: always 2 lines per job (max 8 jobs)
                 levels = [("dynamic", 2)]
-            # Never show "...+N more" for active jobs panel
-            table = self._render_list(jobs, h_lines, levels, self._render_active_job, show_more=False)
+            table, _ = self._render_list(jobs, h_lines, levels, self._render_active_job)
             # Sources deleted after success since the server started ("off": no policy deletes).
             deleted = (f"deleted: {self.state.sources_deleted_count}"
                        if getattr(self.state, "source_deletion", True) else "deleted: off")
@@ -1052,15 +1019,19 @@ class Dashboard:
                 levels = [("A", 2), ("B", 1)]  # 2-column: both levels
             else:
                 levels = [("B", 1)]  # 1-column: only 1-line format
-            table = self._render_list(jobs, h_lines, levels, self._render_activity_item)
+            table, _ = self._render_list(jobs, h_lines, levels, self._render_activity_item)
             return Panel(table, title="ACTIVITY FEED", border_style="cyan")
 
     def _generate_queue_panel(self, h_lines: int) -> Panel:
         with self.state._lock:
             files = list(self.state.pending_files)
             levels = [("A", 1)]
-            table = self._render_list(files, h_lines, levels, self._render_queue_item)
-            return Panel(table, title="QUEUE", border_style="cyan")
+            table, _ = self._render_list(files, h_lines, levels, self._render_queue_item)
+            # Bottom border: the whole queue (visible files included), from /state.
+            total = (Text(f"{self.state.queue_count} files · {self.format_size(self.state.queue_bytes)}")
+                     if self.state.queue_count else None)
+            return Panel(table, title="QUEUE", border_style="cyan",
+                         subtitle=total, subtitle_align="right")
             
     def _generate_footer(self) -> RenderableType:
         with self.state._lock:
