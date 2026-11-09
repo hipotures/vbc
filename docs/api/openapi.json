@@ -139,6 +139,91 @@
         "title": "ActiveJob",
         "type": "object"
       },
+      "ConfigPushRequest": {
+        "additionalProperties": false,
+        "description": "A whole vbc.yaml from a client (`vbc config --push FILE`).",
+        "properties": {
+          "restart": {
+            "default": true,
+            "title": "Restart",
+            "type": "boolean"
+          },
+          "yaml": {
+            "title": "Yaml",
+            "type": "string"
+          }
+        },
+        "required": [
+          "yaml"
+        ],
+        "title": "ConfigPushRequest",
+        "type": "object"
+      },
+      "ConfigPushResult": {
+        "additionalProperties": false,
+        "description": "The pushed config was saved; it takes effect at the next server start.",
+        "properties": {
+          "backup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup"
+          },
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "kept_from_server": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Kept From Server",
+            "type": "array"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "restart_required": {
+            "default": true,
+            "title": "Restart Required",
+            "type": "boolean"
+          },
+          "restarting": {
+            "default": false,
+            "title": "Restarting",
+            "type": "boolean"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "path"
+        ],
+        "title": "ConfigPushResult",
+        "type": "object"
+      },
       "ConfigView": {
         "additionalProperties": false,
         "description": "Effective configuration, structured per section (no preformatted text).",
@@ -234,6 +319,16 @@
           "skipped": {
             "default": 0,
             "title": "Skipped",
+            "type": "integer"
+          },
+          "sources_deleted": {
+            "default": 0,
+            "title": "Sources Deleted",
+            "type": "integer"
+          },
+          "warnings": {
+            "default": 0,
+            "title": "Warnings",
             "type": "integer"
           }
         },
@@ -750,6 +845,28 @@
             "title": "Available",
             "type": "boolean"
           },
+          "dec_util_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dec Util Pct"
+          },
+          "enc_util_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enc Util Pct"
+          },
           "fan_pct": {
             "anyOf": [
               {
@@ -760,6 +877,17 @@
               }
             ],
             "title": "Fan Pct"
+          },
+          "gpu_clock_mhz": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gpu Clock Mhz"
           },
           "gpu_util_pct": {
             "anyOf": [
@@ -772,6 +900,39 @@
             ],
             "title": "Gpu Util Pct"
           },
+          "mem_clock_mhz": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mem Clock Mhz"
+          },
+          "mem_total_mib": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mem Total Mib"
+          },
+          "mem_used_mib": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mem Used Mib"
+          },
           "mem_util_pct": {
             "anyOf": [
               {
@@ -782,6 +943,17 @@
               }
             ],
             "title": "Mem Util Pct"
+          },
+          "power_limit_w": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Power Limit W"
           },
           "power_w": {
             "anyOf": [
@@ -820,6 +992,17 @@
               }
             ],
             "title": "Temp C"
+          },
+          "throttle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Throttle"
           }
         },
         "required": [
@@ -1116,6 +1299,195 @@
           "entries"
         ],
         "title": "LogsPage",
+        "type": "object"
+      },
+      "ManifestPathRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "ManifestPathRequest",
+        "type": "object"
+      },
+      "ManifestRepairOutcome": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "manifest": {
+            "title": "Manifest",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "manifest",
+          "status",
+          "detail"
+        ],
+        "title": "ManifestRepairOutcome",
+        "type": "object"
+      },
+      "ManifestRepairStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "done": {
+            "default": 0,
+            "title": "Done",
+            "type": "integer"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "outcomes": {
+            "items": {
+              "$ref": "#/components/schemas/ManifestRepairOutcome"
+            },
+            "title": "Outcomes",
+            "type": "array"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "enum": [
+              "idle",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "ManifestRepairStatus",
+        "type": "object"
+      },
+      "ManifestRestoreResult": {
+        "additionalProperties": false,
+        "properties": {
+          "already_present": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Already Present",
+            "type": "array"
+          },
+          "destination": {
+            "title": "Destination",
+            "type": "string"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "error_marker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Marker"
+          },
+          "manifest": {
+            "title": "Manifest",
+            "type": "string"
+          },
+          "restored_sources": {
+            "items": {
+              "$ref": "#/components/schemas/RestoredSource"
+            },
+            "title": "Restored Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "manifest",
+          "destination",
+          "dry_run"
+        ],
+        "title": "ManifestRestoreResult",
         "type": "object"
       },
       "MediaInfo": {
@@ -1496,6 +1868,17 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
           }
         },
         "required": [
@@ -1563,6 +1946,25 @@
         "title": "Repair",
         "type": "object"
       },
+      "RestoredSource": {
+        "additionalProperties": false,
+        "properties": {
+          "archive": {
+            "title": "Archive",
+            "type": "string"
+          },
+          "original": {
+            "title": "Original",
+            "type": "string"
+          }
+        },
+        "required": [
+          "archive",
+          "original"
+        ],
+        "title": "RestoredSource",
+        "type": "object"
+      },
       "SetThreadsRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1575,6 +1977,152 @@
           "target"
         ],
         "title": "SetThreadsRequest",
+        "type": "object"
+      },
+      "SourceCleanupProblem": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ],
+        "title": "SourceCleanupProblem",
+        "type": "object"
+      },
+      "SourceCleanupRequest": {
+        "additionalProperties": false,
+        "description": "Find sources that already have a verified output; delete them only with ``delete``.",
+        "properties": {
+          "delete": {
+            "default": false,
+            "title": "Delete",
+            "type": "boolean"
+          },
+          "dirs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dirs",
+            "type": "array"
+          }
+        },
+        "title": "SourceCleanupRequest",
+        "type": "object"
+      },
+      "SourceCleanupStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "checked": {
+            "default": 0,
+            "title": "Checked",
+            "type": "integer"
+          },
+          "delete": {
+            "default": false,
+            "title": "Delete",
+            "type": "boolean"
+          },
+          "deleted": {
+            "default": 0,
+            "title": "Deleted",
+            "type": "integer"
+          },
+          "deleted_bytes": {
+            "default": 0,
+            "title": "Deleted Bytes",
+            "type": "integer"
+          },
+          "duplicate_bytes": {
+            "default": 0,
+            "title": "Duplicate Bytes",
+            "type": "integer"
+          },
+          "duplicates": {
+            "default": 0,
+            "title": "Duplicates",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "folders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Folders",
+            "type": "array"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/SourceCleanupProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "problems_count": {
+            "default": 0,
+            "title": "Problems Count",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "enum": [
+              "idle",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "SourceCleanupStatus",
         "type": "object"
       },
       "StateSnapshot": {
@@ -1602,6 +2150,32 @@
           },
           "discovery": {
             "$ref": "#/components/schemas/Discovery"
+          },
+          "encoder": {
+            "anyOf": [
+              {
+                "enum": [
+                  "gpu",
+                  "cpu"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encoder"
+          },
+          "encoder_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encoder Note"
           },
           "errors_count": {
             "default": 0,
@@ -1697,6 +2271,22 @@
           "server_time": {
             "title": "Server Time",
             "type": "integer"
+          },
+          "server_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Version"
+          },
+          "source_deletion": {
+            "default": true,
+            "title": "Source Deletion",
+            "type": "boolean"
           },
           "status_message": {
             "anyOf": [
@@ -1880,6 +2470,106 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "VersionsView": {
+        "additionalProperties": false,
+        "description": "What the server runs with; read once per process. A value is null when\nthe tool is missing or did not answer (e.g. no NVIDIA driver).",
+        "properties": {
+          "ffmpeg_libs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Ffmpeg Libs",
+            "type": "object"
+          },
+          "nvidia": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Nvidia",
+            "type": "object"
+          },
+          "os": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Os"
+          },
+          "python": {
+            "title": "Python",
+            "type": "string"
+          },
+          "python_packages": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Python Packages",
+            "type": "object"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          },
+          "system_packages": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "System Packages",
+            "type": "object"
+          },
+          "tools": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Tools",
+            "type": "object"
+          },
+          "vbc": {
+            "title": "Vbc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "vbc",
+          "python",
+          "tools",
+          "ffmpeg_libs",
+          "nvidia",
+          "system_packages",
+          "python_packages"
+        ],
+        "title": "VersionsView",
+        "type": "object"
       }
     }
   },
@@ -1962,6 +2652,53 @@
           }
         },
         "summary": "Get Config"
+      },
+      "put": {
+        "description": "Save a client's vbc.yaml (server-owned sections kept); applies at the next start.",
+        "operationId": "put_config_api_v1_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigPushRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigPushResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Put Config"
       }
     },
     "/api/v1/dirs": {
@@ -2321,6 +3058,140 @@
         "summary": "Get Logs"
       }
     },
+    "/api/v1/manifests/repair": {
+      "get": {
+        "operationId": "get_manifest_repair_api_v1_manifests_repair_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManifestRepairStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Manifest Repair"
+      },
+      "post": {
+        "description": "Recompress supported failed manifests (FFmpeg 244/-12: video without audio).",
+        "operationId": "post_manifest_repair_api_v1_manifests_repair_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManifestPathRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManifestRepairStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Post Manifest Repair"
+      }
+    },
+    "/api/v1/manifests/restore": {
+      "post": {
+        "description": "Put a failed manifest (and its archived sources) back into the metadata folder.",
+        "operationId": "post_manifest_restore_api_v1_manifests_restore_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManifestPathRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManifestRestoreResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Post Manifest Restore"
+      }
+    },
     "/api/v1/queue": {
       "get": {
         "operationId": "get_queue_api_v1_queue_get",
@@ -2428,6 +3299,71 @@
           }
         },
         "summary": "Put Log Level"
+      }
+    },
+    "/api/v1/sources/cleanup": {
+      "get": {
+        "operationId": "get_source_cleanup_api_v1_sources_cleanup_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceCleanupStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Source Cleanup"
+      },
+      "post": {
+        "description": "Start finding (delete: and deleting) sources that already have a verified output.",
+        "operationId": "post_source_cleanup_api_v1_sources_cleanup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceCleanupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceCleanupStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Post Source Cleanup"
       }
     },
     "/api/v1/state": {
@@ -2602,6 +3538,25 @@
           }
         },
         "summary": "Put Threads"
+      }
+    },
+    "/api/v1/versions": {
+      "get": {
+        "description": "VBC, ffmpeg (and its libraries), exiftool, NVIDIA driver, image packages.",
+        "operationId": "get_versions_api_v1_versions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Versions"
       }
     },
     "/health/live": {

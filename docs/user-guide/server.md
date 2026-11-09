@@ -97,6 +97,7 @@ and `--json`.
 | `vbc errors [--since ID]` | this session's failed files |
 | `vbc logs [--follow] [--level LEVEL] [--since SEQ]` | server application log |
 | `vbc config` | effective configuration |
+| `vbc versions` | versions the server runs with: VBC, ffmpeg and its libraries, exiftool, nvtop, NVIDIA driver, image packages (`GET /api/v1/versions`) |
 | `vbc log-level LEVEL` | change the server log level at runtime |
 
 Exit status: `0` ok, `1` rejected by the server (the reason is printed),

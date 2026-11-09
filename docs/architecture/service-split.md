@@ -336,6 +336,7 @@ Read:
 | `GET /api/v1/errors?since&limit` | Session error log entries (see Logs). |
 | `GET /api/v1/logs?since&limit&level&wait` | Application log ring buffer (see Logs). |
 | `GET /api/v1/config` | Effective config (today's Settings tab lines, structured). |
+| `GET /api/v1/versions` | Versions the server runs with (VBC, OS, Python, ffmpeg/ffprobe and libav* libraries, exiftool, nvtop, NVIDIA driver and bundled libraries, Debian and Python packages), read once per process. |
 | `GET /api/v1/io` | Input dir stats, output/error dirs, queue sort/seed, log path. |
 | `GET /api/v1/dirs` | Ordered `[{path, enabled}]` + `dirs_rev`. |
 | `GET /health/live`, `GET /health/ready` | Liveness / readiness in the HomeStack format (`application/health+json`, heartbeat checks; see Deployment: HomeStack). |

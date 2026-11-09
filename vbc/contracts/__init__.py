@@ -271,6 +271,20 @@ class LogsPage(Envelope):
 # ── configuration window ────────────────────────────────────────────────────
 
 
+class VersionsView(Envelope):
+    """What the server runs with; read once per process. A value is null when
+    the tool is missing or did not answer (e.g. no NVIDIA driver)."""
+
+    vbc: str
+    os: Optional[str] = None
+    python: str
+    tools: Dict[str, Optional[str]]  # ffmpeg, ffprobe, exiftool, nvtop
+    ffmpeg_libs: Dict[str, str]  # libavcodec etc. as linked by the ffmpeg binary
+    nvidia: Dict[str, Optional[str]]  # driver (nvidia-smi), bundled_libs (image)
+    system_packages: Dict[str, str]  # Debian packages of the image (empty outside it)
+    python_packages: Dict[str, str]
+
+
 class ConfigView(Envelope):
     """Effective configuration, structured per section (no preformatted text)."""
 

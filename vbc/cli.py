@@ -164,6 +164,14 @@ def logs(
     commands.logs(api, since, level, follow, as_json)
 
 
+@app.command()
+def versions(api: Optional[str] = API_OPTION, as_json: bool = JSON_OPTION) -> None:
+    """Versions the server runs with: VBC, ffmpeg and its libraries, exiftool, NVIDIA driver, packages."""
+    from vbc.clients import commands
+
+    commands.versions(api, as_json)
+
+
 @app.command("config")
 def show_config(
     api: Optional[str] = API_OPTION,

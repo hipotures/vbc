@@ -417,6 +417,33 @@ def logs(api: Optional[str], since: int, level: Optional[str], follow: bool, as_
         raise typer.Exit(code=0)
 
 
+def versions(api: Optional[str], as_json: bool) -> None:
+    def action(client: ApiClient) -> None:
+        view = client.versions()
+        if as_json:
+            emit_json(view)
+            return
+        nv = view.nvidia
+        rows = [("VBC", view.vbc), ("OS", view.os), ("Python", view.python),
+                *((name, value) for name, value in view.tools.items()),
+                ("NVIDIA driver", nv.get("driver")), ("NVIDIA bundled libs", nv.get("bundled_libs"))]
+        sections = [("FFmpeg libraries", view.ffmpeg_libs),
+                    ("System packages", view.system_packages),
+                    ("Python packages", view.python_packages)]
+        width = max(len(name) for name, _ in rows)
+        for name, value in rows:
+            typer.echo(f"{name:<{width}}  {value or '-'}")
+        for title, values in sections:
+            if not values:
+                continue
+            typer.echo(f"\n{title}:")
+            w = max(len(k) for k in values)
+            for key, value in values.items():
+                typer.echo(f"  {key:<{w}}  {value}")
+
+    run(api, action)
+
+
 def config(api: Optional[str], as_json: bool, push: Optional[Path] = None, restart: bool = True) -> None:
     def action(client: ApiClient) -> None:
         if push is not None:

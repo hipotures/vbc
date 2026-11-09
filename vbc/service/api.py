@@ -397,6 +397,13 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
         return dto.LogsPage(**envelope(), last_seq=logs.last_seq,
                             entries=[dto.LogEntry(**r.__dict__) for r in records])
 
+    @app.get("/api/v1/versions", response_model=dto.VersionsView)
+    async def get_versions():
+        """VBC, ffmpeg (and its libraries), exiftool, NVIDIA driver, image packages."""
+        from vbc.service import versions
+
+        return dto.VersionsView(**envelope(), **await asyncio.to_thread(versions.collect))
+
     @app.get("/api/v1/config", response_model=dto.ConfigView)
     async def get_config():
         snapshot = store.snapshot()

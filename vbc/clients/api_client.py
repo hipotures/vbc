@@ -139,6 +139,9 @@ class ApiClient:
         response = self._request("GET", "/api/v1/logs", params=params, timeout=wait + self._timeout)
         return self._parse(dto.LogsPage, response)
 
+    def versions(self) -> dto.VersionsView:
+        return self._parse(dto.VersionsView, self._request("GET", "/api/v1/versions"))
+
     def config(self) -> dto.ConfigView:
         return self._parse(dto.ConfigView, self._request("GET", "/api/v1/config"))
 
