@@ -162,6 +162,13 @@ class ApiClient:
         response = self._request("PUT", "/api/v1/dirs", json=body, headers={"If-Match": f'"{dirs_rev}"'})
         return self._parse(dto.DirsState, response)
 
+    def start_source_cleanup(self, delete: bool, dirs: List[str]) -> dto.SourceCleanupStatus:
+        return self._parse(dto.SourceCleanupStatus, self._request(
+            "POST", "/api/v1/sources/cleanup", json={"delete": delete, "dirs": dirs}))
+
+    def source_cleanup(self) -> dto.SourceCleanupStatus:
+        return self._parse(dto.SourceCleanupStatus, self._request("GET", "/api/v1/sources/cleanup"))
+
     def scan_dirs(self) -> dto.DirsScanResult:
         """Offer new media mounts on the server as disabled folders."""
         return self._parse(dto.DirsScanResult, self._request("POST", "/api/v1/dirs/scan"))

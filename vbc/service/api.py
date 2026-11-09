@@ -413,6 +413,18 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
             result.restart_required, result.restarting = False, True
         return result
 
+    @app.post("/api/v1/sources/cleanup", response_model=dto.SourceCleanupStatus, status_code=202,
+              responses={409: {"model": dto.Problem}, 422: {"model": dto.Problem}})
+    async def post_source_cleanup(body: dto.SourceCleanupRequest):
+        """Start finding (delete: and deleting) sources that already have a verified output."""
+        if server.demo:
+            return _problem(409, "not available in demo mode")
+        return await asyncio.to_thread(server.source_cleanup.start, body.delete, body.dirs)
+
+    @app.get("/api/v1/sources/cleanup", response_model=dto.SourceCleanupStatus)
+    async def get_source_cleanup():
+        return server.source_cleanup.status()
+
     @app.get("/api/v1/io", response_model=dto.IoView)
     async def get_io():
         config = server.config

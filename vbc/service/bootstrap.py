@@ -233,6 +233,9 @@ class VbcServer:
         self._on_exit: List[Callable[[], None]] = []
         self._stop_timer: Optional[threading.Timer] = None
         self.orchestrator = self._build_orchestrator()
+        from vbc.service.source_cleanup import SourceCleanup
+
+        self.source_cleanup = SourceCleanup(self)
         self._build_gpu_monitor()
 
     # ── composition (port of legacy compress()) ─────────────────────────────

@@ -204,6 +204,23 @@ def show_config(
     commands.config(api, as_json, push, restart)
 
 
+sources_app = typer.Typer(help="Source files on the server.", no_args_is_help=True)
+app.add_typer(sources_app, name="sources")
+
+
+@sources_app.command("cleanup")
+def sources_cleanup(
+    delete: bool = typer.Option(False, "--delete", help="Delete the verified duplicates (default: report only)."),
+    dirs: list[str] = typer.Option([], "--dir", help="Folder from the Dirs list (repeatable; default: enabled non-manifest folders)."),
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Find sources that already have a verified output in the _out folder; --delete removes them."""
+    from vbc.clients import commands
+
+    commands.sources_cleanup(api, as_json, delete, dirs)
+
+
 dirs_app = typer.Typer(help="Input directories (server paths). Without a subcommand: list them.",
                        invoke_without_command=True, no_args_is_help=False)
 app.add_typer(dirs_app, name="dirs")

@@ -283,6 +283,35 @@ class ConfigPushResult(Envelope):
     restarting: bool = False        # the server restarts with it after running jobs finish
 
 
+class SourceCleanupRequest(_Dto):
+    """Find sources that already have a verified output; delete them only with ``delete``."""
+
+    delete: bool = False
+    dirs: List[str] = Field(default_factory=list)  # default: enabled non-manifest folders
+
+
+class SourceCleanupProblem(_Dto):
+    path: str
+    reason: str
+
+
+class SourceCleanupStatus(_Dto):
+    state: Literal["idle", "running", "done", "failed"]
+    delete: bool = False
+    folders: List[str] = Field(default_factory=list)
+    total: int = 0          # sources that have an output file
+    checked: int = 0
+    duplicates: int = 0     # verified: output tags name this source (name + size), ffprobe OK
+    duplicate_bytes: int = 0
+    deleted: int = 0
+    deleted_bytes: int = 0
+    problems_count: int = 0
+    problems: List[SourceCleanupProblem] = Field(default_factory=list)  # first 500
+    started_at: Optional[int] = None
+    finished_at: Optional[int] = None
+    error: Optional[str] = None
+
+
 class IoDir(_Dto):
     path: str
     enabled: bool

@@ -215,6 +215,40 @@ def dirs_list(api: Optional[str], as_json: bool) -> None:
     run(api, action)
 
 
+def sources_cleanup(api: Optional[str], as_json: bool, delete: bool, dirs: List[str]) -> None:
+    def action(client: ApiClient) -> None:
+        status = client.start_source_cleanup(delete, dirs)
+        if not as_json:
+            typer.echo(f"Folders: {', '.join(status.folders) or '-'}")
+            typer.echo("Mode: DELETE verified duplicates" if delete else "Mode: report only (nothing is deleted)")
+        while status.state == "running":
+            time.sleep(1)
+            status = client.source_cleanup()
+            if not as_json:
+                typer.echo(f"\r  checked {status.checked}/{status.total}  duplicates {status.duplicates}"
+                           f"  deleted {status.deleted}  problems {status.problems_count}", nl=False)
+        if as_json:
+            emit_json(status)
+            return
+        typer.echo("")
+        if status.state == "failed":
+            typer.echo(f"vbc: source cleanup failed: {status.error}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(f"Sources with an output: {status.total}")
+        typer.echo(f"Verified duplicates:    {status.duplicates} ({fmt.size(status.duplicate_bytes)})")
+        if delete:
+            typer.echo(f"Deleted:                {status.deleted} ({fmt.size(status.deleted_bytes)})")
+        typer.echo(f"Left alone (problems):  {status.problems_count}")
+        for problem in status.problems[:50]:
+            typer.echo(f"  - {problem.path}: {problem.reason}")
+        if status.problems_count > 50:
+            typer.echo(f"  … {status.problems_count - 50} more (vbc sources cleanup --json)")
+        if not delete and status.duplicates:
+            typer.echo("Run again with --delete to delete the verified duplicates.")
+
+    run(api, action)
+
+
 def dirs_scan(api: Optional[str], as_json: bool) -> None:
     def action(client: ApiClient) -> None:
         state = client.scan_dirs()
