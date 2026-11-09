@@ -95,6 +95,16 @@ def _to_dto(entry: InputDirEntry) -> dto.DirEntry:
     )
 
 
+def _changed_keys(old: object, new: object, prefix: str = "") -> List[str]:
+    """Dotted keys whose values differ between two parsed YAML documents."""
+    if isinstance(old, dict) and isinstance(new, dict):
+        keys: List[str] = []
+        for key in list(old) + [k for k in new if k not in old]:
+            keys += _changed_keys(old.get(key), new.get(key), f"{prefix}{key}.")
+        return keys
+    return [] if old == new else [prefix.rstrip(".")]
+
+
 class CommandService:
     def __init__(
         self,
@@ -138,6 +148,63 @@ class CommandService:
     def cancel_stop(self) -> None:
         """Withdraw a pending graceful stop (running jobs continue, the queue too)."""
         self._bus.publish(SetShutdownRequested(requested=False))
+
+    # ── config ──────────────────────────────────────────────────────────────
+
+    # Sections the server owns: its folder list (Dirs tab), bind address,
+    # storage roots. A pushed config never replaces them.
+    SERVER_OWNED = ("input_dirs", "disabled_input_dirs", "output_dirs", "errors_dirs",
+                    "server", "storage", "web_server")
+
+    def push_config(self, text: str) -> dto.ConfigPushResult:
+        """Save a whole vbc.yaml sent by a client; it applies at the next start.
+
+        The server keeps its own sections (SERVER_OWNED) and general.log_path
+        (it logs to stdout). The previous file is kept as ``<name>.prev``.
+        """
+        import yaml
+        from pydantic import ValidationError
+
+        if self._config_path is None:
+            raise CommandError(409, "this server has no config file")
+        try:
+            pushed = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            raise CommandError(422, "not valid YAML", detail=str(exc)) from exc
+        if not isinstance(pushed, dict):
+            raise CommandError(422, "the config must be a YAML mapping")
+        with self._dirs_lock:
+            current = yaml.safe_load(self._config_path.read_text()) or {}
+            merged = {k: v for k, v in pushed.items() if k not in self.SERVER_OWNED}
+            kept = []
+            for key in self.SERVER_OWNED:
+                if key in current:
+                    merged[key] = current[key]
+                    kept.append(key)
+            general = merged.get("general")
+            if isinstance(general, dict):
+                general = dict(general)
+                general["log_path"] = (current.get("general") or {}).get("log_path")
+                merged["general"] = general
+                kept.append("general.log_path")
+            try:
+                AppConfig(**merged)
+            except (ValidationError, TypeError, ValueError) as exc:
+                errors = [f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()] \
+                    if isinstance(exc, ValidationError) else [str(exc)]
+                raise CommandError(422, "invalid config", errors=errors) from exc
+            changed = _changed_keys(current, merged)
+            backup = self._config_path.with_name(self._config_path.name + ".prev")
+            backup.write_text(self._config_path.read_text())
+            tmp = self._config_path.with_name(self._config_path.name + ".tmp")
+            tmp.write_text(yaml.safe_dump(merged, sort_keys=False, allow_unicode=True))
+            os.replace(tmp, self._config_path)
+        logger.info(f"Config pushed by a client: {len(changed)} change(s); applies at the next start")
+        snapshot = self._store.snapshot()
+        return dto.ConfigPushResult(
+            rev=snapshot.rev, server_time=snapshot.server_time, path=str(self._config_path),
+            backup=str(backup), changed=changed, kept_from_server=kept,
+        )
 
     def set_log_level(self, level: str) -> None:
         logging.getLogger().setLevel(level)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+from pathlib import Path
 from typing import Callable, List, Optional
 
 import typer
@@ -334,8 +335,20 @@ def logs(api: Optional[str], since: int, level: Optional[str], follow: bool, as_
         raise typer.Exit(code=0)
 
 
-def config(api: Optional[str], as_json: bool) -> None:
+def config(api: Optional[str], as_json: bool, push: Optional[Path] = None) -> None:
     def action(client: ApiClient) -> None:
+        if push is not None:
+            result = client.push_config(push.read_text())
+            if as_json:
+                emit_json(result)
+                return
+            typer.echo(f"Saved {push} as {result.path} (previous: {result.backup})")
+            typer.echo(f"Kept from the server: {', '.join(result.kept_from_server) or '-'}")
+            typer.echo(f"Changed ({len(result.changed)}):")
+            for key in result.changed:
+                typer.echo(f"  {key}")
+            typer.echo("Takes effect after the server restarts (restart the container).")
+            return
         view = client.config()
         if as_json:
             emit_json(view)

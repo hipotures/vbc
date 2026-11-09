@@ -75,3 +75,34 @@ def test_unreachable_server_exit_code():
         cwd=REPO, capture_output=True, text=True, timeout=60,
     )
     assert result.returncode == 3 and "server unreachable" in result.stderr
+
+
+def test_config_push_keeps_server_sections(demo_config, serve_factory, tmp_path):
+    """`vbc config --push FILE` saves the client's config; folders, port and storage stay the server's."""
+    server_side = yaml.safe_load(demo_config.read_text())
+    server_side["input_dirs"] = [{"path": str(tmp_path), "enabled": False}]
+    demo_config.write_text(yaml.safe_dump(server_side, sort_keys=False))
+    serve = serve_factory(["--demo", "--config", str(demo_config)])
+
+    pushed = yaml.safe_load(demo_config.read_text())
+    pushed["general"]["source_policy"] = "delete_after_success"
+    pushed["general"]["log_path"] = "/somewhere/else.log"
+    pushed["input_dirs"] = [{"path": "/client/only", "enabled": True}]
+    pushed["server"] = {"host": "1.2.3.4", "port": 1}
+    client_file = tmp_path / "client.yaml"
+    client_file.write_text(yaml.safe_dump(pushed, sort_keys=False))
+
+    result = vbc(serve, "config", "--push", str(client_file))
+    assert result.returncode == 0, result.stderr
+    assert "general.source_policy" in result.stdout and "restart" in result.stdout
+    saved = yaml.safe_load(demo_config.read_text())
+    assert saved["general"]["source_policy"] == "delete_after_success"
+    assert saved["general"]["log_path"] == server_side["general"]["log_path"]
+    assert saved["input_dirs"] == server_side["input_dirs"]
+    assert saved["server"] == server_side["server"]
+    assert (demo_config.parent / (demo_config.name + ".prev")).exists()
+
+    client_file.write_text("general: {threads: not-a-number}\n")
+    bad = vbc(serve, "config", "--push", str(client_file), check=False)
+    assert bad.returncode != 0 and "invalid config" in bad.stderr
+    assert yaml.safe_load(demo_config.read_text()) == saved

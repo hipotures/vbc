@@ -403,6 +403,12 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
         return dto.ConfigView(rev=snapshot.rev, server_time=snapshot.server_time,
                               config_rev=snapshot.config_rev, sections=server.config_sections())
 
+    @app.put("/api/v1/config", response_model=dto.ConfigPushResult,
+             responses={409: {"model": dto.Problem}, 422: {"model": dto.Problem}})
+    async def put_config(body: dto.ConfigPushRequest):
+        """Save a client's vbc.yaml (server-owned sections kept); applies at the next start."""
+        return await asyncio.to_thread(commands.push_config, body.yaml)
+
     @app.get("/api/v1/io", response_model=dto.IoView)
     async def get_io():
         config = server.config

@@ -180,11 +180,18 @@ def logs(
 
 
 @app.command("config")
-def show_config(api: Optional[str] = API_OPTION, as_json: bool = JSON_OPTION) -> None:
-    """Show the effective server configuration."""
+def show_config(
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+    push: Optional[Path] = typer.Option(
+        None, "--push", exists=True, dir_okay=False,
+        help="Send this vbc.yaml to the server (its folders, port and storage are kept); applies after a restart.",
+    ),
+) -> None:
+    """Show the effective server configuration, or push a config file to it."""
     from vbc.clients import commands
 
-    commands.config(api, as_json)
+    commands.config(api, as_json, push)
 
 
 dirs_app = typer.Typer(help="Input directories (server paths). Without a subcommand: list them.",

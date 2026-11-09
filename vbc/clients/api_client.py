@@ -142,6 +142,10 @@ class ApiClient:
     def config(self) -> dto.ConfigView:
         return self._parse(dto.ConfigView, self._request("GET", "/api/v1/config"))
 
+    def push_config(self, text: str) -> dto.ConfigPushResult:
+        return self._parse(dto.ConfigPushResult,
+                           self._request("PUT", "/api/v1/config", json={"yaml": text}))
+
     def io(self) -> dto.IoView:
         return self._parse(dto.IoView, self._request("GET", "/api/v1/io"))
 

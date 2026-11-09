@@ -265,6 +265,22 @@ class ConfigView(Envelope):
     sections: Dict[str, Dict[str, Any]]
 
 
+class ConfigPushRequest(_Dto):
+    """A whole vbc.yaml from a client (`vbc config --push FILE`)."""
+
+    yaml: str
+
+
+class ConfigPushResult(Envelope):
+    """The pushed config was saved; it takes effect at the next server start."""
+
+    path: str
+    backup: Optional[str] = None
+    changed: List[str] = Field(default_factory=list)  # dotted keys that differ
+    kept_from_server: List[str] = Field(default_factory=list)
+    restart_required: bool = True
+
+
 class IoDir(_Dto):
     path: str
     enabled: bool
