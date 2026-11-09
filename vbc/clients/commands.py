@@ -335,10 +335,10 @@ def logs(api: Optional[str], since: int, level: Optional[str], follow: bool, as_
         raise typer.Exit(code=0)
 
 
-def config(api: Optional[str], as_json: bool, push: Optional[Path] = None) -> None:
+def config(api: Optional[str], as_json: bool, push: Optional[Path] = None, restart: bool = True) -> None:
     def action(client: ApiClient) -> None:
         if push is not None:
-            result = client.push_config(push.read_text())
+            result = client.push_config(push.read_text(), restart=restart)
             if as_json:
                 emit_json(result)
                 return
@@ -347,7 +347,10 @@ def config(api: Optional[str], as_json: bool, push: Optional[Path] = None) -> No
             typer.echo(f"Changed ({len(result.changed)}):")
             for key in result.changed:
                 typer.echo(f"  {key}")
-            typer.echo("Takes effect after the server restarts (restart the container).")
+            if result.restarting:
+                typer.echo("The server restarts with it now: running jobs finish first, nothing new starts.")
+            else:
+                typer.echo("Saved only (--no-restart): takes effect at the next server start.")
             return
         view = client.config()
         if as_json:

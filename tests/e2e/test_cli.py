@@ -92,9 +92,9 @@ def test_config_push_keeps_server_sections(demo_config, serve_factory, tmp_path)
     client_file = tmp_path / "client.yaml"
     client_file.write_text(yaml.safe_dump(pushed, sort_keys=False))
 
-    result = vbc(serve, "config", "--push", str(client_file))
+    result = vbc(serve, "config", "--push", str(client_file), "--no-restart")
     assert result.returncode == 0, result.stderr
-    assert "general.source_policy" in result.stdout and "restart" in result.stdout
+    assert "general.source_policy" in result.stdout and "next server start" in result.stdout
     saved = yaml.safe_load(demo_config.read_text())
     assert saved["general"]["source_policy"] == "delete_after_success"
     assert saved["general"]["log_path"] == server_side["general"]["log_path"]
@@ -103,6 +103,6 @@ def test_config_push_keeps_server_sections(demo_config, serve_factory, tmp_path)
     assert (demo_config.parent / (demo_config.name + ".prev")).exists()
 
     client_file.write_text("general: {threads: not-a-number}\n")
-    bad = vbc(serve, "config", "--push", str(client_file), check=False)
+    bad = vbc(serve, "config", "--push", str(client_file), "--no-restart", check=False)
     assert bad.returncode != 0 and "invalid config" in bad.stderr
     assert yaml.safe_load(demo_config.read_text()) == saved

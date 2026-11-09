@@ -269,6 +269,7 @@ class ConfigPushRequest(_Dto):
     """A whole vbc.yaml from a client (`vbc config --push FILE`)."""
 
     yaml: str
+    restart: bool = True  # restart the server now (running jobs finish first)
 
 
 class ConfigPushResult(Envelope):
@@ -278,7 +279,8 @@ class ConfigPushResult(Envelope):
     backup: Optional[str] = None
     changed: List[str] = Field(default_factory=list)  # dotted keys that differ
     kept_from_server: List[str] = Field(default_factory=list)
-    restart_required: bool = True
+    restart_required: bool = True   # saved but not loaded yet (no restart requested)
+    restarting: bool = False        # the server restarts with it after running jobs finish
 
 
 class IoDir(_Dto):

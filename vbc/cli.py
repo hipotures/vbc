@@ -74,7 +74,15 @@ def serve(
     except ValueError as exc:  # pydantic ValidationError included: a setting outside input_dirs
         typer.echo(f"vbc serve: invalid config {config}:\n{exc}", err=True)
         raise typer.Exit(code=2) from exc
-    raise typer.Exit(code=run_server(server))
+    code = run_server(server)
+    if server.restart_requested and code == 0:
+        # New config pushed: load it by re-executing in place (same PID, same container).
+        import os
+        import sys
+
+        print("vbc serve: restarting with the new config", flush=True)
+        os.execv(sys.executable, [sys.executable, "-m", "vbc.cli", *sys.argv[1:]])
+    raise typer.Exit(code=code)
 
 
 API_OPTION = typer.Option(None, "--api", help="Server URL (default $VBC_API or http://127.0.0.1:8770)")
@@ -185,13 +193,15 @@ def show_config(
     as_json: bool = JSON_OPTION,
     push: Optional[Path] = typer.Option(
         None, "--push", exists=True, dir_okay=False,
-        help="Send this vbc.yaml to the server (its folders, port and storage are kept); applies after a restart.",
+        help="Send this vbc.yaml to the server (its folders, port and storage are kept); the server restarts with it.",
     ),
+    restart: bool = typer.Option(True, "--restart/--no-restart",
+                                 help="With --push: restart the server now (running jobs finish first)."),
 ) -> None:
     """Show the effective server configuration, or push a config file to it."""
     from vbc.clients import commands
 
-    commands.config(api, as_json, push)
+    commands.config(api, as_json, push, restart)
 
 
 dirs_app = typer.Typer(help="Input directories (server paths). Without a subcommand: list them.",

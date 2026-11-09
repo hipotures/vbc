@@ -223,6 +223,9 @@ class VbcServer:
         self._thread: Optional[threading.Thread] = None
         self._finished = threading.Event()
         self._exit_requested = threading.Event()
+        # Set by a config push: after the graceful exit `vbc serve` re-executes
+        # itself (same PID, same container) and loads the new config.
+        self.restart_requested = False
         self._resume = threading.Event()
         # After a stop only an explicit refresh (R, POST /refresh) resumes;
         # watchers and Dirs changes do not.
@@ -437,7 +440,14 @@ class VbcServer:
         for callback in callbacks:
             callback()
 
-    def request_exit(self, mode: str = "graceful", deadline_s: Optional[float] = None) -> None:
+    def request_restart(self) -> None:
+        """Restart in place to load a new config: running jobs finish first (no deadline)."""
+        self.restart_requested = True
+        logger.info("Restart requested (new config): running jobs finish, then the server restarts")
+        self.request_exit("graceful", wait_for_jobs=True)
+
+    def request_exit(self, mode: str = "graceful", deadline_s: Optional[float] = None,
+                     wait_for_jobs: bool = False) -> None:
         """Process exit (signals only; the API can stop processing but never the server).
 
         graceful: running jobs finish, bounded by server.stop_timeout_s, then
@@ -452,7 +462,7 @@ class VbcServer:
             return
         self.bus.publish(SetShutdownRequested(requested=True))
         timeout = self.config.server.stop_timeout_s if deadline_s is None else deadline_s
-        if self._stop_timer is None and timeout is not None:
+        if self._stop_timer is None and timeout is not None and not wait_for_jobs:
             self._stop_timer = threading.Timer(timeout, self._deadline_reached)
             self._stop_timer.daemon = True
             self._stop_timer.start()
