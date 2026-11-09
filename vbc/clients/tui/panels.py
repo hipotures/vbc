@@ -1,7 +1,7 @@
 """Rich ``Panel`` whose titles join the border line.
 
-Top edge, left/right title:  ──┐ TITLE ┌──
-Centred title (either edge): ──┤ TITLE ├──
+Top edge (any position):     ──┐ TITLE ┌──
+Centred bottom subtitle:     ──┤ TEXT ├──
 Bottom edge, left/right:     ──┘ TEXT └──
 
 ``subtitle_raw=True`` draws a subtitle exactly as given (no joiners, no
@@ -40,7 +40,7 @@ class Panel(RichPanel):
 
     @property
     def _title(self) -> Optional[Text]:
-        return self._join(super()._title, CENTER if self.title_align == "center" else TOP)
+        return self._join(super()._title, TOP)  # top edge: ┐ TITLE ┌ wherever it sits
 
     @property
     def _subtitle(self) -> Optional[Text]:
