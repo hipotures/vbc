@@ -24,6 +24,19 @@ dependencies = [
 [project.scripts]
 vbc = "vbc.cli:app"
 
+[dependency-groups]
+# Install just the headless runtime with `uv sync --only-group server`.
+# Versions are resolved together with the project and pinned in uv.lock.
+server = [
+    "fastapi",
+    "httpx",
+    "inotify-simple",
+    "pydantic",
+    "pyexiftool",
+    "pyyaml",
+    "uvicorn",
+]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",

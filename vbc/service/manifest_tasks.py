@@ -9,7 +9,6 @@ runs in a background thread, one run at a time.
 
 from __future__ import annotations
 
-import io
 import logging
 import threading
 import time
@@ -100,16 +99,13 @@ class ManifestTasks:
         return self.repair_status()
 
     def _run_repair(self, candidates, config_path: Path, dry_run: bool) -> None:
-        from rich.console import Console
-
         from vbc.maintenance.repair import repair_candidate
 
-        quiet = Console(file=io.StringIO(), force_terminal=False)
         try:
             for candidate in candidates:
                 with self._lock:
                     self._repair.current = str(candidate.manifest_path)
-                outcome = repair_candidate(candidate, config_path, quiet, dry_run=dry_run)
+                outcome = repair_candidate(candidate, config_path, dry_run=dry_run)
                 logger.info(f"MANIFEST_REPAIR {outcome.status}: {outcome.manifest_path} ({outcome.detail})")
                 with self._lock:
                     self._repair.done += 1

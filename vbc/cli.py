@@ -57,32 +57,9 @@ def serve(
     log_file: Optional[Path] = typer.Option(None, "--log-file", help="Also append logs to this file"),
 ) -> None:
     """Run the headless server: HTTP API on server.host:server.port, logs on stdout."""
-    from vbc.service.api import run_server
-    from vbc.service.bootstrap import ServerConfigError, VbcServer
+    from vbc.service.__main__ import serve as serve_headless
 
-    if not config.exists():
-        typer.echo(f"vbc serve: config file not found: {config}", err=True)
-        raise typer.Exit(code=2)
-    try:
-        server = VbcServer(
-            config, demo=demo, demo_config_path=demo_config if demo else None,
-            log_file=log_file, host=host, port=port,
-        )
-    except ServerConfigError as exc:
-        typer.echo(f"vbc serve: {exc}", err=True)
-        raise typer.Exit(code=2) from exc
-    except ValueError as exc:  # pydantic ValidationError included: a setting outside input_dirs
-        typer.echo(f"vbc serve: invalid config {config}:\n{exc}", err=True)
-        raise typer.Exit(code=2) from exc
-    code = run_server(server)
-    if server.restart_requested and code == 0:
-        # New config pushed: load it by re-executing in place (same PID, same container).
-        import os
-        import sys
-
-        print("vbc serve: restarting with the new config", flush=True)
-        os.execv(sys.executable, [sys.executable, "-m", "vbc.cli", *sys.argv[1:]])
-    raise typer.Exit(code=code)
+    raise typer.Exit(serve_headless(config, host, port, demo, demo_config, log_file))
 
 
 API_OPTION = typer.Option(None, "--api", help="Server URL (default $VBC_API or http://127.0.0.1:8770)")

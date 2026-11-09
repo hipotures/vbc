@@ -1283,6 +1283,12 @@ MIT License (see LICENSE)
 
 ---
 
+The HomeStack container packages only the headless server, using the locked
+`server` dependency group from `pyproject.toml`. The local TUI and CLI clients
+are excluded from the image, together with their Rich/Typer/Jinja2 libraries.
+Client-only changes do not require a server image release. See
+[the container runtime contract](deploy/container/README.md).
+
 ## Acknowledgements
 
 VBC is built with excellent open-source tools:

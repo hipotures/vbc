@@ -28,7 +28,7 @@ Unpacked size: about 670 MB (about 180 MB of it the bundled NVIDIA libraries).
 
 | Item | Value |
 |---|---|
-| Entrypoint | `vbc-entrypoint` → `vbc serve --config /home/app/config/vbc.yaml` |
+| Entrypoint | `vbc-entrypoint` → `python -m vbc.service --config /home/app/config/vbc.yaml` |
 | User | container root (an unprivileged LXC maps it to an unprivileged host user) |
 | Port | `8080/tcp` (HomeStack convention; local `vbc serve` defaults to 8770) HTTP: API, `/health/live`, `/health/ready`, `/.well-known/homestack/status` |
 | Persistent volume | `/home/app` (`config/vbc.yaml` incl. the Dirs list, `state/`) |
@@ -37,6 +37,12 @@ Unpacked size: about 670 MB (about 180 MB of it the bundled NVIDIA libraries).
 
 The HomeStack manifest sets `runtime.stop_timeout_seconds: 600`, allowing
 10 minutes for running jobs to finish during image updates.
+
+The image contains only the headless server and its compression/maintenance
+core. It installs the locked `server` dependency group (`uv sync --only-group
+server`); Rich, Typer, Jinja2, `vbc.cli`, `vbc/clients/` and `vbc_legacy/` are
+excluded. Local `vbc serve` uses the same server startup code; `vbc tui` and
+the one-shot client commands run outside the container.
 
 * The entrypoint refuses to start unless `/home/app` is a mounted volume.
 * `VBC_UID`/`VBC_GID` (default 0): run the server as that user, e.g. the media
@@ -150,6 +156,12 @@ HEAD (`--dry-run` shows it). The `Image` workflow publishes
 `ghcr.io/hipotures/vbc:X.Y.Z`, and a manual workflow run publishes
 `dev-<commit>`. Published versions are immutable.
 
-Only changes to the image need a release: application code, dependencies, the
-Containerfile, the entrypoint or the default config. Changes to the manifest,
+Only changes to the image need a release: server/core code, server dependencies,
+the Containerfile, the entrypoint or the default config. Changes to the manifest,
 documentation or tests do not.
+
+Client-only changes (`vbc/clients/`, `vbc/cli.py`, `vbc_legacy/`) need no
+server image release. `scripts/tag-image.py` checks server image inputs
+against the last release and refuses a release when none changed. Updates
+to `pyproject.toml` or `uv.lock` require checking whether the `server` group
+changed before releasing.

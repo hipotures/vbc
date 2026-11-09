@@ -7,5 +7,7 @@
 !conf/exiftool.conf
 !conf/demo.yaml
 !vbc/**
+vbc/clients
+vbc/cli.py
 !deploy/container/**
 **/__pycache__

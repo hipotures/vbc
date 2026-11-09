@@ -14,11 +14,12 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+from repair_failed_manifests import repair_with_progress as repair_candidate
+
 from vbc.maintenance.repair import (
     MAX_ERROR_MARKER_BYTES,
     RepairError,
     collect_candidates,
-    repair_candidate,
 )
 
 

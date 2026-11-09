@@ -1,6 +1,6 @@
 #!/bin/sh
 # VBC container entrypoint: check the persistent volume, create the first-start
-# config if it is missing (never overwrite), then exec `vbc serve`.
+# config if it is missing (never overwrite), then exec the headless server.
 set -eu
 
 home="${VBC_HOME:-/home/app}"
@@ -81,6 +81,6 @@ gid="${gid:-$uid}"
 if [ "$uid" != "0" ]; then
     echo "vbc: running as uid $uid gid $gid"
     exec setpriv --reuid="$uid" --regid="$gid" --clear-groups --inh-caps=-all \
-        python -m vbc.cli serve --config "$config" "$@"
+        python -m vbc.service --config "$config" "$@"
 fi
-exec python -m vbc.cli serve --config "$config" "$@"
+exec python -m vbc.service --config "$config" "$@"

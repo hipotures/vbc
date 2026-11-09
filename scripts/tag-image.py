@@ -11,6 +11,16 @@ import subprocess
 import sys
 
 
+IMAGE_INPUTS = (
+    "vbc/__init__.py", "vbc/version.py", "vbc/config", "vbc/contracts",
+    "vbc/domain", "vbc/infrastructure", "vbc/maintenance", "vbc/pipeline",
+    "vbc/service", "vbc/utils", "pyproject.toml", "uv.lock", ".dockerignore",
+    "conf/vbc.yaml.example", "conf/exiftool.conf", "conf/demo.yaml",
+    "deploy/container/Containerfile", "deploy/container/entrypoint.sh",
+    "deploy/container/make-default-config.py",
+)
+
+
 def git(*args):
     return subprocess.run(["git", *args], check=True, text=True, capture_output=True).stdout.strip()
 
@@ -36,6 +46,10 @@ def main():
             raise ValueError(f"HEAD already has a {args.service} image release")
         versions = [tuple(map(int, match.groups())) for tag in tags if (match := version_pattern.fullmatch(tag))]
         latest = max(versions) if versions else None
+        if latest:
+            previous_tag = f"{args.service}-" + ".".join(map(str, latest))
+            if not git("diff", "--name-only", previous_tag, "HEAD", "--", *IMAGE_INPUTS):
+                raise ValueError(f"No server image inputs changed since {previous_tag}; no image release needed")
         version = f"{latest[0]}.{latest[1]}.{latest[2] + 1}" if latest else "0.1.0"
         tag = f"{args.service}-{version}"
         if not args.dry_run:

@@ -886,6 +886,17 @@ docs = [
     { name = "pymdown-extensions" },
 ]
 
+[package.dev-dependencies]
+server = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "inotify-simple" },
+    { name = "pydantic" },
+    { name = "pyexiftool" },
+    { name = "pyyaml" },
+    { name = "uvicorn" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
@@ -905,6 +916,17 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.32" },
 ]
 provides-extras = ["dev", "docs"]
+
+[package.metadata.requires-dev]
+server = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "inotify-simple" },
+    { name = "pydantic" },
+    { name = "pyexiftool" },
+    { name = "pyyaml" },
+    { name = "uvicorn" },
+]
 
 [[package]]
 name = "watchdog"

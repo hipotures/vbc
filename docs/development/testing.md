@@ -69,6 +69,12 @@ strategy" in the [service split plan](../architecture/service-split.md).
 it refuses to start without a mounted `/home/app`; with a volume and an
 identity mount of the media tree a full pass matches the legacy oracle;
 health, readiness and HomeStack telemetry answer; `stop` (SIGTERM) exits 0.
+It also checks that client code and Rich/Typer/Jinja2 are absent, manifest
+maintenance works without them, and a config push restarts the headless server.
+
+`test_release.py` uses temporary local Git repositories to verify that a
+client-only change is rejected by the image release script, while a server
+change permits the next version in a dry run without creating a tag.
 
 ## Legacy reference recording
 

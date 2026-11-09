@@ -71,12 +71,20 @@ COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:c7db1d63057f268a8b6da8af9077850a6
 WORKDIR /opt/vbc
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PYTHON=/usr/bin/python3
 COPY pyproject.toml uv.lock README.md ./
-# Runtime dependencies only; the project itself is copied as plain source below.
-RUN uv sync --frozen --no-dev --no-install-project
+# Headless runtime only; the source is copied explicitly below.
+RUN uv sync --frozen --only-group server
 COPY conf/vbc.yaml.example conf/exiftool.conf conf/demo.yaml conf/
 COPY deploy/container/make-default-config.py /tmp/
 RUN /opt/vbc/.venv/bin/python /tmp/make-default-config.py conf/vbc.yaml.example conf/container-default.yaml
-COPY vbc vbc
+COPY vbc/__init__.py vbc/version.py vbc/
+COPY vbc/config vbc/config
+COPY vbc/contracts vbc/contracts
+COPY vbc/domain vbc/domain
+COPY vbc/infrastructure vbc/infrastructure
+COPY vbc/maintenance vbc/maintenance
+COPY vbc/pipeline vbc/pipeline
+COPY vbc/service vbc/service
+COPY vbc/utils vbc/utils
 
 FROM runtime-base
 # Release version (CI passes the tag's X.Y.Z); written into every output file.

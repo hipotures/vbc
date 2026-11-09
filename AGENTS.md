@@ -133,8 +133,10 @@ Important: Never add `conf/vbc.yaml` to git tracking. If it appears tracked, not
 The server image is `deploy/container/Containerfile` (runtime contract:
 `deploy/container/README.md`); the HomeStack manifest is
 `.homestack/services/vbc/`. Release rule: after committing and pushing a
-completed change, decide whether the **image** changes (application code or
-its dependencies, the Containerfile, the entrypoint, the default config). Only
+completed change, decide whether the **server image** changes (server/core code or
+its runtime dependencies, the Containerfile, the entrypoint, the default config).
+The image excludes `vbc/clients/`, `vbc/cli.py` and `vbc_legacy/`; changes only
+to those paths never need a server image release. Only
 then run `python3 scripts/tag-image.py` (next `vbc-X.Y.Z`, CI publishes
 `ghcr.io/hipotures/vbc:X.Y.Z`). Changes to the manifest, docs, tests or CI
 alone need no release. Never move or delete release tags; never pick

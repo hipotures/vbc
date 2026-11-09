@@ -36,6 +36,20 @@ def test_image_refuses_without_persistent_volume():
     assert result.returncode == 1 and "not a mounted volume" in result.stderr
 
 
+def test_image_contains_only_headless_runtime():
+    _run("run", "--rm", "--entrypoint", "python", IMAGE, "-c", """
+from importlib.util import find_spec
+from pathlib import Path
+
+for name in ('vbc.clients', 'vbc.cli', 'vbc_legacy', 'rich', 'typer', 'jinja2'):
+    assert find_spec(name) is None, name
+from vbc.service.api import create_app
+from vbc.maintenance.repair import repair_candidate
+from vbc.maintenance.restore import restore_failed_manifest
+assert not (Path('/opt/vbc/vbc') / 'clients').exists()
+""")
+
+
 def test_image_full_pass_health_and_stop(media_tree, tmp_path):
     root = media_tree["root"]
     volume = tmp_path / "volume"
@@ -116,6 +130,29 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
         assert record_legacy.diff(before, after) == EXPECTED["run1"]["changes"]
         assert after == EXPECTED["run1"]["tree"]
 
+        # Manifest maintenance runs on the server without terminal libraries.
+        failed_manifest = root / "meta_err" / "repair-check.json"
+        failed_manifest.parent.mkdir(exist_ok=True)
+        completed_manifest = next((root / "meta_out").rglob("*.json"))
+        repair_manifest = json.loads(completed_manifest.read_text())
+        repair_manifest["producer"]["username"] = "meta_src"
+        failed_manifest.write_text(json.dumps(repair_manifest))
+        failed_manifest.with_suffix(".err").write_text("ffmpeg exited with code 244\n")
+        request = {"path": str(failed_manifest), "dry_run": True}
+        restored = http.post("/api/v1/manifests/restore", json=request)
+        assert restored.status_code == 200, restored.text
+        repair = http.post("/api/v1/manifests/repair", json=request)
+        assert repair.status_code == 202, repair.text
+        deadline = time.monotonic() + 15
+        while True:
+            repair = http.get("/api/v1/manifests/repair").json()
+            if repair["state"] != "running":
+                break
+            assert time.monotonic() < deadline, repair
+            time.sleep(0.1)
+        assert repair["state"] == "done", repair
+        assert repair["outcomes"][0]["status"] == "READY", repair
+
         time.sleep(12)  # at least one heartbeat
         live = http.get("/health/live")
         assert live.status_code == 200 and live.json()["checks"]["heartbeat:count"][0]["observedValue"] >= 1
@@ -128,6 +165,21 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
         assert gpu["enabled"] and gpu["samples"][-1]["raw"]["device_name"].startswith("CPU"), gpu
         telemetry = http.get("/.well-known/homestack/status").json()
         assert telemetry["schema"] == 3 and telemetry["status"] == "pass"
+
+        # Config push restarts through the headless entrypoint as well.
+        saved["general"]["threads"] = 1
+        pushed = http.put("/api/v1/config", json={"yaml": yaml.safe_dump(saved), "restart": True})
+        assert pushed.status_code == 200, pushed.text
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                restarted = http.get("/api/v1/state").json()
+                if restarted["threads"]["current"] == 1:
+                    break
+            except httpx.HTTPError:
+                pass
+            assert time.monotonic() < deadline, _run("logs", name, check=False).stdout
+            time.sleep(0.2)
 
         started = time.monotonic()
         _run("stop", "-t", "60", name)
