@@ -46,7 +46,8 @@ def run_tui(api: Optional[str] = None, log_file: Optional[str] = None) -> int:
     client = ApiClient(api, timeout=10, kind="tui")
     state = ClientState(activity_feed_max_items=5)
     state.server_url = client.base_url
-    state.ui_title = f"VBC @ {urlsplit(client.base_url).netloc}"
+    state.server_netloc = urlsplit(client.base_url).netloc
+    state.ui_title = f"VBC @ {state.server_netloc}"
     bus = EventBus()
     detached = threading.Event()
 

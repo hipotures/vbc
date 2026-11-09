@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -30,6 +31,7 @@ def test_one_shot_commands(demo_config, serve_factory, tmp_path):
     assert status["schema_version"] == 1 and status["threads"]["current"] >= 1
     human = vbc(serve, "status").stdout
     assert human.startswith("VBC http://127.0.0.1:") and "Queue:" in human
+    assert re.search(r"Server version: \d+\.\d+\.\d+", human), human
 
     assert json.loads(vbc(serve, "threads", "99", "--json").stdout)["current"] == 8
     assert vbc(serve, "threads", "3").stdout.strip() == "threads: 3"

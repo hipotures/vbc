@@ -115,6 +115,8 @@ class ClientState:
         self.waiting_for_input = False
         self.strip_unicode_display = True
         self.ui_title = "VBC"
+        self.server_netloc = ""
+        self.server_version: Optional[str] = None
         # Tabbed overlay state
         self.show_overlay = False
         self.active_tab = "shortcuts"  # "shortcuts" | "settings" | "io" | "dirs" | "tui" | "reference" | "logs"
@@ -190,12 +192,18 @@ class ClientState:
 
     def apply_snapshot(self, snap: dto.StateSnapshot, offset_ms: int) -> None:
         with self._lock:
+            version = snap.server_version or "unknown version"
+            if self.server_netloc:
+                self.ui_title = f"VBC {snap.server_version or '?'} @ {self.server_netloc}"
             if not self.connected and self.ever_connected:
-                logger.info(f"Reconnected to the server at {self.server_url}")
-                self.last_action = "Reconnected to the server"
+                logger.info(f"Reconnected to the server at {self.server_url} (VBC {version})")
+                self.last_action = f"Reconnected to the server (VBC {version})"
                 self.last_action_time = datetime.now()
             elif not self.ever_connected:
-                logger.info(f"Connected to the server at {self.server_url}")
+                logger.info(f"Connected to the server at {self.server_url} (VBC {version})")
+                self.last_action = f"Connected to the server (VBC {version})"
+                self.last_action_time = datetime.now()
+            self.server_version = snap.server_version
             self.connected = True
             self.ever_connected = True
             self.connection_error = None

@@ -46,6 +46,7 @@ from vbc.domain.events import (
 from vbc.domain.models import CompressionJob, JobStatus
 from vbc.infrastructure.event_bus import EventBus
 from vbc.infrastructure.gpu_monitor import GpuSample
+from vbc.version import vbc_version
 
 # Dead-reckoning thresholds
 PROGRESS_DRIFT_PCT = 2.0
@@ -788,6 +789,7 @@ class StateStore:
                 gpu_last_seq=self._gpu_seq,
                 encoder=self._encoder,
                 encoder_note=self._encoder_note,
+                server_version=vbc_version(),
             )
 
     def queue(self, offset: int = 0, limit: int = 100) -> dto.QueuePage:

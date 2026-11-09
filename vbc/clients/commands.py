@@ -55,7 +55,8 @@ def render_status(snapshot: dto.StateSnapshot, client: ApiClient) -> str:
     now = client.server_now_ms()
     c, d = snapshot.counters, snapshot.discovery
     t = snapshot.threads
-    lines = [f"VBC {client.base_url}  {snapshot.run_status.upper()}  threads {t.current} ({t.minimum}-{t.maximum})"]
+    lines = [f"VBC {client.base_url}  {snapshot.run_status.upper()}  threads {t.current} ({t.minimum}-{t.maximum})",
+             f"Server version: {snapshot.server_version or 'unknown (before 0.1.10)'}"]
     if snapshot.encoder == "gpu":
         lines.append("Encoder: GPU (NVENC)")
     elif snapshot.encoder == "cpu":
