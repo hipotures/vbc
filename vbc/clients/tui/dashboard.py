@@ -951,8 +951,9 @@ class Dashboard:
         version = single_line(f"v{self.state.server_version}" if self.state.server_version else "v?")
         host = single_line(self.state.server_netloc or "")
         inner = max(0, self.console.size.width - 4)  # corners and the spaces Rich adds
-        gap = max(1, inner - len(version) - len(host) - 2)
-        subtitle = Text(f"{version}{' ' * gap}{host}") if host else Text(version)
+        gap = max(1, inner - len(version) - len(host) - 4)
+        subtitle = (Text.assemble(f"{version} ", ("─" * gap, "cyan"), f" {host}")
+                    if host else Text(version))
         return Panel(content, border_style="cyan", title=Text("VBC"),
                      subtitle=subtitle, subtitle_align="left")
 
