@@ -161,8 +161,8 @@ class ClientState:
         self.gpu_data: Optional[Dict[str, Any]] = None
 
         # GPU Sparkline
-        # Index into the GPU sparkline metric order (temp, fan, pwr, gpu, enc, dec, mem); GPU load by default.
-        self.gpu_sparkline_metric_idx: int = 3
+        # Index into the GPU sparkline metric order (temp, fan, pwr, gpu, enc, dec, mem); encoder load by default.
+        self.gpu_sparkline_metric_idx: int = 4
         self.gpu_sparkline_preset: str = DEFAULT_GPU_SPARKLINE_PRESET
         self.gpu_sparkline_palette: str = DEFAULT_GPU_SPARKLINE_PALETTE
         self.gpu_sparkline_mode: str = "sparkline"  # sparkline | palette
