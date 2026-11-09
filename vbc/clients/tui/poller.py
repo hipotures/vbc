@@ -54,7 +54,12 @@ class Poller:
                 self._tick()
             except ApiUnavailable as exc:
                 self.state.set_disconnected(exc.reason)
-                self._rev = 0  # resynchronise from a full snapshot
+                # Resynchronise everything: a restarted server starts its
+                # revisions again, so equal numbers do not mean equal data.
+                self._rev = 0
+                self._dirs_rev = None
+                self._config_rev = None
+                self._gpu_seq = 0
                 self._stop.wait(RETRY_S)
             except ApiError as exc:
                 logger.warning(f"API error while polling: {exc}")
