@@ -142,6 +142,8 @@ class ClientState:
 
         self.last_action: str = ""
         self.last_action_time: Optional[datetime] = None
+        # First connect: the footer shows the menu hotkeys (fading) until a newer message.
+        self.hints_since: Optional[datetime] = None
 
         # Dirs tab state
         self.dirs_cursor: int = 0
@@ -209,6 +211,7 @@ class ClientState:
                 logger.info(f"Connected to the server at {self.server_url} (VBC {version})")
                 self.last_action = f"Connected to the server (VBC {version})"
                 self.last_action_time = datetime.now()
+                self.hints_since = self.last_action_time
             self.server_version = snap.server_version
             self.connected = True
             self.ever_connected = True

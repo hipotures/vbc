@@ -1109,7 +1109,13 @@ class Dashboard:
                 grid.add_column(justify="left", ratio=1, no_wrap=True, overflow="ellipsis")
                 grid.add_row("", f"[red]Server unreachable at {safe_markup(where)} ({safe_markup(reason)}), retrying[/]")
                 return grid
-            if self.state.last_action and self.state.last_action_time:
+            hints_since = self.state.hints_since
+            last_at = self.state.last_action_time
+            hints_age = (datetime.now() - hints_since).total_seconds() if hints_since else None
+            if (hints_age is not None and hints_age < 15
+                    and not (last_at and last_at > hints_since)):
+                action_text = self._menu_hints(hints_age)
+            elif self.state.last_action and self.state.last_action_time:
                 age = (datetime.now() - self.state.last_action_time).total_seconds()
                 if age < 15:
                     if age < 5:
@@ -1123,12 +1129,34 @@ class Dashboard:
 
             grid = Table.grid(expand=True)
             grid.add_column(width=1) # Left padding
-            grid.add_column(justify="left", ratio=1)
-            grid.add_column(justify="right", ratio=1)
+            grid.add_column(justify="left", ratio=1, no_wrap=True, overflow="ellipsis")
+            grid.add_column(width=2)  # gap
+            grid.add_column(justify="right", no_wrap=True)  # health: as wide as its text
             grid.add_column(width=1) # Right padding
-            grid.add_row("", action_text, health_text, "")
+            grid.add_row("", action_text, "", health_text, "")
             
             return grid
+
+    @staticmethod
+    def _menu_hints(age: float) -> Text:
+        """Startup hint in the footer: "Menu · Keys · Prefs · …", the hotkey letter
+        yellow; fades like any message (bright, dim, faint) and goes."""
+        if age < 5:
+            text_style, key_style = "white", "bold yellow"
+        elif age < 10:
+            text_style, key_style = "grey70", "#a08c3c"
+        else:
+            text_style, key_style = "grey30", "#4f4626"
+        items = [("Menu", 0), ("Keys", 0), ("Prefs", 0), ("Files", 0), ("Dirs", 0),
+                 ("TUI", 0), ("Ref", 1), ("Logs", 0)]
+        hint = Text(no_wrap=True, overflow="ellipsis")
+        for i, (name, at) in enumerate(items):
+            if i:
+                hint.append(" · ", style=text_style)
+            hint.append(name[:at], style=text_style)
+            hint.append(name[at], style=key_style)
+            hint.append(name[at + 1:], style=text_style)
+        return hint
 
     def _generate_tabbed_overlay(self) -> Panel:
         """Generate unified tabbed overlay with dynamic width."""
