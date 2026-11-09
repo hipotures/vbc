@@ -1146,9 +1146,13 @@ class Dashboard:
                      ("logs", "Logs", "L")]
         key_style = "bold yellow"  # the hotkey letter; the label stays white/grey
 
+        active_bg = "on #1f5f6b"  # dark teal under the active tab (the border is cyan)
+
         def tab_label(name: str, key: str, active: bool) -> Text:
-            return Text.assemble((name, "bold white" if active else "grey62"), " ",
-                                 (key, key_style if active else "yellow"))
+            if active:
+                return Text.assemble((f" {name} ", f"bold white {active_bg}"),
+                                     (f"{key} ", f"bold yellow {active_bg}"))
+            return Text.assemble((name, "grey50"), " ", (key, "yellow"))
 
         tabs_title = Text.assemble(*(tight(tab_label(name, key, tab_id == active_tab), TOP)
                                      for tab_id, name, key in tab_order))
