@@ -1482,7 +1482,7 @@ class Dashboard:
         else:
             text = Text.assemble(("🔒 locked · Shift+U", "grey42"), justify="center")
             border, dim = "grey27", "light"
-        width = min(max(self.console.size.width, 1), 34)
+        width = min(max(self.console.size.width, 1), text.cell_len + 4)  # just the text
         panel = Panel(text, border_style=border, width=width, padding=(0, 1))
         overlay = _Overlay(display, panel, overlay_width=width, dim_level=dim)
         overlay.center = True
