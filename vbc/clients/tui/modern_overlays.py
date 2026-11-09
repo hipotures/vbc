@@ -790,6 +790,10 @@ class ShortcutsOverlay:
             "Refresh queue (re-scan)"
         )
         jobs_table.add_row(
+            key_badge("Shift+U"),
+            "Unlock (auto-lock after 1 min without keys)"
+        )
+        jobs_table.add_row(
             key_badge("S"),
             "Stop: finish running jobs, start nothing new (S again cancels; R resumes)"
         )

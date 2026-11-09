@@ -121,6 +121,8 @@ class ClientState:
         self.show_overlay = False
         self.active_tab = "shortcuts"  # "shortcuts" | "settings" | "io" | "dirs" | "tui" | "reference" | "logs"
         self.overlay_dim_level = "mid"  # "light" | "mid" | "dark"
+        self.locked = False             # auto-lock (keyboard.py): keys ignored until Shift+U
+        self.lock_flash_until = 0.0     # monotonic time: show the lock strongly until then
         self.show_info = False
         self.info_message = ""
         self.config_lines: List[str] = []

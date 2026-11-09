@@ -106,6 +106,7 @@ class _Overlay:
 
     def __rich_console__(self, console, options):
         width, height = options.size
+        center = getattr(self, "center", False)
         overlay_width = min(max(self.overlay_width, 1), max(width, 1))
         bg_lines = console.render_lines(self.background, options, pad=True)
         bg_lines = Segment.set_shape(bg_lines, width, height)
@@ -133,7 +134,7 @@ class _Overlay:
 
         left = max((width - overlay_width) // 2, 0)
         # Align to top instead of center to prevent overflow on small terminals
-        top = 1  # Small margin from top
+        top = max((height - len(overlay_lines)) // 2, 0) if center else 1  # small margin from top
 
         for idx, overlay_line in enumerate(overlay_lines):
             target_row = top + idx
@@ -1466,6 +1467,27 @@ class Dashboard:
         # Footer
         layout["bottom"].update(self._generate_footer())
 
+        return self._with_lock(self._compose_display(layout))
+
+    def _with_lock(self, display):
+        """Auto-lock: dim everything lightly and show the lock on top; a key
+        pressed while locked shows it strongly for a second."""
+        if not getattr(self.state, "locked", False):
+            return display
+        strong = time.monotonic() < getattr(self.state, "lock_flash_until", 0.0)
+        width = min(max(self.console.size.width, 1), 46)
+        text = Text.from_markup(
+            ("[bold yellow]🔒  LOCKED[/]\n\n" if strong else "[yellow]🔒  LOCKED[/]\n\n")
+            + "Keys and pasted text are ignored.\n"
+            + ("[bold white on dark_orange] Shift+U [/] [bold]to unlock[/]" if strong else "[bold]Shift+U[/] to unlock"),
+            justify="center",
+        )
+        panel = Panel(text, border_style="bold yellow" if strong else "yellow", width=width, padding=(1, 2))
+        overlay = _Overlay(display, panel, overlay_width=width, dim_level="dark" if strong else "light")
+        overlay.center = True
+        return overlay
+
+    def _compose_display(self, layout):
         # Overlay
         if self.state.show_overlay:
             w = self.console.size.width

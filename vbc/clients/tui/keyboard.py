@@ -5,6 +5,7 @@ import threading
 import termios
 import tty
 import select
+import time
 from typing import Optional, TYPE_CHECKING
 from vbc.clients.tui.bus import EventBus
 from vbc.clients.tui.events import (
@@ -30,6 +31,11 @@ if TYPE_CHECKING:
     from vbc.clients.tui.state import UIState
 
 # Deprecated overlay events (kept for compatibility)
+LOCK_AFTER_S = float(os.environ.get("VBC_TUI_LOCK_AFTER_S", "60"))  # auto-lock after this long without a key; 0 = off
+LOCK_FLASH_S = 1.0      # a key pressed while locked shows the lock strongly this long
+UNLOCK_QUIET_S = 0.15   # Shift+U unlocks only as a lone key (not inside pasted text)
+
+
 class ToggleConfig(Event):
     """DEPRECATED: Use ToggleOverlayTab instead. Event emitted when user toggles config display (Key 'C')."""
     pass
@@ -87,6 +93,52 @@ class KeyboardListener:
         self.state = state
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self._last_input_at = time.monotonic()   # last key acted on
+        self._last_byte_at = 0.0                  # last byte read from the terminal
+
+    # ── auto-lock and paste guard ───────────────────────────────────────────
+
+    def _locked(self) -> bool:
+        return bool(self.state is not None and getattr(self.state, "locked", False))
+
+    def _set_lock(self, locked: bool) -> None:
+        if self.state is None:
+            return
+        self.state.locked = locked
+        self.state.lock_flash_until = 0.0
+        if not locked:
+            self._last_input_at = time.monotonic()
+            self.event_bus.publish(ActionMessage(message="Unlocked"))
+
+    def _flash_lock(self) -> None:
+        if self.state is not None:
+            self.state.lock_flash_until = time.monotonic() + LOCK_FLASH_S
+
+    def _consume_paste(self, fd: int) -> None:
+        """Read a bracketed paste up to ESC[201~. Pasted text never acts as keys;
+        in the Dirs add-path input it is typed into the path."""
+        buf = ""
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            ch = self._try_read(fd, 0.5)
+            if ch is None:
+                break
+            buf += ch
+            if buf.endswith("\x1b[201~"):
+                buf = buf[: -len("\x1b[201~")]
+                break
+        self._last_byte_at = time.monotonic()
+        if self._dirs_input_mode() and not self._locked():
+            for ch in buf:
+                if ch.isprintable():
+                    self.event_bus.publish(DirsInputChar(char=ch))
+
+    def _swallow_escape(self, fd: int) -> None:
+        """Read and drop one escape sequence (used while locked)."""
+        if self._try_read(fd, 0.05) == '[':
+            first = self._try_read(fd, 0.05)
+            if first is not None and self._read_csi_sequence(fd, first) == '200~':
+                self._consume_paste(fd)
 
     def _dirs_active(self) -> bool:
         """Return True when the Dirs overlay tab is currently shown."""
@@ -184,6 +236,10 @@ class KeyboardListener:
             return  # Incomplete sequence, ignore
         seq = self._read_csi_sequence(fd, seq2)
 
+        if seq == '200~':  # bracketed paste: never interpret pasted text as keys
+            self._consume_paste(fd)
+            return
+
         if self._dirs_input_mode():
             # Ignore all escape sequences in input mode
             return
@@ -224,9 +280,16 @@ class KeyboardListener:
             attrs[0] &= ~termios.IXON
             termios.tcsetattr(fd, termios.TCSANOW, attrs)
             decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+            # Bracketed paste: the terminal wraps pasted text in ESC[200~ … ESC[201~.
+            sys.stdout.write("\x1b[?2004h")
+            sys.stdout.flush()
 
             while not self._stop_event.is_set():
-                if fd in select.select([fd], [], [], 0.1)[0]:
+                if fd not in select.select([fd], [], [], 0.1)[0]:
+                    if LOCK_AFTER_S > 0 and not self._locked() and time.monotonic() - self._last_input_at > LOCK_AFTER_S:
+                        self._set_lock(True)
+                    continue
+                if True:
                     try:
                         raw = os.read(fd, 1)
                     except OSError:
@@ -236,6 +299,23 @@ class KeyboardListener:
                     key = decoder.decode(raw)
                     if not key:
                         continue
+                    now = time.monotonic()
+                    previous_byte, self._last_byte_at = self._last_byte_at, now
+
+                    # ── Locked: only a lone Shift+U unlocks; Ctrl+C/Ctrl+Q still quit ──
+                    if self._locked():
+                        if key in ('\x03', '\x11'):
+                            self.event_bus.publish(QuitRequested())
+                            break
+                        if key == '\x1b':
+                            self._swallow_escape(fd)
+                        elif (key == 'U' and now - previous_byte > UNLOCK_QUIET_S
+                              and fd not in select.select([fd], [], [], UNLOCK_QUIET_S)[0]):
+                            self._set_lock(False)
+                            continue
+                        self._flash_lock()
+                        continue
+                    self._last_input_at = now
 
                     # ── Escape / CSI sequences ─────────────────────────────
                     if key == '\x1b':
@@ -328,6 +408,11 @@ class KeyboardListener:
         except (OSError, termios.error):
             return
         finally:
+            try:
+                sys.stdout.write("\x1b[?2004l")
+                sys.stdout.flush()
+            except OSError:
+                pass
             try:
                 termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
             except (OSError, termios.error):
