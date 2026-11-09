@@ -1497,7 +1497,7 @@ class Dashboard:
                 try:
                     display = self.create_display()
                     with self._ui_lock:
-                        self._live.update(display)
+                        self._live.update(display, refresh=True)
                 except Exception as exc:
                     fingerprint = f"{type(exc).__name__}: {exc}"
                     if fingerprint != self._last_refresh_error:
@@ -1509,7 +1509,10 @@ class Dashboard:
             time.sleep(0.5)
 
     def start(self):
-        self._live = Live(self.create_display(), console=self.console, refresh_per_second=4)
+        # Full-screen (alternate screen) and one explicit redraw per tick: the
+        # inline mode scrolls and flickers whenever the frame is taller than
+        # the terminal (e.g. Prefs with a long camera list).
+        self._live = Live(self.create_display(), console=self.console, screen=True, auto_refresh=False)
         self._live.start()
         self._stop_refresh.clear()
         self._refresh_thread = threading.Thread(target=self._refresh_loop, daemon=True)
@@ -1523,7 +1526,7 @@ class Dashboard:
         if self._live:
             # Final update to show INTERRUPTED/FINISHED state
             try:
-                self._live.update(self.create_display())
+                self._live.update(self.create_display(), refresh=True)
             except Exception:
                 logger.exception("Dashboard final refresh failed")
             self._live.stop()
