@@ -602,6 +602,9 @@ invalid date-like names, ignored symlinks, and filesystem errors.
 
 ### Restoring a failed manifest and moved sources
 
+On a running server the same operation is `vbc manifests restore <failed.json> [--dry-run]`
+(server paths; it runs where the files are mounted).
+
 `scripts/restore_failed_manifest.py` restores one JSON from a source error package or the
 legacy configured metadata error directory. It reads `input_dirs`, `errors_dirs` or
 `suffix_errors_dirs`, and `metadata.move_after_success_dir` from the VBC configuration.
@@ -626,6 +629,8 @@ archive copy exists. The existing `.err` marker remains in the error directory a
 history.
 
 ### Repairing supported failed manifests
+
+On a running server: `vbc manifests repair <failed.json|folder> [--dry-run]`.
 
 `scripts/repair_failed_manifests.py` performs a controlled recompression for known failure
 classes while leaving the original `.err` marker in place. It accepts one `.json`/`.err`

@@ -312,6 +312,44 @@ class SourceCleanupStatus(_Dto):
     error: Optional[str] = None
 
 
+class ManifestPathRequest(_Dto):
+    path: str           # server path: a failed .json/.err, or a folder (repair)
+    dry_run: bool = False
+
+
+class RestoredSource(_Dto):
+    archive: str
+    original: str
+
+
+class ManifestRestoreResult(_Dto):
+    manifest: str
+    destination: str
+    dry_run: bool
+    restored_sources: List[RestoredSource] = Field(default_factory=list)
+    already_present: List[str] = Field(default_factory=list)
+    error_marker: Optional[str] = None
+
+
+class ManifestRepairOutcome(_Dto):
+    manifest: str
+    status: str   # READY (dry run), REPAIRED, SKIPPED, FAILED
+    detail: str
+
+
+class ManifestRepairStatus(_Dto):
+    state: Literal["idle", "running", "done", "failed"]
+    target: Optional[str] = None
+    dry_run: bool = False
+    total: int = 0
+    done: int = 0
+    current: Optional[str] = None
+    outcomes: List[ManifestRepairOutcome] = Field(default_factory=list)
+    started_at: Optional[int] = None
+    finished_at: Optional[int] = None
+    error: Optional[str] = None
+
+
 class IoDir(_Dto):
     path: str
     enabled: bool

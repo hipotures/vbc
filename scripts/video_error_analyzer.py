@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from scripts.repair_failed_manifests import (
+from vbc.maintenance.repair import (
     MAX_ERROR_MARKER_BYTES,
     RepairError,
     collect_candidates,

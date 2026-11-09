@@ -249,6 +249,54 @@ def sources_cleanup(api: Optional[str], as_json: bool, delete: bool, dirs: List[
     run(api, action)
 
 
+def manifests_restore(api: Optional[str], as_json: bool, path: str, dry_run: bool) -> None:
+    def action(client: ApiClient) -> None:
+        result = client.restore_manifest(path, dry_run)
+        if as_json:
+            emit_json(result)
+            return
+        verb = "Would restore" if dry_run else "Restored"
+        typer.echo(f"{verb}: {result.manifest}")
+        typer.echo(f"  -> {result.destination}")
+        for source in result.restored_sources:
+            typer.echo(f"  source {source.archive} -> {source.original}")
+        for present in result.already_present:
+            typer.echo(f"  source already in place: {present}")
+        if not dry_run:
+            typer.echo("The server picks it up from the metadata folder (watch) or on the next refresh (R).")
+
+    run(api, action)
+
+
+def manifests_repair(api: Optional[str], as_json: bool, path: str, dry_run: bool) -> None:
+    def action(client: ApiClient) -> None:
+        status = client.start_manifest_repair(path, dry_run)
+        if not as_json:
+            typer.echo(f"Repair {'check' if dry_run else 'run'}: {status.total} failed manifest(s) under {status.target}")
+        shown = 0
+        while True:
+            for outcome in status.outcomes[shown:]:
+                if not as_json:
+                    typer.echo(f"  {outcome.status:9} {outcome.manifest}  ({outcome.detail})")
+            shown = len(status.outcomes)
+            if status.state != "running":
+                break
+            time.sleep(2)
+            status = client.manifest_repair()
+        if as_json:
+            emit_json(status)
+            return
+        if status.state == "failed":
+            typer.echo(f"vbc: manifest repair failed: {status.error}", err=True)
+            raise typer.Exit(code=1)
+        counts: dict = {}
+        for outcome in status.outcomes:
+            counts[outcome.status] = counts.get(outcome.status, 0) + 1
+        typer.echo("Summary: " + (", ".join(f"{k} {v}" for k, v in sorted(counts.items())) or "nothing to do"))
+
+    run(api, action)
+
+
 def dirs_scan(api: Optional[str], as_json: bool) -> None:
     def action(client: ApiClient) -> None:
         state = client.scan_dirs()

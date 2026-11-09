@@ -221,6 +221,36 @@ def sources_cleanup(
     commands.sources_cleanup(api, as_json, delete, dirs)
 
 
+manifests_app = typer.Typer(help="Failed manifests on the server.", no_args_is_help=True)
+app.add_typer(manifests_app, name="manifests")
+
+
+@manifests_app.command("restore")
+def manifests_restore(
+    path: str = typer.Argument(..., help="Failed manifest .json on the server (e.g. in metadata_err/...)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show the plan, move nothing."),
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Put a failed manifest and its archived sources back; the server queues it again."""
+    from vbc.clients import commands
+
+    commands.manifests_restore(api, as_json, path, dry_run)
+
+
+@manifests_app.command("repair")
+def manifests_repair(
+    path: str = typer.Argument(..., help="Failed .json/.err or a folder with them (server path)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what is repairable, change nothing."),
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Recompress supported failures (FFmpeg 244/-12: video without audio) on the server."""
+    from vbc.clients import commands
+
+    commands.manifests_repair(api, as_json, path, dry_run)
+
+
 dirs_app = typer.Typer(help="Input directories (server paths). Without a subcommand: list them.",
                        invoke_without_command=True, no_args_is_help=False)
 app.add_typer(dirs_app, name="dirs")

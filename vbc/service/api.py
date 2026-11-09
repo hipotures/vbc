@@ -421,6 +421,22 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
             return _problem(409, "not available in demo mode")
         return await asyncio.to_thread(server.source_cleanup.start, body.delete, body.dirs)
 
+    @app.post("/api/v1/manifests/restore", response_model=dto.ManifestRestoreResult,
+              responses={404: {"model": dto.Problem}, 409: {"model": dto.Problem}, 422: {"model": dto.Problem}})
+    async def post_manifest_restore(body: dto.ManifestPathRequest):
+        """Put a failed manifest (and its archived sources) back into the metadata folder."""
+        return await asyncio.to_thread(server.manifest_tasks.restore, body.path, body.dry_run)
+
+    @app.post("/api/v1/manifests/repair", response_model=dto.ManifestRepairStatus, status_code=202,
+              responses={404: {"model": dto.Problem}, 409: {"model": dto.Problem}, 422: {"model": dto.Problem}})
+    async def post_manifest_repair(body: dto.ManifestPathRequest):
+        """Recompress supported failed manifests (FFmpeg 244/-12: video without audio)."""
+        return await asyncio.to_thread(server.manifest_tasks.start_repair, body.path, body.dry_run)
+
+    @app.get("/api/v1/manifests/repair", response_model=dto.ManifestRepairStatus)
+    async def get_manifest_repair():
+        return server.manifest_tasks.repair_status()
+
     @app.get("/api/v1/sources/cleanup", response_model=dto.SourceCleanupStatus)
     async def get_source_cleanup():
         return server.source_cleanup.status()

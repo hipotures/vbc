@@ -166,6 +166,17 @@ class ApiClient:
         return self._parse(dto.SourceCleanupStatus, self._request(
             "POST", "/api/v1/sources/cleanup", json={"delete": delete, "dirs": dirs}))
 
+    def restore_manifest(self, path: str, dry_run: bool) -> dto.ManifestRestoreResult:
+        return self._parse(dto.ManifestRestoreResult, self._request(
+            "POST", "/api/v1/manifests/restore", json={"path": path, "dry_run": dry_run}))
+
+    def start_manifest_repair(self, path: str, dry_run: bool) -> dto.ManifestRepairStatus:
+        return self._parse(dto.ManifestRepairStatus, self._request(
+            "POST", "/api/v1/manifests/repair", json={"path": path, "dry_run": dry_run}))
+
+    def manifest_repair(self) -> dto.ManifestRepairStatus:
+        return self._parse(dto.ManifestRepairStatus, self._request("GET", "/api/v1/manifests/repair"))
+
     def source_cleanup(self) -> dto.SourceCleanupStatus:
         return self._parse(dto.SourceCleanupStatus, self._request("GET", "/api/v1/sources/cleanup"))
 

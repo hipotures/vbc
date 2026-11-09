@@ -236,6 +236,9 @@ class VbcServer:
         from vbc.service.source_cleanup import SourceCleanup
 
         self.source_cleanup = SourceCleanup(self)
+        from vbc.service.manifest_tasks import ManifestTasks
+
+        self.manifest_tasks = ManifestTasks(self)
         self._build_gpu_monitor()
 
     # ── composition (port of legacy compress()) ─────────────────────────────
