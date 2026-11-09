@@ -930,7 +930,8 @@ class Dashboard:
                             )
                             gl3 = f"[dim cyan]{spark}[/]" if spark else " " * spark_len
 
-                gpu_content = f"{gl1}\n{gl2}\n{gl3}"
+                # Name, graph, values: text (not the graph) sits on the bottom border.
+                gpu_content = f"{gl1}\n{gl3}\n{gl2}"
 
                 # Create Grid for two columns
                 grid = Table.grid(expand=True)
