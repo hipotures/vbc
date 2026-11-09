@@ -1,3 +1,4 @@
+import os
 import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -132,8 +133,18 @@ def save_dirs_config(
         storage['discovered'] = list(discovered)
         data['storage'] = storage
 
-    with open(config_path, 'w') as f:
-        yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    # Write a sibling temp file and rename it over the config: an interruption
+    # leaves either the old or the new file, never a truncated one.
+    tmp_path = config_path.with_name(config_path.name + '.dirs.tmp')
+    try:
+        with open(tmp_path, 'w') as f:
+            yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, config_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def load_demo_config(config_path: Path) -> DemoConfig:

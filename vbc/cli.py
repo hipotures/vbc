@@ -72,7 +72,7 @@ def tui(
     log_file: Optional[Path] = typer.Option(
         None, "--log-file", help="Client log file (default ~/.local/state/vbc/tui.log)"),
 ) -> None:
-    """Live dashboard of a running server (keys as in `vbc run`; Ctrl+C detaches, S stops the server)."""
+    """Live dashboard of a running server (keys as in `vbc run`; Ctrl+C detaches, S stops processing; the server keeps running)."""
     from vbc.clients.tui.app import run_tui
 
     raise typer.Exit(code=run_tui(api, str(log_file) if log_file else None))

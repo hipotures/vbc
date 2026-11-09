@@ -8,7 +8,7 @@ unprivileged Proxmox LXC (`.homestack/services/vbc/`). Background:
 
 `debian:testing-slim` (pinned by digest) with distribution packages only:
 FFmpeg 9.0.2 (SVT-AV1 and NVENC `av1_nvenc`), ExifTool 13.55, Python 3.14.
-Python dependencies come from `uv.lock` (`uv sync --frozen --no-dev`).
+Python dependencies come from `uv.lock` (`uv sync --frozen --only-group server`).
 
 * FFmpeg ≥ 8 is required. Multipart (manifest) jobs pass
   `-filter_buffered_frames` to bound memory, and Debian trixie's FFmpeg 7.1
@@ -35,8 +35,10 @@ Unpacked size: about 670 MB (about 180 MB of it the bundled NVIDIA libraries).
 | Logs | stdout/stderr |
 | Stop | SIGTERM → running jobs finish (≤ `server.stop_timeout_s`, 600 s), then exit 0 |
 
-The HomeStack manifest sets `runtime.stop_timeout_seconds: 600`, allowing
-10 minutes for running jobs to finish during image updates.
+The HomeStack manifest sets `runtime.stop_timeout_seconds: 660`: 10 minutes
+for running jobs to finish during image updates, plus one minute for the
+server to interrupt the rest (stop FFmpeg, remove temp files) before
+HomeStack gives up. Keep `server.stop_timeout_s` below the manifest value.
 
 The image contains only the headless server and its compression/maintenance
 core. It installs the locked `server` dependency group (`uv sync --only-group
@@ -54,7 +56,8 @@ the one-shot client commands run outside the container.
   is used automatically.
   `VBC_ALLOW_EPHEMERAL=1` overrides this, for throwaway tests only.
 * On the first start it writes `config/vbc.yaml` from `conf/vbc.yaml.example`:
-  no input dirs, CPU encoder, server on `0.0.0.0:8080`. It never overwrites an
+  no input dirs, GPU encoder with an NVENC probe (CPU fallback, see `VBC_GPU`),
+  server on `0.0.0.0:8080`. It never overwrites an
   existing config.
 * Storage roots that lie on the volume (e.g. `/home/app/media`) are created at
   start; roots elsewhere are mounts and must exist. Readiness fails for a root that is
@@ -132,7 +135,7 @@ CPU declared:        4 cores (--cpus 4 in the test)
 Memory:              idle server ~75 MiB RSS; peak anonymous 2683 MiB for two parallel
                      1080p SVT-AV1 jobs; no OOM at a 3 GiB limit -> declared 4G
 Swap declared:       0M
-Rootfs declared:     2G (image ~490 MB unpacked; no durable writes)
+Rootfs declared:     2G (image ~670 MB unpacked; no durable writes)
 Home declared/used:  1G / a few KiB (config + state)
 Health/telemetry:    /health/live, /health/ready 200 with heartbeat checks;
                      telemetry schema 3 with process_rss_bytes (tests/e2e/test_image.py)

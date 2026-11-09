@@ -216,6 +216,9 @@ class VbcServer:
             storage_roots=self.storage_roots,
         )
         self.dirs = _resolve_dirs(config)
+        # Folders the next pass scans. The API replaces it on InputDirsChanged so a
+        # resume after STOP uses the current list, not the one from startup.
+        self._active_input_dirs: List[Path] = list(self.dirs.input_dirs)
         self._exif = None
         self._watchers: list = []
         self._watchers_lock = threading.Lock()
@@ -297,9 +300,11 @@ class VbcServer:
         self.bus.subscribe(InputDirsChanged, self._on_input_dirs_changed)
         return orchestrator
 
-    def _on_input_dirs_changed(self, _event: InputDirsChanged) -> None:
-        """Folders, their manifest and watch flags changed through the API: rebuild
-        the watchers from the new entries (the orchestrator re-reads them itself)."""
+    def _on_input_dirs_changed(self, event: InputDirsChanged) -> None:
+        """Folders, their manifest and watch flags changed through the API: remember
+        the active list for the next pass and rebuild the watchers from the new
+        entries (the orchestrator re-reads them itself)."""
+        self._active_input_dirs = [Path(d) for d in event.active_dirs]
         with self._watchers_lock:
             old, self._watchers = self._watchers, []
             for watcher in old:
@@ -404,7 +409,7 @@ class VbcServer:
                 if self.demo:
                     self.orchestrator.run()
                 else:
-                    self.orchestrator.run(self.dirs.input_dirs)
+                    self.orchestrator.run(list(self._active_input_dirs))
                 if self._exit_requested.is_set():
                     break
                 snapshot = self.store.snapshot()

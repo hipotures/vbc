@@ -28,15 +28,19 @@ class ManifestTasks:
         self._thread: Optional[threading.Thread] = None
 
     def _checked_path(self, value: str) -> Path:
-        from vbc.service.commands import CommandError
+        from vbc.service.commands import CommandError, _inside
 
         path = Path(value)
         if not path.is_absolute():
             raise CommandError(422, "the path must be absolute (a server path)", errors=[value])
-        roots = self._server.current_storage_roots()
-        if roots and not any(path == r or r in path.parents for r in roots):
-            raise CommandError(422, "the path is outside the storage roots",
-                               errors=[value], detail=", ".join(str(r) for r in roots))
+        # Same rule as the Dirs list: no restriction only on loopback without
+        # configured roots; otherwise the resolved path ('..' and symlinks
+        # followed) must lie inside a root, and no roots means nothing is allowed.
+        if self._server.storage_roots is not None:
+            roots = self._server.current_storage_roots()
+            if not any(_inside(path, r) for r in roots):
+                raise CommandError(422, "the path is outside the storage roots", errors=[value],
+                                   detail=", ".join(str(r) for r in roots) or "none (no media mounts)")
         if not path.exists():
             raise CommandError(404, "no such file or folder on the server", errors=[value])
         return path

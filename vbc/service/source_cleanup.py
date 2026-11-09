@@ -122,12 +122,19 @@ class SourceCleanup:
         for suffix in (orch._output_suffix_for_mode(), ".mp4", ".mkv"):
             if suffix not in suffixes:
                 suffixes.append(suffix)
+        config = self._server.config
+        skip_suffixes = tuple(s for s in (config.suffix_output_dirs, config.suffix_errors_dirs) if s)
         pairs: List[_Pair] = []
         for folder in folders:
             out_root = orch._get_output_dir(folder)
             for root, dirs, files in os.walk(folder):
                 root_path = Path(root)
-                dirs[:] = sorted(d for d in dirs if not d.endswith("_out"))
+                # Never walk into output/error trees (configured suffixes) nor the
+                # output root itself when it lies inside the input folder.
+                dirs[:] = sorted(
+                    d for d in dirs
+                    if not (skip_suffixes and d.endswith(skip_suffixes)) and root_path / d != out_root
+                )
                 for name in sorted(files):
                     source = root_path / name
                     if source.suffix.lower() not in extensions:
