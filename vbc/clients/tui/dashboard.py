@@ -9,7 +9,7 @@ from typing import Optional, List, Tuple, Any
 from rich.live import Live
 from rich.cells import cell_len
 from rich.console import Console, Group, RenderableType
-from vbc.clients.tui.panels import BOTTOM, Panel, joined
+from vbc.clients.tui.panels import BOTTOM, TOP, Panel, joined, tight
 from rich.table import Table
 from rich.layout import Layout
 from rich.progress_bar import ProgressBar
@@ -1140,96 +1140,23 @@ class Dashboard:
         w = self.console.size.width
         pw = min(max(w, 1), max(95, w - 10))
 
-        # === TAB HEADER ===
-        tabs_table = Table(show_header=False, box=None, expand=True, padding=0)
-        tabs_table.add_column(ratio=1)
-        tabs_table.add_column(ratio=1)
-        tabs_table.add_column(ratio=1)
-        tabs_table.add_column(ratio=1)
-        tabs_table.add_column(ratio=1)
-        tabs_table.add_column(ratio=1)
-        tabs_table.add_column(ratio=1)
+        # === TABS (top border) and KEY HINTS (bottom border) ===
+        tab_order = [("shortcuts", "Keys", "M"), ("settings", "Prefs", "C"), ("io", "Files", "F"),
+                     ("dirs", "Dirs", "D"), ("tui", "TUI", "T"), ("reference", "Ref", "E"),
+                     ("logs", "Logs", "L")]
+        key_style = "bold yellow"  # the hotkey letter; the label stays white/grey
 
-        def tab_style(tab_id: str) -> Tuple[str, str, Any]:
-            """Return (text_style, border_style, box_type) for tab."""
-            if tab_id == active_tab:
-                return ("bold white", "green", ROUNDED)
-            return ("dim", "dim", SIMPLE)
+        def tab_label(name: str, key: str, active: bool) -> Text:
+            return Text.assemble((name, "bold white" if active else "grey62"), " ",
+                                 (key, key_style if active else "yellow"))
 
-        shortcuts_text, shortcuts_border, shortcuts_box = tab_style("shortcuts")
-        settings_text, settings_border, settings_box = tab_style("settings")
-        io_text, io_border, io_box = tab_style("io")
-        dirs_text, dirs_border, dirs_box = tab_style("dirs")
-        tui_text, tui_border, tui_box = tab_style("tui")
-        reference_text, reference_border, reference_box = tab_style("reference")
-        logs_text, logs_border, logs_box = tab_style("logs")
-
-        # Tab order: Keys (M), Prefs (C), Files (F), Dirs (D), TUI (T), Ref (E), Logs (L)
-        tabs_table.add_row(
-            Panel(
-                f"[{shortcuts_text}]⌨ Keys[/] [{shortcuts_text}][M][/]",
-                border_style=shortcuts_border,
-                box=shortcuts_box,
-                padding=(0, 0),
-            ),
-            Panel(
-                f"[{settings_text}]⚙ Prefs[/] [{settings_text}][C][/]",
-                border_style=settings_border,
-                box=settings_box,
-                padding=(0, 0),
-            ),
-            Panel(
-                f"[{io_text}]📁 Files[/] [{io_text}][F][/]",
-                border_style=io_border,
-                box=io_box,
-                padding=(0, 0),
-            ),
-            Panel(
-                f"[{dirs_text}]📁 Dirs[/] [{dirs_text}][D][/]",
-                border_style=dirs_border,
-                box=dirs_box,
-                padding=(0, 0),
-            ),
-            Panel(
-                f"[{tui_text}]◈ TUI[/] [{tui_text}][T][/]",
-                border_style=tui_border,
-                box=tui_box,
-                padding=(0, 0),
-            ),
-            Panel(
-                f"[{reference_text}]📖 Ref[/] [{reference_text}][E][/]",
-                border_style=reference_border,
-                box=reference_box,
-                padding=(0, 0),
-            ),
-            Panel(
-                f"[{logs_text}]📝 Logs[/] [{logs_text}][L][/]",
-                border_style=logs_border,
-                box=logs_box,
-                padding=(0, 0),
-            ),
-        )
-
-        if pw < 95:
-            compact_tabs = {
-                "shortcuts": ("⌨ Keys", "M"),
-                "settings": ("⚙ Prefs", "C"),
-                "io": ("📁 Files", "F"),
-                "dirs": ("📁 Dirs", "D"),
-                "tui": ("◈ TUI", "T"),
-                "reference": ("📖 Ref", "E"),
-                "logs": ("📝 Logs", "L"),
-            }
-            compact_label, compact_key = compact_tabs.get(active_tab, compact_tabs["reference"])
-            tabs_table = Table.grid(expand=True)
-            tabs_table.add_row(
-                Panel(
-                    f"[bold white]{compact_label}[/] [bold white][{compact_key}][/]",
-                    border_style="green",
-                    box=ROUNDED,
-                    padding=(0, 0),
-                )
-            )
+        tabs_title = Text.assemble(*(tight(tab_label(name, key, tab_id == active_tab), TOP)
+                                     for tab_id, name, key in tab_order))
+        if tabs_title.cell_len > pw - 4:  # too narrow for all tabs: the active one only
+            name, key = next(((n, k) for t, n, k in tab_order if t == active_tab), ("Ref", "E"))
+            tabs_title = tight(tab_label(name, key, True), TOP)
+        hints = Text.assemble(*(tight(Text.assemble((key, key_style), " ", (what, "grey70")), BOTTOM)
+                                for key, what in (("Tab", "next"), ("Esc", "close"))))
 
         # === ACTIVE TAB CONTENT ===
         if active_tab == "shortcuts":
@@ -1273,28 +1200,14 @@ class Dashboard:
                 sparkline_mode,
             )
 
-        # === FOOTER ===
-        footer = Text.from_markup(
-            "[dim]Press [white on #30363d] Tab [/] next • "
-            "[white on #30363d] Esc [/] close[/]",
-            justify="center"
-        )
-
-        # === COMPOSE ===
-        full_content = Group(
-            tabs_table,
-            Rule(style="#30363d"),
-            content,
-            Rule(style="#30363d"),
-            footer,
-        )
-
         return Panel(
-            full_content,
+            content,
             border_style="cyan",
             box=ROUNDED,
             padding=(0, 2),
             width=pw,  # Dynamic width
+            title=tabs_title, title_align="left", title_raw=True,
+            subtitle=hints, subtitle_align="left", subtitle_raw=True,
         )
 
     # --- Main Layout Engine ---
