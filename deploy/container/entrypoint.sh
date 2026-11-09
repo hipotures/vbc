@@ -79,8 +79,6 @@ uid="${uid:-0}"
 gid="${VBC_GID:-$(identity_id /proc/self/gid_map)}"
 gid="${gid:-$uid}"
 if [ "$uid" != "0" ]; then
-    # The persistent volume (config, state) must be writable by that user.
-    find "$home" -xdev \( ! -uid "$uid" -o ! -gid "$gid" \) -exec chown -h "$uid:$gid" {} + 2>/dev/null || true
     echo "vbc: running as uid $uid gid $gid"
     exec setpriv --reuid="$uid" --regid="$gid" --clear-groups --inh-caps=-all \
         python -m vbc.cli serve --config "$config" "$@"
