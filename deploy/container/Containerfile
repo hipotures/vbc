@@ -19,7 +19,9 @@
 # the entrypoint uses them only when the runtime did not provide its own (the
 # NVIDIA container toolkit injects the host's), and `vbc serve` probes NVENC
 # at start, falling back to CPU on any mismatch.
-# nvtop feeds the GPU panel (`nvtop -s`); Debian gives it cap_perfmon, which an
+# The GPU panel reads nvidia-smi (bundled from the same driver package, in
+# /opt/nvidia/bin), nvtop (`nvtop -s`) when nvidia-smi is missing or fails.
+# Debian gives nvtop cap_perfmon, which an
 # unprivileged container cannot grant, so the copy without file capabilities
 # is installed. NVIDIA_* tell the NVIDIA container toolkit (Docker/Podman in a
 # VM with the GPU) to inject the driver libraries incl. NVENC ("video").
@@ -53,6 +55,7 @@ RUN set -eu; v="$NVIDIA_DRIVER_VERSION"; run="NVIDIA-Linux-x86_64-$v-no-compat32
         ln -s "$lib.so.$v" "/opt/nvidia/lib/$lib.so.1"; \
     done; \
     ln -s libcuda.so.1 /opt/nvidia/lib/libcuda.so; \
+    install -D -m 0755 /tmp/driver/nvidia-smi /opt/nvidia/bin/nvidia-smi; \
     for f in /opt/nvidia/lib/*.so.$v; do \
         for need in $(objdump -p "$f" | awk '/NEEDED/ {print $2}'); do \
             case "$need" in libnvidia-*|libcuda*) \
@@ -87,7 +90,8 @@ COPY --chmod=0755 deploy/container/entrypoint.sh /usr/local/bin/vbc-entrypoint
 # The persistent home volume (mp0) is mounted here by HomeStack; it must stay a
 # real, empty directory in the image.
 RUN mkdir -p /home/app && /opt/vbc/.venv/bin/python -m compileall -q /opt/vbc/vbc
-ENV PATH=/opt/vbc/.venv/bin:$PATH \
+# /opt/nvidia/bin last: an nvidia-smi injected by the NVIDIA toolkit wins.
+ENV PATH=/opt/vbc/.venv/bin:$PATH:/opt/nvidia/bin \
     PYTHONPATH=/opt/vbc \
     PYTHONUNBUFFERED=1 \
     VBC_HOME=/home/app \

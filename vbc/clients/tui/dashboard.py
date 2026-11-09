@@ -845,19 +845,26 @@ class Dashboard:
                 gpu_str = f"[{gu_col}]{util_label} {safe_markup(g.get('gpu_util', '??'))}[/]"
                 mem_str = f"[{mu_col}]mem {safe_markup(g.get('mem_util', '??'))}[/]"
 
-                # Apply reverse to selected metric (order: temp → fan → pwr → gpu → mem)
-                if metric_idx == 0:
-                    temp_str = f"[reverse]{temp_str}[/]"
-                elif metric_idx == 1:
-                    fan_str = f"[reverse]{fan_str}[/]"
-                elif metric_idx == 2:
-                    pwr_str = f"[reverse]{pwr_str}[/]"
-                elif metric_idx == 3:
-                    gpu_str = f"[reverse]{gpu_str}[/]"
-                elif metric_idx == 4:
-                    mem_str = f"[reverse]{mem_str}[/]"
+                # Encoder/decoder use: only from servers that read nvidia-smi.
+                enc_str = dec_str = None
+                if "enc_util" in g:
+                    e_val = _p(g.get("enc_util", "0"))
+                    enc_str = f"[{_c(e_val, 50, 90)}]enc {safe_markup(g.get('enc_util', '??'))}[/]"
+                if "dec_util" in g:
+                    d_val = _p(g.get("dec_util", "0"))
+                    dec_str = f"[{_c(d_val, 50, 90)}]dec {safe_markup(g.get('dec_util', '??'))}[/]"
 
-                gl2 = f"{temp_str} • {fan_str} • {pwr_str} • {gpu_str} • {mem_str}"
+                # Reverse the selected graph metric (sparkline metric order).
+                parts = {"gpu_history_temp": temp_str, "gpu_history_fan": fan_str,
+                         "gpu_history_pwr": pwr_str, "gpu_history_gpu": gpu_str,
+                         "gpu_history_enc": enc_str, "gpu_history_dec": dec_str,
+                         "gpu_history_mem": mem_str}
+                metrics = get_gpu_sparkline_config(sparkline_preset).metrics
+                if metrics:
+                    selected = metrics[metric_idx % len(metrics)].history_attr
+                    if parts.get(selected):
+                        parts[selected] = f"[reverse]{parts[selected]}[/]"
+                gl2 = " • ".join(p for p in parts.values() if p)
 
                 spark_cfg = get_gpu_sparkline_config(sparkline_preset)
                 palette = get_gpu_sparkline_palette(sparkline_palette)

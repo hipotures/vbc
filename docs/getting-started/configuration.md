@@ -267,7 +267,7 @@ Advanced settings for GPU monitoring sparklines.
 - **Type**: Boolean
 - **Default**: `true`
 - **Description**: Enable GPU monitoring and dashboard sparklines.
-- **Note**: Requires NVIDIA GPU and `nvtop` (VBC calls `nvtop -s`). `nvidia-smi` is only for driver checks.
+- **Note**: Requires an NVIDIA GPU. `vbc serve` reads `nvidia-smi --query-gpu` (temperature, fan, power, GPU/memory use, encoder and decoder use, memory used/total, clocks); when `nvidia-smi` is missing or fails it falls back to `nvtop -s` (no encoder/decoder data). `nvtop_device_index` / `nvtop_device_name` choose the GPU for both.
 
 #### `sample_interval_s`
 - **Type**: Float

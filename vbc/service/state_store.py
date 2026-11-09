@@ -597,6 +597,14 @@ class StateStore:
                 seq=self._gpu_seq, at=to_ms(self._clock()), available=sample.raw is not None,
                 temp_c=sample.temp_c, power_w=sample.power_w, gpu_util_pct=sample.gpu_util_pct,
                 mem_util_pct=sample.mem_util_pct, fan_pct=sample.fan_pct, raw=sample.raw,
+                enc_util_pct=getattr(sample, "enc_util_pct", None),
+                dec_util_pct=getattr(sample, "dec_util_pct", None),
+                mem_used_mib=getattr(sample, "mem_used_mib", None),
+                mem_total_mib=getattr(sample, "mem_total_mib", None),
+                power_limit_w=getattr(sample, "power_limit_w", None),
+                gpu_clock_mhz=getattr(sample, "gpu_clock_mhz", None),
+                mem_clock_mhz=getattr(sample, "mem_clock_mhz", None),
+                throttle=getattr(sample, "throttle", None),
             ))
 
     def gpu(self, since: int = 0, enabled: bool = True) -> dto.GpuPage:

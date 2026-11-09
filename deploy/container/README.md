@@ -96,6 +96,11 @@ the host driver's exact version. Libraries, first that applies:
    no longer match: the server encodes on CPU until the image is rebuilt with
    the new version (or option 2 is used).
 
+GPU panel: `nvidia-smi` from the same driver package is bundled in
+`/opt/nvidia/bin` (an `nvidia-smi` injected by the runtime takes precedence);
+it gives encoder/decoder use besides temperature, fan, power and memory.
+`nvtop` stays in the image and is used when `nvidia-smi` is missing or fails.
+
 Devices: `/dev/nvidia0`, `/dev/nvidiactl`, `/dev/nvidia-uvm`,
 `/dev/nvidia-uvm-tools` attached to the container in Proxmox, then declared as
 `runtime.devices` in `service.yaml` (HomeStack refuses deployments with

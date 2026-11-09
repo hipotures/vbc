@@ -64,7 +64,7 @@ DEFAULT_GPU_SPARKLINE_STYLE = SparklineStyle(
 )
 
 _GPU_SPARKLINE_METRICS = (
-    # Order matches GL2 display: temp | fan | pwr | gpu | mem
+    # Order matches GL2 display: temp | fan | pwr | gpu | enc | dec | mem
     SparklineMetricConfig(
         label="Temp",
         history_attr="gpu_history_temp",
@@ -97,6 +97,24 @@ _GPU_SPARKLINE_METRICS = (
         max_val=100.0,
         unit="%",
         display_name="GPU Utilization",
+        legend_group="%",
+    ),
+    SparklineMetricConfig(
+        label="Enc",
+        history_attr="gpu_history_enc",
+        min_val=0.0,
+        max_val=100.0,
+        unit="%",
+        display_name="Encoder Utilization",
+        legend_group="%",
+    ),
+    SparklineMetricConfig(
+        label="Dec",
+        history_attr="gpu_history_dec",
+        min_val=0.0,
+        max_val=100.0,
+        unit="%",
+        display_name="Decoder Utilization",
         legend_group="%",
     ),
     SparklineMetricConfig(

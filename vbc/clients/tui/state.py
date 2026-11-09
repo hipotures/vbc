@@ -161,7 +161,7 @@ class ClientState:
         self.gpu_data: Optional[Dict[str, Any]] = None
 
         # GPU Sparkline
-        # Index into the GPU sparkline metric order (temp, fan, pwr, gpu, mem); GPU load by default.
+        # Index into the GPU sparkline metric order (temp, fan, pwr, gpu, enc, dec, mem); GPU load by default.
         self.gpu_sparkline_metric_idx: int = 3
         self.gpu_sparkline_preset: str = DEFAULT_GPU_SPARKLINE_PRESET
         self.gpu_sparkline_palette: str = DEFAULT_GPU_SPARKLINE_PALETTE
@@ -171,6 +171,8 @@ class ClientState:
         self.gpu_history_gpu: deque = deque(maxlen=60)
         self.gpu_history_mem: deque = deque(maxlen=60)
         self.gpu_history_fan: deque = deque(maxlen=60)
+        self.gpu_history_enc: deque = deque(maxlen=60)
+        self.gpu_history_dec: deque = deque(maxlen=60)
         self.gpu_enabled = False
         self.encoder: Optional[str] = None       # "gpu" | "cpu" (server's choice at start)
         self.encoder_note: Optional[str] = None  # why not GPU
@@ -344,6 +346,8 @@ class ClientState:
                 self.gpu_history_gpu.append(sample.gpu_util_pct)
                 self.gpu_history_mem.append(sample.mem_util_pct)
                 self.gpu_history_fan.append(sample.fan_pct)
+                self.gpu_history_enc.append(getattr(sample, "enc_util_pct", None))
+                self.gpu_history_dec.append(getattr(sample, "dec_util_pct", None))
             if page.samples:
                 self.gpu_last_seq = page.samples[-1].seq
 

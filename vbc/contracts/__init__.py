@@ -237,6 +237,15 @@ class GpuSample(_Dto):
     gpu_util_pct: Optional[float] = None
     mem_util_pct: Optional[float] = None
     fan_pct: Optional[float] = None
+    # From nvidia-smi (None when the server reads nvtop):
+    enc_util_pct: Optional[float] = None
+    dec_util_pct: Optional[float] = None
+    mem_used_mib: Optional[float] = None
+    mem_total_mib: Optional[float] = None
+    power_limit_w: Optional[float] = None
+    gpu_clock_mhz: Optional[float] = None
+    mem_clock_mhz: Optional[float] = None
+    throttle: Optional[str] = None
     raw: Optional[dict] = None
 
 

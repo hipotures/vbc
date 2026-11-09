@@ -282,7 +282,7 @@ exiftool -XMP-vbc:all /path/to/videos_out/compressed_video.mp4
 | **Python** | 3.12+ | Runtime |
 | **FFmpeg** | 6.0+ | Video encoding (with `av1_nvenc` or `libsvtav1`) |
 | **ExifTool** | Any recent | Metadata extraction and copy (required in current runtime flow) |
-| **nvtop** | - | GPU monitoring panel (NVIDIA GPUs only) |
+| **nvidia-smi** / **nvtop** | - | GPU monitoring panel (NVIDIA GPUs only; `vbc serve` reads `nvidia-smi`, `nvtop` when it is missing) |
 | **OS** | Linux, macOS, Windows (WSL) | Platform support |
 
 ### Step 1: Install System Dependencies
