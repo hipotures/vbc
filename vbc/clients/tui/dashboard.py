@@ -1475,11 +1475,12 @@ class Dashboard:
         if not getattr(self.state, "locked", False):
             return display
         strong = time.monotonic() < getattr(self.state, "lock_flash_until", 0.0)
+        # Same text in both states (only colours change), so nothing moves.
         if strong:
-            text = Text.from_markup("[bold yellow]🔒 LOCKED[/]   [bold white on dark_orange] Shift+U [/]", justify="center")
+            text = Text.assemble(("🔒 locked · ", "bold yellow"), ("Shift+U", "bold white on dark_orange"), justify="center")
             border, dim = "bold yellow", "dark"
         else:
-            text = Text.from_markup("[grey42]🔒 locked · Shift+U[/]", justify="center")
+            text = Text.assemble(("🔒 locked · Shift+U", "grey42"), justify="center")
             border, dim = "grey27", "light"
         width = min(max(self.console.size.width, 1), 34)
         panel = Panel(text, border_style=border, width=width, padding=(0, 1))
