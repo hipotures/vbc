@@ -100,16 +100,16 @@ def _wait_exit(pid: int, master: int, buf: bytearray, timeout: float = 5.0) -> i
 
 
 def test_tui_quit_keys_and_session_log(demo_config, serve_factory):
-    """q and Ctrl+Q quit at once (S does nothing); the server logs connect and quit."""
+    """q and Ctrl+Q quit at once (S stops processing only); the server logs connect and quit."""
     serve = serve_factory(["--demo", "--config", str(demo_config)])
     for key in (b"q", b"\x11"):
         pid, master = _start_tui(serve.port)
         buf = bytearray()
         try:
             _read(master, buf, 4)
-            os.write(master, b"S")  # not a TUI action: nothing may happen to the server
-            _read(master, buf, 1)
-            assert serve.state()["stop_requested"] is False
+            os.write(master, b"S")  # graceful stop: processing stops, the server stays up
+            serve.wait_for(lambda s: s["run_status"] in ("stopping", "stopped"), timeout=10)
+            assert serve.http.post("/api/v1/refresh").status_code == 202
             started = time.monotonic()
             os.write(master, key)
             assert _wait_exit(pid, master, buf) == 0

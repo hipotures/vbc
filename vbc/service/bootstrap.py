@@ -224,7 +224,9 @@ class VbcServer:
         self._finished = threading.Event()
         self._exit_requested = threading.Event()
         self._resume = threading.Event()
-        self.bus.subscribe(RefreshRequested, lambda _event: self._resume.set())
+        # After a stop only an explicit refresh (R, POST /refresh) resumes;
+        # watchers and Dirs changes do not.
+        self.bus.subscribe(RefreshRequested, lambda event: None if event.automatic else self._resume.set())
         self._on_exit: List[Callable[[], None]] = []
         self._stop_timer: Optional[threading.Timer] = None
         self.orchestrator = self._build_orchestrator()

@@ -281,11 +281,11 @@ class Orchestrator:
                 message = None
             elif event.requested:
                 self._shutdown_requested = True
-                message = "SHUTDOWN requested"
+                message = "STOP requested: running jobs finish, nothing new starts"
                 self._wait_event.set()  # Wake up wait loop if waiting
             else:
                 self._shutdown_requested = False
-                message = "SHUTDOWN cancelled"
+                message = "STOP cancelled"
             self._thread_lock.notify_all()
         if message is not None:
             from vbc.domain.events import ActionMessage

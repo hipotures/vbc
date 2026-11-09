@@ -752,7 +752,8 @@ class Dashboard:
                 indicator = "[magenta]◐[/]"
             elif self.state.waiting_for_input:
                 status = "[yellow]WAITING[/]"
-                indicator = "[yellow]⏸[/]"
+                # ⏸ is drawn two cells wide in most terminals: pad it.
+                indicator = "[yellow]⏸[/] "
             elif self.state.finished:
                 status = "[green]FINISHED[/]"
             elif self.state.interrupt_requested:
@@ -803,11 +804,13 @@ class Dashboard:
             elif self.state.repair_active:
                 l3 = "[dim]Repairing failed files from this session[/]"
             elif self.state.stopped:
-                l3 = "[dim]Processing stopped  │  R = resume  │  Q = quit[/]"
+                l3 = "[dim]Stopped, nothing runs  │  R = resume  │  Q = quit[/]"
+            elif self.state.stopping:
+                l3 = "[dim]Finishing running jobs  │  S = cancel stop  │  Q = quit[/]"
             elif self.state.waiting_for_input or self.state.error_paused:
-                l3 = "[dim]R = rescan  │  M = menu  │  Q = quit[/]"
+                l3 = "[dim]R = rescan  │  S = stop  │  M = menu  │  Q = quit[/]"
             else:
-                l3 = "[dim]M = menu  │  Q = quit (server keeps running)[/]"
+                l3 = "[dim]S = stop  │  M = menu  │  Q = quit (server keeps running)[/]"
             left_content = f"{l1}\n{l2}\n{l3}"
 
             # 3. GPU Metrics (Right Side)

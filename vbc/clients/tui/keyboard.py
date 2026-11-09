@@ -12,6 +12,7 @@ from vbc.clients.tui.events import (
     Event,
     QuitRequested,
     RefreshRequested,
+    StopRequested,
     ThreadControlEvent,
     DirsCursorMove,
     DirsSwapSelected,
@@ -287,7 +288,9 @@ class KeyboardListener:
                         self.event_bus.publish(ThreadControlEvent(change=1))
                     elif key in (',', '<'):
                         self.event_bus.publish(ThreadControlEvent(change=-1))
-                    # S (shutdown) is not a TUI action: the server keeps running.
+                    elif key in ('S', 's'):
+                        # Stop processing (the server keeps running; R resumes).
+                        self.event_bus.publish(StopRequested())
                     elif key in ('Q', 'q'):
                         self.event_bus.publish(QuitRequested())
                         break

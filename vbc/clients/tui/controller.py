@@ -16,7 +16,7 @@ from vbc.clients.api_client import ApiClient, ApiError, ApiUnavailable
 from vbc.clients.tui.bus import EventBus
 from vbc.clients.tui.state import MAX_INPUT_DIR_LEN, ClientState
 from vbc.clients.tui.events import (
-    ActionMessage, QuitRequested, RefreshRequested, ThreadControlEvent,
+    ActionMessage, QuitRequested, RefreshRequested, StopRequested, ThreadControlEvent,
     DirsCursorMove, DirsSwapSelected, DirsToggleSelected, DirsEnterAddMode, DirsMarkDelete,
     DirsInputChar, DirsConfirmAdd, DirsCancelInput, DirsApplyChanges, DirsScanMounts,
 )
@@ -53,6 +53,7 @@ class TuiController:
     def _setup_subscriptions(self):
         self.bus.subscribe(ThreadControlEvent, self.on_thread_control)
         self.bus.subscribe(RefreshRequested, self.on_refresh_request)
+        self.bus.subscribe(StopRequested, self.on_stop_request)
         self.bus.subscribe(QuitRequested, self.on_quit_request)
         self.bus.subscribe(ActionMessage, self.on_action_message)
         self.bus.subscribe(ToggleOverlayTab, self.on_toggle_overlay_tab)
@@ -100,6 +101,17 @@ class TuiController:
                 return
             target = self.state.current_threads + event.change
         self._command("Threads", lambda: (self.client.set_threads(target), None)[1])
+
+    def on_stop_request(self, event: StopRequested):
+        """S: graceful stop; S while stopping cancels it; R resumes after a stop."""
+        with self.state._lock:
+            stopping, stopped = self.state.stopping, self.state.stopped
+        if stopped:
+            self.state.set_last_action("Stopped: R resumes")
+        elif stopping:
+            self._command("Cancel stop", lambda: (self.client.cancel_stop(), None)[1])
+        else:
+            self._command("Stop", lambda: (self.client.stop("graceful"), None)[1])
 
     def on_refresh_request(self, event: RefreshRequested):
         self._command("Refresh", lambda: (self.client.refresh(), None)[1])

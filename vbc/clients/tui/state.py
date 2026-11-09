@@ -520,7 +520,6 @@ class ClientState:
             next_idx = (current_idx + direction) % len(self.OVERLAY_DIM_LEVELS)
             self.overlay_dim_level = self.OVERLAY_DIM_LEVELS[next_idx]
 
-    @staticmethod
     def logs_total_pages(self) -> int:
         with self._lock:
             if not self.session_error_logs:

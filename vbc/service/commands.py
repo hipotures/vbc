@@ -318,5 +318,5 @@ class CommandService:
                 raise CommandError(422, "invalid directory list", errors=errors)
             self._commit(normalized)
         self._after_commit()
-        self._bus.publish(RefreshRequested())
+        self._bus.publish(RefreshRequested(automatic=True))
         return self.dirs()

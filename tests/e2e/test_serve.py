@@ -168,3 +168,37 @@ def test_stop_and_resume_on_real_media(media_tree, serve_factory):
     after = record_legacy.snapshot(root)
     assert record_legacy.diff(before, after) == EXPECTED["run1"]["changes"]
     assert after == EXPECTED["run1"]["tree"]
+
+
+def test_stopped_server_ignores_new_files_until_refresh(media_tree, serve_factory):
+    """STOP: a watched folder getting a new file starts nothing; R (refresh) resumes."""
+    import shutil
+
+    import yaml
+
+    config = yaml.safe_load(media_tree["config"].read_text())
+    config["input_dirs"] = [
+        {**entry, "watch": True, "watch_mode": "polling", "poll_interval_seconds": 1}
+        if not entry["metadata"] else entry
+        for entry in config["input_dirs"]
+    ]
+    media_tree["config"].write_text(yaml.safe_dump(config, sort_keys=False))
+    videos = media_tree["videos"]
+    serve = serve_factory(["--config", str(media_tree["config"])])
+    serve.wait_for(lambda s: s["run_status"] == "idle" and s["discovery"]["finished"], timeout=300)
+
+    assert serve.http.post("/api/v1/stop", json={"mode": "graceful"}).status_code == 202
+    stopped = serve.wait_for(lambda s: s["run_status"] == "stopped", timeout=60)
+
+    shutil.copy(videos / "clip_001.mp4", videos / "late_arrival.mp4")
+    time.sleep(5)  # several polling intervals
+    state = serve.state()
+    assert state["run_status"] == "stopped" and state["counters"] == stopped["counters"]
+    assert not list((videos.parent / "videos_out").rglob("late_arrival.mp4"))
+
+    assert serve.http.post("/api/v1/refresh").status_code == 202
+    serve.wait_for(
+        lambda s: s["run_status"] == "idle" and s["counters"]["completed"] > stopped["counters"]["completed"],
+        timeout=300,
+    )
+    assert list((videos.parent / "videos_out").rglob("late_arrival.mp4"))

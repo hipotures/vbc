@@ -85,7 +85,7 @@ class PollingWatcher:
     def _poll_once(self) -> None:
         if self._sync_directories():
             self.logger.info("Polling watcher detected new input")
-            self.event_bus.publish(RefreshRequested())
+            self.event_bus.publish(RefreshRequested(automatic=True))
 
     def _run(self) -> None:
         while not self._stop_event.wait(self.poll_interval_seconds):

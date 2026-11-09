@@ -101,6 +101,9 @@ class RefreshRequested(Event):
     """Request a full refresh or incremental discovery of ready manifests."""
 
     manifest_paths: List[Path] = Field(default_factory=list)
+    # Raised by a watcher or a Dirs change, not by a person: it never resumes
+    # processing after a stop (only an explicit refresh does).
+    automatic: bool = False
 
 class InputDirsChanged(Event):
     """Emitted when the active input_dirs list changes (e.g. after PUT /dirs)."""

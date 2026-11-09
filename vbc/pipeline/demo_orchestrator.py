@@ -147,10 +147,10 @@ class DemoOrchestrator:
                 message = None
             elif event.requested:
                 self._shutdown_requested = True
-                message = "SHUTDOWN requested"
+                message = "STOP requested: running jobs finish, nothing new starts"
             else:
                 self._shutdown_requested = False
-                message = "SHUTDOWN cancelled"
+                message = "STOP cancelled"
             self._thread_lock.notify_all()
         if message is not None:
             self.event_bus.publish(ActionMessage(message=message))

@@ -150,7 +150,7 @@ class ManifestWatcher:
                 self._ready_paths.clear()
                 if ready_paths:
                     self.event_bus.publish(
-                        RefreshRequested(manifest_paths=ready_paths)
+                        RefreshRequested(manifest_paths=ready_paths, automatic=True)
                     )
 
     def _handle_event(self, wd: int, mask: int, name: str) -> None:
@@ -158,7 +158,7 @@ class ManifestWatcher:
             self._refresh_deadline = None
             self._ready_paths.clear()
             self._alert("Manifest watcher queue overflow; forcing full refresh")
-            self.event_bus.publish(RefreshRequested())
+            self.event_bus.publish(RefreshRequested(automatic=True))
             return
 
         directory = self._wd_to_path.get(wd)

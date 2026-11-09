@@ -26,6 +26,10 @@ class RefreshRequested(Event):
     """Key R: ask the server for a rescan."""
 
 
+class StopRequested(Event):
+    """Key S: finish the running jobs, start nothing new (S again cancels)."""
+
+
 class ThreadControlEvent(Event):
     """Keys < / >: change the server thread count by +-1 (sent as an absolute target)."""
 
