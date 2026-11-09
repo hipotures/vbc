@@ -947,7 +947,14 @@ class Dashboard:
             else:
                 content = left_content
             
-        return Panel(content, border_style="cyan", title=Text(single_line(self.state.ui_title)))
+        # Top border: "VBC"; bottom border: server version (left), host:port (right).
+        version = single_line(f"v{self.state.server_version}" if self.state.server_version else "v?")
+        host = single_line(self.state.server_netloc or "")
+        inner = max(0, self.console.size.width - 4)  # corners and the spaces Rich adds
+        gap = max(1, inner - len(version) - len(host) - 2)
+        subtitle = Text(f"{version}{' ' * gap}{host}") if host else Text(version)
+        return Panel(content, border_style="cyan", title=Text("VBC"),
+                     subtitle=subtitle, subtitle_align="left")
 
     def _generate_progress(self, h_lines: int) -> Panel:
         """Progress bar + counters (size-based progress)."""
