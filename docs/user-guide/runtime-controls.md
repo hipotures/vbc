@@ -10,12 +10,12 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | `>` or `.` | Increase threads | Increase max concurrent threads by 1 (interactive max: 8) |
 | `S` or `s` | Graceful shutdown / Cancel | Stop accepting new jobs, finish active compressions. Press again to cancel shutdown |
 | `R` or `r` | Refresh queue | Re-scan input directory and add new files |
-| `C` or `c` | Overlay: Prefs | Toggle Prefs tab |
+| `P` or `p` | Overlay: Prefs | Toggle Prefs tab |
 | `F` or `f` | Overlay: I/O | Toggle I/O tab |
 | `D` or `d` | Overlay: Dirs | Toggle Dirs tab |
 | `E` or `e` | Overlay: Ref | Toggle Ref tab |
 | `L` or `l` | Overlay: Logs | Toggle logs tab (session errors) |
-| `M` or `m` | Overlay: Keys | Toggle Keys tab |
+| `K` or `k` | Overlay: Keys | Toggle Keys tab |
 | `T` or `t` | Overlay: TUI | Toggle TUI tab |
 | `Tab` | Cycle overlay tabs | Next tab: Keys -> Prefs -> I/O -> Dirs -> TUI -> Ref -> Logs |
 | `[` | Logs previous page | Previous page in Logs tab |
@@ -23,7 +23,7 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | `I` or `i` | Dim overlay | Cycle overlay dim level |
 | `G` or `g` | Rotate GPU metric | Cycle GPU sparkline metric |
 | `W` or `w` | Sparkline preset | Cycle preset |
-| `P` or `p` | Sparkline palette | Cycle palette |
+| `O` or `o` | Sparkline palette | Cycle palette |
 | `Esc` | Close overlay | Close active overlay tab |
 | `Ctrl+C` | Immediate interrupt | Terminate active compressions immediately |
 
@@ -230,14 +230,14 @@ uv run vbc run /videos --wait --bell
 
 When `bell_on_finish: true` (or `--bell`), a terminal bell plays when VBC enters the wait state. This lets you know processing is done without watching the screen.
 
-## Configuration Overlay (`C`)
+## Configuration Overlay (`P`)
 
 Toggles full configuration display.
 
 **Behavior:**
 - Shows full VBC configuration (similar to startup)
 - Overlays main dashboard
-- Press `C` again or `Esc` to close
+- Press `P` again or `Esc` to close
 
 **Use case:** Verify settings without restarting
 

@@ -37,7 +37,7 @@ UNLOCK_QUIET_S = 0.15   # Shift+U unlocks only as a lone key (not inside pasted 
 
 
 class ToggleConfig(Event):
-    """DEPRECATED: Use ToggleOverlayTab instead. Event emitted when user toggles config display (Key 'C')."""
+    """DEPRECATED: Use ToggleOverlayTab instead. Event emitted when user toggles config display (Key 'P')."""
     pass
 
 class ToggleLegend(Event):
@@ -45,7 +45,7 @@ class ToggleLegend(Event):
     pass
 
 class ToggleMenu(Event):
-    """DEPRECATED: Use ToggleOverlayTab instead. Event emitted when user toggles menu display (Key 'M')."""
+    """DEPRECATED: Use ToggleOverlayTab instead. Event emitted when user toggles menu display (Key 'K')."""
     pass
 
 class HideConfig(Event):
@@ -82,7 +82,7 @@ class CycleSparklinePreset(Event):
     direction: int = 1  # 1=next, -1=previous
 
 class CycleSparklinePalette(Event):
-    """Event emitted to cycle GPU sparkline palette (Key 'P')."""
+    """Event emitted to cycle GPU sparkline palette (Key 'O')."""
     direction: int = 1  # 1=next, -1=previous
 
 class KeyboardListener:
@@ -377,13 +377,13 @@ class KeyboardListener:
                     elif key in ('R', 'r'):
                         self.event_bus.publish(RefreshRequested())
                         self.event_bus.publish(ActionMessage(message="REFRESH requested"))
-                    elif key in ('C', 'c'):
+                    elif key in ('P', 'p'):
                         self.event_bus.publish(ToggleOverlayTab(tab="settings"))
                     elif key in ('L', 'l'):
                         self.event_bus.publish(ToggleOverlayTab(tab="logs"))
                     elif key in ('E', 'e'):
                         self.event_bus.publish(ToggleOverlayTab(tab="reference"))
-                    elif key in ('M', 'm'):
+                    elif key in ('K', 'k'):
                         self.event_bus.publish(ToggleOverlayTab(tab="shortcuts"))
                     elif key in ('F', 'f'):
                         self.event_bus.publish(ToggleOverlayTab(tab="io"))
@@ -401,7 +401,7 @@ class KeyboardListener:
                         self.event_bus.publish(CycleOverlayTab(direction=1))
                     elif key in ('W', 'w'):
                         self.event_bus.publish(CycleSparklinePreset(direction=1))
-                    elif key in ('P', 'p'):
+                    elif key in ('O', 'o'):
                         self.event_bus.publish(CycleSparklinePalette(direction=1))
                     elif key in ('G', 'g'):
                         self.event_bus.publish(RotateGpuMetric())

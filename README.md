@@ -119,8 +119,8 @@ Dynamic thread adjustment while processing:
 <table>
   <tr>
     <td width="33%"><img src="assets/images/scr-dashboard.png" alt="Dashboard"/><br/><b>Dashboard</b></td>
-    <td width="33%"><img src="assets/images/scr-settings.png" alt="Prefs"/><br/><b>Prefs [C]</b></td>
-    <td width="33%"><img src="assets/images/scr-shortcuts.png" alt="Keys"/><br/><b>Keys [M]</b></td>
+    <td width="33%"><img src="assets/images/scr-settings.png" alt="Prefs"/><br/><b>Prefs [P]</b></td>
+    <td width="33%"><img src="assets/images/scr-shortcuts.png" alt="Keys"/><br/><b>Keys [K]</b></td>
   </tr>
   <tr>
     <td><img src="assets/images/scr-folders.png" alt="I/O Folders"/><br/><b>I/O Folders [F]</b></td>

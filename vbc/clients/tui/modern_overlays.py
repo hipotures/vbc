@@ -342,7 +342,7 @@ class SettingsOverlay:
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
             f"[white on {COLORS['border']}] E [/] Ref • "
-            f"[white on {COLORS['border']}] M [/] Keys[/]",
+            f"[white on {COLORS['border']}] K [/] Keys[/]",
             justify="center"
         )
 
@@ -355,7 +355,7 @@ class SettingsOverlay:
         return Panel(
             content_with_footer,
             title="[bold white]⚙ PREFS[/]",
-            subtitle=f"[{COLORS['dim']}][C] to toggle[/]",
+            subtitle=f"[{COLORS['dim']}][P] to toggle[/]",
             border_style=COLORS['accent_green'],
             box=ROUNDED,
             padding=(1, 2),
@@ -458,7 +458,7 @@ class IoOverlay:
         """Returns complete Panel with footer (for backward compatibility)."""
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] C [/] Prefs • "
+            f"[white on {COLORS['border']}] P [/] Prefs • "
             f"[white on {COLORS['border']}] E [/] Ref[/]",
             justify="center"
         )
@@ -664,8 +664,8 @@ class ReferenceOverlay:
         """Returns complete Panel with footer (for backward compatibility)."""
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] C [/] Prefs • "
-            f"[white on {COLORS['border']}] M [/] Keys[/]",
+            f"[white on {COLORS['border']}] P [/] Prefs • "
+            f"[white on {COLORS['border']}] K [/] Keys[/]",
             justify="center"
         )
 
@@ -694,8 +694,8 @@ class ShortcutsOverlay:
     Panel skrótów klawiszowych - pogrupowane tematycznie.
     
     Grupy:
-    - NAVIGATION: M, Esc, Ctrl+C
-    - PANELS: C, E, L, G
+    - NAVIGATION: K, Esc, Ctrl+C
+    - PANELS: P, F, D, T, E, L, G
     - JOB CONTROL: S, R, </>, </>
     + Quick Reference z kolorowymi badge'ami
     """
@@ -704,8 +704,8 @@ class ShortcutsOverlay:
         """Returns content without outer Panel or footer (for tabbed overlay)."""
 
         key_labels = [
-            "M", "Esc", "Q", "Ctrl+C",
-            "C", "F", "D", "E", "L", "T", "I", "W", "P", "G",
+            "K", "Esc", "Q", "Ctrl+C",
+            "P", "F", "D", "E", "L", "T", "I", "W", "O", "G",
             "[", "]", "R", "< ,", "> .",
             "< >", "R",
         ]
@@ -720,7 +720,7 @@ class ShortcutsOverlay:
         nav_table.add_column()
         
         nav_table.add_row(
-            key_badge("M"),
+            key_badge("K"),
             "Toggle Keys tab"
         )
         nav_table.add_row(
@@ -747,8 +747,8 @@ class ShortcutsOverlay:
         panels_table.add_column()
         
         panels_table.add_row(
-            key_badge("C"),
-            "Configuration details"
+            key_badge("P"),
+            "Prefs: configuration details"
         )
         panels_table.add_row(
             key_badge("F"),
@@ -858,7 +858,7 @@ class ShortcutsOverlay:
         """Returns complete Panel with footer (for backward compatibility)."""
         footer = Text.from_markup(
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
-            f"[white on {COLORS['border']}] C [/] Prefs • "
+            f"[white on {COLORS['border']}] P [/] Prefs • "
             f"[white on {COLORS['border']}] E [/] Ref[/]",
             justify="center"
         )
@@ -872,7 +872,7 @@ class ShortcutsOverlay:
         return Panel(
             content_with_footer,
             title="[bold white]⌨ KEYS[/]",
-            subtitle=f"[{COLORS['dim']}][M] to toggle[/]",
+            subtitle=f"[{COLORS['dim']}][K] to toggle[/]",
             border_style=COLORS['accent_cyan'],
             box=ROUNDED,
             padding=(1, 2),
@@ -977,7 +977,7 @@ class TuiOverlay:
         )
         sparkline_table.add_row(
             "Palette",
-            f"{self._render_sparkline_palettes()}  [{COLORS['dim']}][P] cycle[/]",
+            f"{self._render_sparkline_palettes()}  [{COLORS['dim']}][O] cycle[/]",
         )
 
         sparkline_card = make_card(
@@ -1000,7 +1000,7 @@ class TuiOverlay:
             f"[{COLORS['dim']}]Press [white on {COLORS['border']}] Esc [/] close • "
             f"[white on {COLORS['border']}] I [/] Dim level • "
             f"[white on {COLORS['border']}] W [/] Sparkline • "
-            f"[white on {COLORS['border']}] P [/] Palette[/]",
+            f"[white on {COLORS['border']}] O [/] Palette[/]",
             justify="center",
         )
 

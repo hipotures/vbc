@@ -1141,24 +1141,26 @@ class Dashboard:
         pw = min(max(w, 1), max(95, w - 10))
 
         # === TABS (top border) and KEY HINTS (bottom border) ===
-        tab_order = [("shortcuts", "Keys", "M"), ("settings", "Prefs", "C"), ("io", "Files", "F"),
-                     ("dirs", "Dirs", "D"), ("tui", "TUI", "T"), ("reference", "Ref", "E"),
-                     ("logs", "Logs", "L")]
-        key_style = "bold yellow"  # the hotkey letter; the label stays white/grey
-
+        # (tab id, name, index of the hotkey letter in the name)
+        tab_order = [("shortcuts", "Keys", 0), ("settings", "Prefs", 0), ("io", "Files", 0),
+                     ("dirs", "Dirs", 0), ("tui", "TUI", 0), ("reference", "Ref", 1),
+                     ("logs", "Logs", 0)]
+        key_style = "bold yellow"  # the hotkey letter inside the name
         active_bg = "on #1f5f6b"  # dark teal under the active tab (the border is cyan)
 
-        def tab_label(name: str, key: str, active: bool) -> Text:
-            if active:
-                return Text.assemble((f" {name} ", f"bold white {active_bg}"),
-                                     (f"{key} ", f"bold yellow {active_bg}"))
-            return Text.assemble((name, "grey50"), " ", (key, "yellow"))
+        def tab_label(name: str, at: int, active: bool) -> Text:
+            base = f"bold white {active_bg}" if active else "grey50"
+            key = f"bold yellow {active_bg}" if active else "yellow"
+            label = Text(f" {name} " if active else name, style=base)
+            shift = 1 if active else 0
+            label.stylize(key, at + shift, at + shift + 1)
+            return label
 
-        tabs_title = Text.assemble(*(tight(tab_label(name, key, tab_id == active_tab), TOP)
-                                     for tab_id, name, key in tab_order))
+        tabs_title = Text.assemble(*(tight(tab_label(name, at, tab_id == active_tab), TOP)
+                                     for tab_id, name, at in tab_order))
         if tabs_title.cell_len > pw - 4:  # too narrow for all tabs: the active one only
-            name, key = next(((n, k) for t, n, k in tab_order if t == active_tab), ("Ref", "E"))
-            tabs_title = tight(tab_label(name, key, True), TOP)
+            name, at = next(((n, a) for t, n, a in tab_order if t == active_tab), ("Ref", 1))
+            tabs_title = tight(tab_label(name, at, True), TOP)
         hints = Text.assemble(*(tight(Text.assemble((key, key_style), " ", (what, "grey70")), BOTTOM)
                                 for key, what in (("Tab", "next"), ("Esc", "close"))))
 

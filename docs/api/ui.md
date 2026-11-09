@@ -267,9 +267,9 @@ display = sanitize(filename)
 | `>` or `.` | `ThreadControlEvent(change=+1)` | Orchestrator increases threads |
 | `S` or `s` | `RequestShutdown()` | Orchestrator graceful shutdown |
 | `R` or `r` | `RefreshRequested()` | Orchestrator re-scans directory |
-| `C` or `c` | `ToggleOverlayTab(tab="settings")` | UIManager toggles Prefs tab |
+| `P` or `p` | `ToggleOverlayTab(tab="settings")` | UIManager toggles Prefs tab |
 | `F` or `f` | `ToggleOverlayTab(tab="io")` | UIManager toggles I/O tab |
-| `M` or `m` | `ToggleOverlayTab(tab="shortcuts")` | UIManager toggles Keys tab |
+| `K` or `k` | `ToggleOverlayTab(tab="shortcuts")` | UIManager toggles Keys tab |
 | `D` or `d` | `ToggleOverlayTab(tab="dirs")` | UIManager toggles Dirs tab |
 | `T` or `t` | `ToggleOverlayTab(tab="tui")` | UIManager toggles TUI tab |
 | `E` or `e` | `ToggleOverlayTab(tab="reference")` | UIManager toggles Ref tab |
@@ -277,7 +277,7 @@ display = sanitize(filename)
 | `I` or `i` | `CycleOverlayDim(direction=+1)` | UIManager cycles overlay dim level |
 | `G` or `g` | `RotateGpuMetric()` | UIManager rotates the GPU metric shown in the top bar |
 | `W` or `w` | `CycleSparklinePreset(direction=+1)` | UIManager cycles sparkline presets |
-| `P` or `p` | `CycleSparklinePalette(direction=+1)` | UIManager cycles sparkline palettes |
+| `O` or `o` | `CycleSparklinePalette(direction=+1)` | UIManager cycles sparkline palettes |
 | `[` / `]` | `CycleLogsPage(direction=-1/+1)` | UIManager pages Logs tab |
 | `Tab` | `CycleOverlayTab(direction=+1)` | UIManager cycles tabs |
 | `Esc` | `CloseOverlay()` | UIManager closes active overlay |
@@ -285,7 +285,7 @@ display = sanitize(filename)
 
 ## Prefs Overlay
 
-Toggle with `C` key:
+Toggle with `P` key:
 
 ```
 ┌─ CONFIGURATION ────────────────────────────────┐

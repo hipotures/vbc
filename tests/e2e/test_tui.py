@@ -52,7 +52,7 @@ def test_tui_renders_sends_commands_and_detaches(demo_config, serve_factory):
         _read(master, buf, 2)
         assert serve.state()["threads"]["current"] == threads_before + 1
 
-        os.write(master, b"C")  # settings overlay, built from /config
+        os.write(master, b"P")  # Prefs overlay, built from /config
         _read(master, buf, 2)
         assert "SVT-AV1" in _text(bytes(buf))
 

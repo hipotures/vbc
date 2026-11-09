@@ -40,7 +40,7 @@ the config file checked on disk, `errors`, `logs`, `config`, `log-level`,
 
 `test_tui.py` starts `vbc tui` in a real pseudo-terminal (controlling tty)
 against `serve --demo`: the dashboard renders, `>` changes the server's
-threads, `C` shows the settings built from `/config`, Ctrl+C quits with exit
+threads, `P` shows the Prefs tab built from `/config`, Ctrl+C quits with exit
 code 0 and the server keeps running; a second scenario checks that `S`
 does nothing, `q` and Ctrl+Q quit within a second, and the server log shows
 `Client connected` / `Client disconnected (quit)` for each session.
