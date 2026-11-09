@@ -273,6 +273,22 @@ def bin_value(val: Optional[float], min_val: float, max_val: float, num_bins: in
     return min(num_bins - 1, int(ratio * num_bins))
 
 
+MIN_SPAN_RATIO = 0.1  # the smallest height range: 10% of the metric's scale
+
+
+def window_range(samples: Sequence[Optional[float]], min_val: float, max_val: float) -> tuple[float, float]:
+    """Height range for the visible samples: their own min..max, at least 10% of
+    the metric's scale wide (flat readings sit mid-height, not on the floor).
+    Small changes (GPU 14% -> 21%) move the bars; colours keep the fixed scale."""
+    values = [v for v in samples if v is not None]
+    if not values:
+        return min_val, max_val
+    lo, hi = min(values), max(values)
+    span = max(hi - lo, (max_val - min_val) * MIN_SPAN_RATIO)
+    mid = (lo + hi) / 2
+    return mid - span / 2, mid + span / 2
+
+
 def render_sparkline(
     history: Iterable[Optional[float]],
     spark_len: int,
@@ -287,10 +303,11 @@ def render_sparkline(
         return ""
 
     samples = list(history)[-spark_len:]  # Last N samples (oldest -> newest)
+    lo, hi = window_range(samples, min_val, max_val)
     chars: List[str] = []
     visible_len = 0
     for val in samples:
-        bin_idx = bin_value(val, min_val, max_val, style.num_bins)
+        bin_idx = bin_value(val, lo, hi, style.num_bins)
         if bin_idx < 0 or not style.blocks:
             char = style.missing
             if palette:
