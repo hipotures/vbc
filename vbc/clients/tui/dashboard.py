@@ -799,18 +799,8 @@ class Dashboard:
             # 2. Build Left Content (Fixed 3 lines)
             l1 = f"{indicator} {status} • Threads: {threads_display}{paused}"
             l2 = f"ETA: {eta_str} • {throughput_str} • {saved} saved ({(1-ratio)*100:.1f}%)"
-            if not self.state.connected:
-                l3 = "[dim]Waiting for the server…  │  Q = quit[/]"
-            elif self.state.repair_active:
-                l3 = "[dim]Repairing failed files from this session[/]"
-            elif self.state.stopped:
-                l3 = "[dim]Stopped, nothing runs  │  R = resume  │  Q = quit[/]"
-            elif self.state.stopping:
-                l3 = "[dim]Finishing running jobs  │  S = cancel stop  │  Q = quit[/]"
-            elif self.state.waiting_for_input or self.state.error_paused:
-                l3 = "[dim]R = rescan  │  S = stop  │  M = menu  │  Q = quit[/]"
-            else:
-                l3 = "[dim]S = stop  │  M = menu  │  Q = quit (server keeps running)[/]"
+            # No key hints (they are in the Keys tab, M); only a repair notice.
+            l3 = "[dim]Repairing failed files from this session[/]" if self.state.repair_active else ""
             left_content = f"{l1}\n{l2}\n{l3}"
 
             # 3. GPU Metrics (Right Side)
