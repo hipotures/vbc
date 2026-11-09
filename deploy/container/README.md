@@ -35,6 +35,9 @@ Unpacked size: about 670 MB (about 180 MB of it the bundled NVIDIA libraries).
 | Logs | stdout/stderr |
 | Stop | SIGTERM → running jobs finish (≤ `server.stop_timeout_s`, 600 s), then exit 0 |
 
+The HomeStack manifest sets `runtime.stop_timeout_seconds: 600`, allowing
+10 minutes for running jobs to finish during image updates.
+
 * The entrypoint refuses to start unless `/home/app` is a mounted volume.
 * `VBC_UID`/`VBC_GID` (default 0): run the server as that user, e.g. the media
   owner's 1000, so it has exactly that user's permissions (no ACLs). The
