@@ -13,7 +13,7 @@ import threading
 import queue
 import shlex
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 from vbc.domain.models import CompressionJob, JobStatus
 from vbc.config.models import AppConfig
 from vbc.config.rate_control import ResolvedRateControl
@@ -400,20 +400,34 @@ class FFmpegAdapter:
             "-reinit_filter",
             "0",
         ]
-        cmd.extend(["-fflags", "+genpts+igndts", "-avoid_negative_ts", "make_zero"])
-        for part in request.parts:
+        cmd.extend(["-avoid_negative_ts", "make_zero"])
+        # Each part is opened twice: once for video, once for audio. With one
+        # demuxer feeding both, the graph buffers decoded video until audio
+        # arrives; a recording whose audio starts minutes after its video then
+        # fills memory (OOM). Both inputs of a part are the same file, so ffmpeg
+        # shifts them by the same offset (the file's start time) and the
+        # audio/video alignment of the source is kept.
+        audio_inputs: Dict[int, int] = {}
+        for index, part in enumerate(request.parts):
             if rotate is not None:
                 cmd.append("-noautorotate")
-            cmd.extend(["-i", str(part.path)])
+            cmd.extend(["-fflags", "+genpts+igndts", "-i", str(part.path)])
+        for index, part in enumerate(request.parts):
+            if not request.drop_audio and part.audio_packets > 0:
+                audio_inputs[index] = len(request.parts) + len(audio_inputs)
+                cmd.extend(["-fflags", "+genpts+igndts", "-i", str(part.path)])
 
         video_filters: List[str] = []
         audio_filters: List[str] = []
         concat_inputs: List[str] = []
         for index, part in enumerate(request.parts):
+            # No per-stream PTS-STARTPTS: ffmpeg already starts each input at
+            # its file start, and zeroing video and audio separately would
+            # shift audio that starts later than video to the beginning.
             if part.rebuild_timestamps:
                 video_chain = [f"setpts=N/({part.fps:.6f}*TB)"]
             else:
-                video_chain = ["setpts=PTS-STARTPTS"]
+                video_chain = []
             if rotate == 180:
                 video_chain.extend(["transpose=2", "transpose=2"])
             elif rotate == 90:
@@ -444,13 +458,10 @@ class FFmpegAdapter:
                 audio_tail = ""
                 if part.duration > 0:
                     audio_tail = f",apad,atrim=duration={part.duration:.6f}"
-                audio_setpts = (
-                    "asetpts=N/SR/TB"
-                    if part.rebuild_timestamps
-                    else "asetpts=PTS-STARTPTS"
-                )
+                # aresample first_pts=0 fills a late audio start with silence.
+                audio_setpts = "asetpts=N/SR/TB," if part.rebuild_timestamps else ""
                 audio_filters.append(
-                    f"[{index}:a:0]{audio_setpts},"
+                    f"[{audio_inputs[index]}:a:0]{audio_setpts}"
                     "aresample=48000:async=1:first_pts=0,"
                     "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
                     f"{audio_tail}"
