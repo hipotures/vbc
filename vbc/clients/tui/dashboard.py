@@ -585,11 +585,8 @@ class Dashboard:
             ratio = (diff / in_s) * 100 if in_s > 0 else 0
             dur = self.format_time(job.duration_seconds)
 
-            # Show config source prefix (G/L/C), then the source codec
+            # Show config source prefix (G/L/C)
             source_prefix = job.config_source.value if job.config_source else "G"
-            codec = self.format_codec(job.source_file.metadata)
-            if codec:
-                source_prefix = f"{source_prefix} • {codec}"
             if job.quality_display:
                 quality_text = self._format_quality_display_for_ui(job.quality_display)
                 q_val = f"{source_prefix} • {quality_text} • "
