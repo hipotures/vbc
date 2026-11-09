@@ -39,7 +39,9 @@ Unpacked size: about 670 MB (about 180 MB of it the bundled NVIDIA libraries).
 * `VBC_UID`/`VBC_GID` (default 0): run the server as that user, e.g. the media
   owner's 1000, so it has exactly that user's permissions (no ACLs). The
   container's uid must map to the same host uid (`lxc.idmap`, root on the
-  host); the entrypoint hands the volume to that user at start.
+  host); the entrypoint hands the volume to that user at start. Without
+  `VBC_UID`, a uid the container maps to the same host uid (`u 1000 1000 1`)
+  is used automatically.
   `VBC_ALLOW_EPHEMERAL=1` overrides this, for throwaway tests only.
 * On the first start it writes `config/vbc.yaml` from `conf/vbc.yaml.example`:
   no input dirs, CPU encoder, server on `0.0.0.0:8080`. It never overwrites an

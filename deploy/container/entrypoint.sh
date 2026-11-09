@@ -69,8 +69,15 @@ fi
 # creates belong to that user and it deletes only what that user may delete.
 # Needs the container's uid VBC_UID mapped to the same host uid (lxc.idmap);
 # without it the default (container root) keeps working as before.
-uid="${VBC_UID:-0}"
-gid="${VBC_GID:-$uid}"
+# Without VBC_UID: a single non-root uid that the container maps to the same
+# host uid (lxc.idmap "u 1000 1000 1") is the owner's user; run as it.
+identity_id() {
+    awk '$1 == $2 && $1 != 0 && $3 == 1 { print $1; exit }' "$1" 2>/dev/null
+}
+uid="${VBC_UID:-$(identity_id /proc/self/uid_map)}"
+uid="${uid:-0}"
+gid="${VBC_GID:-$(identity_id /proc/self/gid_map)}"
+gid="${gid:-$uid}"
 if [ "$uid" != "0" ]; then
     # The persistent volume (config, state) must be writable by that user.
     find "$home" -xdev \( ! -uid "$uid" -o ! -gid "$gid" \) -exec chown -h "$uid:$gid" {} + 2>/dev/null || true
