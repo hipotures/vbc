@@ -104,6 +104,9 @@ class RefreshRequested(Event):
     # Raised by a watcher or a Dirs change, not by a person: it never resumes
     # processing after a stop (only an explicit refresh does).
     automatic: bool = False
+    # Rescan only these input folders (a watcher saw new files there); empty
+    # means every enabled folder.
+    input_dirs: List[Path] = Field(default_factory=list)
 
 class InputDirsChanged(Event):
     """Emitted when the active input_dirs list changes (e.g. after PUT /dirs)."""

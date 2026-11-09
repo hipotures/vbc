@@ -217,6 +217,7 @@ class Orchestrator:
         self._thread_lock = threading.Condition()
         self._refresh_requested = False
         self._manifest_paths_requested: set[Path] = set()
+        self._dirs_requested: set[Path] = set()
         self._refresh_lock = threading.Lock()
         self._shutdown_event = threading.Event()  # Signal workers to stop
         self._wait_event = threading.Event()  # Signals wait loop to unblock
@@ -333,9 +334,13 @@ class Orchestrator:
         with self._refresh_lock:
             if event.manifest_paths:
                 self._manifest_paths_requested.update(event.manifest_paths)
+            elif getattr(event, "input_dirs", None):
+                if not self._refresh_requested:
+                    self._dirs_requested.update(Path(d) for d in event.input_dirs)
             else:
                 self._refresh_requested = True
                 self._manifest_paths_requested.clear()
+                self._dirs_requested.clear()
         # Also wake the wait loop (if active) with restart intent
         self._restart_after_wait = True
         self._wait_event.set()
@@ -354,6 +359,15 @@ class Orchestrator:
             self._refresh_requested = False
             self._manifest_paths_requested.clear()
         return full_refresh, manifest_paths
+
+    def _take_dirs_request(self, active: List[Path]) -> List[Path]:
+        """Consume a watcher's folder-scoped refresh (only folders still active)."""
+        with self._refresh_lock:
+            if self._shutdown_requested:
+                return []
+            dirs = [d for d in active if d in self._dirs_requested]
+            self._dirs_requested.clear()
+        return dirs
 
     def _defer_refresh_request(
         self,
@@ -3974,6 +3988,10 @@ class Orchestrator:
             if ready_before_wait:
                 scheduled_manifest_paths = ready_before_wait
                 continue
+            dirs_before_wait = self._take_dirs_request(input_dirs)
+            if dirs_before_wait:
+                scheduled_input_dirs = dirs_before_wait
+                continue
 
             if not self.config.general.wait_on_finish:
                 break
@@ -3999,6 +4017,10 @@ class Orchestrator:
                 continue
             if ready_already_pending:
                 scheduled_manifest_paths = ready_already_pending
+                continue
+            dirs_already_pending = self._take_dirs_request(input_dirs)
+            if dirs_already_pending:
+                scheduled_input_dirs = dirs_already_pending
                 continue
             now = time.monotonic()
             active_paths = set(input_dirs)
@@ -4043,6 +4065,10 @@ class Orchestrator:
             refresh_after_wait, ready_after_wait = self._take_refresh_request()
             if ready_after_wait and not refresh_after_wait:
                 scheduled_manifest_paths = ready_after_wait
+            elif not refresh_after_wait:
+                dirs_after_wait = self._take_dirs_request(input_dirs)
+                if dirs_after_wait:
+                    scheduled_input_dirs = dirs_after_wait
             self._wait_event.clear()
 
     def _run_once(

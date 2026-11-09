@@ -4,6 +4,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import List
 
 from vbc.domain.events import InputDirsChanged, RefreshRequested
 from vbc.infrastructure.event_bus import EventBus
@@ -66,26 +67,29 @@ class PollingWatcher:
     def _scan(self, directory: Path) -> set[Path]:
         return set(self.scan_paths(directory))
 
-    def _sync_directories(self) -> bool:
+    def _sync_directories(self) -> List[Path]:
         with self._desired_lock:
             desired_dirs = set(self._desired_dirs)
 
         for directory in set(self._known_paths) - desired_dirs:
             del self._known_paths[directory]
 
-        discovered_new_path = False
+        changed: List[Path] = []
         for directory in sorted(desired_dirs, key=str):
             current_paths = self._scan(directory)
             previous_paths = self._known_paths.get(directory)
             if previous_paths is not None and current_paths - previous_paths:
-                discovered_new_path = True
+                changed.append(directory)
             self._known_paths[directory] = current_paths
-        return discovered_new_path
+        return changed
 
     def _poll_once(self) -> None:
-        if self._sync_directories():
-            self.logger.info("Polling watcher detected new input")
-            self.event_bus.publish(RefreshRequested(automatic=True))
+        changed = self._sync_directories()
+        if changed:
+            self.logger.info("Polling watcher detected new input in %s", [str(d) for d in changed])
+            # Only the watched folders that changed: unwatched folders are
+            # scanned on an explicit refresh only (files may still be copying).
+            self.event_bus.publish(RefreshRequested(automatic=True, input_dirs=changed))
 
     def _run(self) -> None:
         while not self._stop_event.wait(self.poll_interval_seconds):
