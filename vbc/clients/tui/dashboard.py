@@ -105,8 +105,17 @@ class _Overlay:
             pos = seg_end
         return result
 
-    @staticmethod
-    def _wash_background(segment: Segment, keep: float) -> Segment:
+    # Colour emoji ignore the dim/grey wash (the terminal draws them in their
+    # own colours); under a wash they become plain text of the same width.
+    _WASH_EMOJI = {"🌐": "G ", "📍": "L "}
+
+    @classmethod
+    def _wash_background(cls, segment: Segment, keep: float) -> Segment:
+        if not segment.control and any(e in segment.text for e in cls._WASH_EMOJI):
+            text = segment.text
+            for emoji, plain in cls._WASH_EMOJI.items():
+                text = text.replace(emoji, plain)
+            segment = Segment(text, segment.style, segment.control)
         style = segment.style
         if segment.control or style is None or style.bgcolor is None or style.bgcolor.is_default:
             return segment
