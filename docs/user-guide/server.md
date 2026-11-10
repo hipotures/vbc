@@ -37,21 +37,26 @@ server:
   allowed_hosts: []      # extra names; own host name, <host>.<search domain> and IPs pass anyway
   stop_timeout_s: 600
 storage:
-  roots: []              # required when host is not loopback
+  roots: []              # extra roots allowed off loopback (in addition to detected media mounts)
 ```
 
 Environment overrides (for containers): `VBC_SERVER_HOST`, `VBC_SERVER_PORT`,
-`VBC_ALLOWED_HOSTS`, `VBC_STORAGE_ROOTS` (comma-separated).
+`VBC_ALLOWED_HOSTS`, `VBC_STORAGE_ROOTS` (comma-separated; they replace the lists from the file), `VBC_GPU` (`auto`
+probes NVENC at every start and falls back to CPU SVT-AV1 when unavailable;
+`cpu` / `false` forces CPU).
 
 ### Security model
 
 The API is plain HTTP with no login. It controls the server: start or stop
-work, change threads, and add, remove or toggle folders inside `storage.roots`.
-It cannot read, upload, download or delete media, and it cannot change
-encoding or source policies. Bind to a non-loopback address only on a trusted
-network. The server refuses to start that way without `storage.roots`. For
-access from outside, publish it behind a reverse proxy with its own
-authentication (for example Pangolin) or use an SSH tunnel.
+work, change threads, and add, remove or toggle folders inside the allowed
+storage roots. It cannot read, upload, download or delete media, and it cannot
+change source deletion policies for existing files without verification. Bind
+to a non-loopback address only on a trusted network. When bound off loopback,
+the allowed storage roots are `storage.roots` plus every media mount of the
+process (detected from `/proc/self/mountinfo` on each use), and `PUT /dirs`
+rejects paths outside those roots. For access from outside, publish it behind a
+reverse proxy with its own authentication (for example Pangolin) or use an SSH
+tunnel.
 
 ## Terminal UI
 
@@ -66,15 +71,23 @@ these differences:
 | Key | `vbc tui` |
 |---|---|
 | `<` / `>` | change server threads (absolute target sent to the server) |
-| `R` | rescan; also resumes after a pause on error or a `vbc stop` |
+| `R` | rescan; also resumes after a pause on error or a stop |
+| `S` | graceful stop of processing (active jobs finish, no new jobs start; press `S` again while stopping to cancel; `R` resumes; the server keeps running) |
 | `Q`, `Ctrl+Q`, `Ctrl+C` | quit the client at once; the server keeps running (in the Dirs path input, `q` is a letter) |
-| `S` | no action (stopping processing is `vbc stop`; the TUI never stops the server) |
-| `D` (Dirs tab) | edit the server's folder list; `S` saves the whole list, and errors from the server are shown inline |
+| `Shift+U` | unlock keyboard after auto-lock (auto-locks after 60 s without keys, configurable via `VBC_TUI_LOCK_AFTER_S`; `0` disables) |
+| `D` (Dirs tab) | edit the server's folder list; `R` scans server media mounts and offers new folders as disabled entries; `S` saves the whole list, and errors from the server are shown inline |
 
-Paths in the Dirs and IO tabs are paths on the server. When the connection
-drops, the header shows `DISCONNECTED` and the footer shows the reason. Progress
-keeps extrapolating, and the client reconnects on its own. Connection events
-are logged to `~/.local/state/vbc/tui.log` (override with `--log-file`).
+Paths in the Dirs and IO tabs are paths on the server. Pasted text (bracketed
+paste) never triggers hotkeys; in the Dirs add-path input it types into the
+path buffer. When the server encodes on GPU, the metrics panel displays GPU
+sparklines (`nvidia-smi`, or `nvtop` fallback); when encoding on CPU, it shows
+CPU utilization graphs. When the server is exiting on a signal, the header
+shows the countdown to `server.stop_timeout_s`.
+
+When the connection drops, the header shows `DISCONNECTED` and the footer shows
+the reason. Progress keeps extrapolating, and the client reconnects on its own.
+Connection events are logged to `~/.local/state/vbc/tui.log` (override with
+`--log-file`).
 
 The server logs each TUI session: `Client connected: tui <id> from <host>`
 on its first request, `Client disconnected (quit)` when it exits, and
@@ -94,6 +107,7 @@ and `--json`.
 | `vbc stop [--interrupt \| --cancel]` | stop processing (jobs finish / now) or withdraw a pending stop; the server keeps running |
 | `vbc dirs` | list the input folders and whether they exist on the server |
 | `vbc dirs add\|remove\|enable\|disable PATH`, `vbc dirs set PATH...` | edit the list (put `--api` and `--json` before the subcommand) |
+| `vbc dirs scan` | scan server media mounts and offer new folders with videos or manifests as disabled entries |
 | `vbc errors [--since ID]` | this session's failed files |
 | `vbc logs [--follow] [--level LEVEL] [--since SEQ]` | server application log |
 | `vbc config` | effective configuration |
@@ -101,6 +115,9 @@ and `--json`.
 | `vbc config set KEY=VALUE... [--no-restart]` | change single settings; VALUE is YAML (`40`, `true`, `'[mp4, mov]'`, `"{'GOPR.*': 180}"`); the server restarts to apply them (running jobs finish first) |
 | `vbc config unset KEY... [--no-restart]` | remove settings from the file so their defaults apply |
 | `vbc config --push FILE [--no-restart]` | replace the whole config file (the server keeps its folders, bind address, storage) |
+| `vbc sources cleanup [--delete] [--dir DIR]` | find sources on the server that already have a verified output in `_out`; `--delete` removes them |
+| `vbc manifests restore PATH [--dry-run]` | restore a failed manifest `.json` and its archived sources back to the metadata folder on the server |
+| `vbc manifests repair PATH [--dry-run]` | recompress supported failed manifests (FFmpeg exit 244/-12: video without audio) on the server |
 | `vbc versions` | versions the server runs with: VBC, ffmpeg and its libraries, exiftool, nvtop, NVIDIA driver, image packages (`GET /api/v1/versions`) |
 | `vbc log-level LEVEL` | change the server log level at runtime |
 

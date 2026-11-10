@@ -98,7 +98,7 @@ The dashboard provides real-time visibility into:
 
 ![Prefs Overlay](assets/images/scr-settings.png)
 
-Press `C` to toggle Prefs view showing:
+Press `P` to toggle Prefs view showing:
 - Input/output directory mappings
 - Encoder settings (GPU/CPU, threads, quality)
 - Camera-specific quality overrides
@@ -144,10 +144,15 @@ VBC follows **Clean Architecture** with strict layer separation and event-driven
 
 ```mermaid
 graph TB
-    subgraph UI["UI Layer (vbc/ui)"]
-        Dashboard[Dashboard]
-        UIManager[UIManager]
-        Keyboard[KeyboardListener]
+    subgraph Clients["Clients (vbc/clients)"]
+        TUI["vbc tui (Dashboard, TuiController, Poller)"]
+        CLI["vbc status / threads / dirs / config / ..."]
+    end
+
+    subgraph Service["Service Layer (vbc/service)"]
+        API["FastAPI HTTP API (/api/v1)"]
+        StateStore[StateStore]
+        CmdService[CommandService]
     end
 
     subgraph Pipeline["Pipeline Layer (vbc/pipeline)"]
@@ -167,9 +172,12 @@ graph TB
         Events[Events]
     end
 
-    Dashboard -.->|subscribes| EventBus
-    UIManager -.->|subscribes| EventBus
-    Keyboard -.->|publishes| EventBus
+    TUI -->|HTTP JSON| API
+    CLI -->|HTTP JSON| API
+    API -->|reads| StateStore
+    API -->|commands| CmdService
+    StateStore -.->|subscribes| EventBus
+    CmdService -.->|publishes| EventBus
 
     EventBus -.->|events| Orchestrator
     Orchestrator -->|uses| Scanner
@@ -181,7 +189,8 @@ graph TB
     Orchestrator -->|creates| Models
     EventBus -->|transmits| Events
 
-    style UI fill:#e1f5ff
+    style Clients fill:#e1f5ff
+    style Service fill:#ffe0b2
     style Pipeline fill:#fff9c4
     style Infrastructure fill:#f3e5f5
     style Domain fill:#c8e6c9
@@ -202,8 +211,8 @@ graph TB
 - Queue refresh signaling without race conditions
 
 **Event-Driven Architecture**
-- EventBus decouples Pipeline from UI
-- Event types defined in `vbc/domain/events.py` plus UI control events in `vbc/ui/keyboard.py`
+- EventBus decouples Pipeline from `StateStore` (and legacy UI)
+- Event types defined in `vbc/domain/events.py` plus TUI client events in `vbc/clients/tui/keyboard.py`
 - Pydantic events ensure type safety
 - Extensible: add new subscribers without modifying publishers
 
@@ -748,29 +757,33 @@ Full CLI reference: [docs/user-guide/cli.md](docs/user-guide/cli.md)
 
 ### Runtime Controls
 
-While VBC is running, use these keyboard shortcuts:
+While VBC is running (`vbc tui` or `vbc run`), use these keyboard shortcuts:
 
 | Key | Action | Description |
 |-----|--------|-------------|
 | `<` or `,` | Decrease threads | Reduce max concurrent threads by 1 (min: 1) |
-| `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: 8) |
-| `S` or `s` | Graceful shutdown | Stop accepting new jobs, finish active ones (press again to cancel) |
-| `R` or `r` | Refresh queue | Re-scan directory and add new files |
-| `C` or `c` | Overlay: Prefs | Open/close Prefs tab |
+| `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: `max_threads`, default 8) |
+| `S` or `s` | Graceful stop | Stop accepting new jobs, finish active ones (press `S` again while stopping to cancel; `R` once stopped to resume) |
+| `R` or `r` | Refresh queue | Re-scan directory and add new files (resumes stopped/paused server) |
+| `Q` / `Ctrl+Q` | Quit TUI client | Exit `vbc tui` immediately (`vbc serve` keeps running) |
+| `Shift+U` | Unlock keyboard | Unlock `vbc tui` keyboard after 60s idle auto-lock |
+| `P` or `p` | Overlay: Prefs | Open/close Prefs tab |
 | `F` or `f` | Overlay: I/O | Open/close I/O tab |
-| `M` or `m` | Overlay: Keys | Open/close Keys tab |
+| `D` or `d` | Overlay: Dirs | Open/close Dirs tab (interactive input folders editor) |
+| `K` or `M` | Overlay: Keys | Open/close Keys tab |
+| `T` or `t` | Overlay: TUI | Open/close TUI appearance tab |
 | `E` or `e` | Overlay: Ref | Open/close Ref tab |
 | `L` or `l` | Overlay: Logs | Open/close logs tab (session errors) |
 | `[` / `]` | Logs pagination | Previous / next page in Logs tab |
 | `Tab` | Cycle overlay tabs | Move to next tab |
 | `Esc` | Close overlay | Close active overlay tab |
-| `Ctrl+C` | Immediate interrupt | Terminate all active jobs immediately |
+| `Ctrl+C` | Quit TUI / Interrupt | Quit `vbc tui` client (or terminate active jobs immediately in `vbc run`) |
 
 **Thread Adjustment**: Changes take effect instantly. New jobs start as slots become available.
 
-**Graceful Shutdown**: Press `S` to stop queue, let active jobs finish. Press `S` again to cancel shutdown and resume.
+**Graceful Stop / Shutdown**: Press `S` to stop the queue and let active jobs finish. Press `S` again while stopping to cancel, or `R` once stopped to resume processing.
 
-**Queue Refresh**: Press `R` to re-scan input directory. New files added to queue without duplicating existing ones.
+**Queue Refresh**: Press `R` to re-scan input directories. New files are added to the queue without duplicating existing ones.
 
 Full runtime controls guide: [docs/user-guide/runtime-controls.md](docs/user-guide/runtime-controls.md)
 
@@ -782,27 +795,31 @@ Full runtime controls guide: [docs/user-guide/runtime-controls.md](docs/user-gui
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                  UI Layer                       │
-│  Dashboard, KeyboardListener, UIState           │
-│  (Rich library, terminal rendering)             │
-└────────────────┬────────────────────────────────┘
-                 │ Events (Pub/Sub via EventBus)
-┌────────────────┴────────────────────────────────┐
+│              Clients (vbc/clients/)             │
+│  vbc tui (Rich Dashboard), One-Shot CLI         │
+└────────────────────────┬────────────────────────┘
+                         │ HTTP JSON API (/api/v1)
+┌────────────────────────┴────────────────────────┐
+│            Service Layer (vbc/service/)         │
+│  StateStore (read model), CommandService, API   │
+└────────────────────────┬────────────────────────┘
+                         │ Events (Pub/Sub via EventBus)
+┌────────────────────────┴────────────────────────┐
 │              Pipeline Layer                     │
 │  Orchestrator (job lifecycle, queue, threads)   │
-└────────────────┬────────────────────────────────┘
-                 │ Domain Models (VideoFile, Job)
-┌────────────────┴────────────────────────────────┐
+└────────────────────────┬────────────────────────┘
+                         │ Domain Models (VideoFile, Job)
+┌────────────────────────┴────────────────────────┐
 │          Infrastructure Layer                   │
 │  FFmpeg, ExifTool, FFprobe, FileScanner         │
-│  (External tool adapters)                       │
+│  (External tool adapters & watchers)            │
 └─────────────────────────────────────────────────┘
 ```
 
 **Benefits**:
-- **Testability**: Mock infrastructure adapters easily
-- **Maintainability**: Change UI without touching pipeline logic
-- **Extensibility**: Add new event subscribers (webhooks, logging) without modifying publishers
+- **Separation of concerns**: Headless server (`vbc serve`) runs independently of presentation clients (`vbc tui`, CLI)
+- **Maintainability**: Change UI or add clients without touching pipeline logic
+- **Extensibility**: Add new event subscribers without modifying publishers
 
 ### Job Lifecycle
 
@@ -814,7 +831,7 @@ stateDiagram-v2
     Processing --> Compressed: FFmpeg success
     Processing --> Failed: FFmpeg error
     Processing --> HW_CAP: GPU capability exceeded
-    Processing --> Interrupted: Ctrl+C
+    Processing --> Interrupted: Ctrl+C / interrupt
     Compressed --> MetadataCopy: Copy EXIF/XMP
     MetadataCopy --> RatioCheck: Compare sizes
     RatioCheck --> Completed: Savings ≥ threshold
@@ -829,26 +846,26 @@ stateDiagram-v2
 
 ### Event Flow
 
-All components communicate via **EventBus** (synchronous pub/sub):
+All server components communicate via **EventBus** (synchronous pub/sub):
 
 **Discovery Phase**:
 ```
-Orchestrator → DiscoveryStarted → UIManager → Update UI
-Orchestrator → DiscoveryFinished → UIManager → Show file counts
+Orchestrator → DiscoveryStarted → StateStore → Update run_status
+Orchestrator → DiscoveryFinished → StateStore → Update file counts & rev
 ```
 
 **Job Processing**:
 ```
-Orchestrator → JobStarted → UIManager → Add to active jobs panel
-FFmpegAdapter → JobCompleted → UIManager → Update stats, move to recent
-FFmpegAdapter → JobFailed → UIManager → Increment error counter
+Orchestrator → JobStarted → StateStore → Add to active jobs snapshot
+Orchestrator → JobCompleted → StateStore → Update stats, move to recent
+Orchestrator → JobFailed → StateStore → Increment error counter & log
 ```
 
-**User Control**:
+**Client / User Control**:
 ```
-User presses '>' → KeyboardListener → ThreadControlEvent → Orchestrator → Increase threads
-User presses 'S' → KeyboardListener → RequestShutdown → Orchestrator → Graceful shutdown
-User presses 'R' → KeyboardListener → RefreshRequested → Orchestrator → Re-scan directory
+Client PUT /threads → CommandService → SetThreadCount → Orchestrator → ThreadCountChanged
+Client POST /stop   → CommandService → SetShutdownRequested(True) → Orchestrator → Graceful stop
+Client POST /refresh → CommandService → RefreshRequested → Orchestrator → Re-scan directory
 ```
 
 Architecture deep dive: [docs/architecture/overview.md](docs/architecture/overview.md)
@@ -1172,18 +1189,19 @@ docs/                        # MkDocs documentation
 tests/e2e/                   # End-to-end suite (added during the service split)
 ```
 
-The codebase is being split into a server (`vbc serve`) and clients
+The codebase is split into a headless server (`vbc serve`) and clients
 (`vbc tui`, one-shot API commands); see
 [docs/architecture/service-split.md](docs/architecture/service-split.md).
-Until then the application runs from `vbc_legacy/` as `vbc run <dirs>`.
-The headless server already runs: `vbc serve --config conf/vbc.yaml`
-(HTTP API on `127.0.0.1:8770`, OpenAPI in `docs/api/openapi.json`), driven
+The single-process batch command remains available from `vbc_legacy/` as `vbc run <dirs>`.
+The headless server runs as `vbc serve --config conf/vbc.yaml`
+(HTTP API on `127.0.0.1:8770` by default, OpenAPI in `docs/api/openapi.json`), driven
 by one-shot commands: `vbc status [--watch]`, `vbc threads N`, `vbc refresh`,
-`vbc stop [--interrupt|--cancel]`, `vbc dirs [add|remove|enable|disable|set]`,
-`vbc errors`, `vbc logs [--follow]`, `vbc config [get|set|unset]`, `vbc versions`, `vbc log-level LEVEL`
+`vbc stop [--interrupt|--cancel]`, `vbc dirs [add|remove|enable|disable|set|scan]`,
+`vbc errors`, `vbc logs [--follow]`, `vbc config [--push|get|set|unset]`, `vbc versions`,
+`vbc log-level LEVEL`, `vbc sources cleanup`, `vbc manifests [restore|repair]`
 (`--api URL` or `VBC_API`, `--json`), and by the terminal UI `vbc tui`
-(same dashboard as `vbc run`; `Q`, Ctrl+Q or Ctrl+C quit the client, the
-server keeps running).
+(same dashboard as `vbc run`; `S` gracefully stops/cancels processing, while `Q`,
+Ctrl+Q or Ctrl+C quit the client and leave the server running).
 See [docs/user-guide/server.md](docs/user-guide/server.md).
 
 ### Running Tests

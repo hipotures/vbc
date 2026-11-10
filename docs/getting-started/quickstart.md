@@ -15,10 +15,21 @@ mkdir ~/Videos/raw
 
 ### Step 2: Run VBC
 
+You can run VBC either as a **headless server + clients** (recommended for continuous / remote operation) or as an **in-process batch command**:
+
 ```bash
 cd ~/DEV/vbc
 # Required on first run
 cp conf/vbc.yaml.example conf/vbc.yaml
+
+# Option A: Headless server + attached TUI / CLI clients
+uv run vbc serve
+# In another terminal:
+uv run vbc dirs add ~/Videos/raw
+uv run vbc tui
+uv run vbc status
+
+# Option B: Single-process batch run with built-in TUI
 uv run vbc run ~/Videos/raw
 ```
 

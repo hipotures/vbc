@@ -1,12 +1,10 @@
 # Service Split Plan (server / API / clients)
 
-Status: **proposal**. Scope: VBC only. Phase 1 assumes the server and the
-clients run as ordinary local processes that may later live on different
-hosts. The final deployment target is **HomeStack** (an unprivileged Proxmox
+Status: **implemented (Phase 1 + Step 8: HomeStack container & GPU)**; Step 9 (`vbc-web`) and Step 10 (`vbc_legacy` removal) pending. Scope: VBC only. Phase 1 runs the server and the
+clients as ordinary processes that may live on the same or different
+hosts. The primary deployment target is **HomeStack** (an unprivileged Proxmox
 LXC built from an OCI image, like the owner's other services); its
-requirements are collected in [Deployment: HomeStack](#deployment-homestack)
-and shape the server from step 5 on. GPU device handling inside the container
-is out of scope for now.
+requirements are collected in [Deployment: HomeStack](#deployment-homestack).
 
 Order of delivery (decided): **server + CLI client + TUI client first**, the
 web client later. The existing Rich TUI is reused as an API client (same
@@ -167,18 +165,22 @@ All clients are Python and live in `vbc/clients/`; they import only
 A background thread runs the `/state` long-poll and replaces a local snapshot;
 the render loop extrapolates counters from anchors (see below). Keys map to
 commands: `<`/`>` → `PUT /threads` with an absolute target computed from the
-last snapshot, `R` → `POST /refresh`, no stop/shutdown key (the TUI never
-stops the server), `Q` / Ctrl+Q / Ctrl+C → quit the client (does **not**
-stop the server; interrupting the server is an explicit command). Overlay
-tabs fetch `/config`, `/io`, `/dirs`, `/errors`, `/logs` on demand.
+last snapshot, `R` → `POST /refresh`, `S` → `POST /stop` (graceful stop of
+processing; pressing `S` again while stopping sends `DELETE /stop` to cancel
+it — the TUI never terminates the server process), `Q` / Ctrl+Q / Ctrl+C →
+quit the client (does **not** stop the server; interrupting the server is an
+explicit CLI/API command). Overlay tabs fetch `/config`, `/io`, `/dirs`,
+`/errors`, `/logs` on demand.
 
 One-shot commands (phase 1): non-interactive commands for scripts and quick
 checks, **peers of `serve` and `tui`** in one flat `vbc` command set (no
 separate `ctl` group), one per endpoint: `vbc status` (one-shot or
 `--watch`), `vbc threads N`, `vbc refresh`, `vbc stop
-[--interrupt|--cancel]`, `vbc dirs [list|set …]`, `vbc errors`, `vbc logs
-[--follow] [--level]`, `vbc config`. Human-readable output by default,
-`--json` prints the DTOs as-is; non-zero exit status on HTTP/connection errors.
+[--interrupt|--cancel]`, `vbc dirs [list|set|scan …]`, `vbc errors`, `vbc logs
+[--follow] [--level]`, `vbc config [--push | get | set | unset]`,
+`vbc versions`, `vbc sources cleanup`, `vbc manifests [restore|repair]`.
+Human-readable output by default, `--json` prints the DTOs as-is; non-zero
+exit status on HTTP/connection errors.
 
 `vbc-web` (later): separate process, separate entry point, own port. Serves
 static files and proxies `/api/*` to the server (same origin for the
@@ -353,6 +355,12 @@ Commands (absolute and idempotent where possible):
 | `DELETE /api/v1/stop` | `SetShutdownRequested(false)`: withdraws a pending graceful stop. |
 | `PUT /api/v1/runtime/log-level {"level": …}` | Adjust root logger level at runtime |
 | `PUT /api/v1/dirs` + `If-Match: <dirs_rev>` | Validate → `save_dirs_config` → `InputDirsChanged` + `RefreshRequested`; `412` on stale rev |
+| `POST /api/v1/dirs/scan` | Scan `/proc/self/mountinfo` for media mounts (`storage.roots`) and add newly found input folders as disabled entries |
+| `PUT /api/v1/config` | Replace non-server sections in server `vbc.yaml` from pushed YAML (`vbc config --push`); preserves `input_dirs`, `server`, `storage` |
+| `POST /api/v1/sources/cleanup`, `GET /api/v1/sources/cleanup` | Start / inspect background source cleanup (`vbc sources cleanup`) |
+| `POST /api/v1/manifests/restore` | Restore producer manifests from `_out`/`_err` (`vbc manifests restore`) |
+| `POST /api/v1/manifests/repair`, `GET /api/v1/manifests/repair` | Start / inspect background manifest repair (`vbc manifests repair`) |
+| `POST /api/v1/clients/goodbye` | Notify server that a TUI client is disconnecting |
 
 Run status in `/state` is one field with a reason, so clients know which
 actions to offer: `discovering`, `running`, `paused_on_error`,
@@ -373,10 +381,11 @@ network:
 * Kept: a Host/Origin allowlist, which stops web pages open in a local
   browser from driving the API (CSRF, DNS rebinding) — the realistic threat
   on loopback.
-* When bound to anything other than loopback, `storage.roots` (see Paths) is
-  **mandatory** and the server refuses to start without it, so that anyone on
-  the network can at most point the server at directories inside the
-  declared roots via `PUT /dirs`.
+* When bound to anything other than loopback, allowed storage roots are
+  `storage.roots` plus any detected media mounts (`/proc/self/mountinfo`),
+  re-read on each use; with no root at all `PUT /dirs` rejects every path, so
+  anyone on the network can at most point the server at directories inside the
+  allowed roots.
 * **Threat model (why this is enough).** The API is a control plane only:
   a caller can make the server work or stop, change threads, add / remove /
   enable folders inside `storage.roots`, and read status. It cannot read,
@@ -826,14 +835,16 @@ green and, once it exists, the e2e suite green.
   only for its API conventions, not its implementation stack.
 * Security (decided): plain HTTP, no token, no TLS; trusted network only,
   Host/Origin allowlist, storage roots enforced off loopback (configured + media mounts).
-* Stop vs. shutdown (decided 2026-11-08): the API and `vbc stop` stop
+* Stop vs. shutdown (decided 2026-11-08, updated 2026-11-09): the API and `vbc stop` stop
   *processing* only; the server process (a HomeStack container running
-  non-stop) ends only on a signal. The TUI has no stop/shutdown action at all:
-  `Q`, Ctrl+Q and Ctrl+C quit it at once.
+  non-stop) ends only on a signal. In `vbc tui`, `S` requests a graceful stop
+  of processing (`POST /stop`, or `DELETE /stop` if already stopping; `R`
+  resumes), while `Q`, Ctrl+Q and Ctrl+C quit the TUI client at once without
+  affecting the server.
 * Command line (decided): one flat set of peer subcommands — `vbc serve`,
   `vbc tui`, `vbc run <dirs>`, `vbc status`, `vbc threads`, `vbc refresh`,
-  `vbc stop`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config`. No
-  `ctl` group.
+  `vbc stop`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config`,
+  `vbc versions`, `vbc sources`, `vbc manifests`. No `ctl` group.
 * Delivery order: **server + one-shot commands + `vbc tui` first** (phase 1, steps
   1–7), HomeStack packaging (step 8), web client later (step 9), legacy
   deleted in step 10.

@@ -30,11 +30,18 @@ Location: `tests/e2e/`. Current scenarios (`test_serve.py`):
 * **stop and resume on real media** – interrupt mid-pass, refresh, final disk
   state equals the legacy oracle;
 * **shutdown with an open long-poll** – SIGINT exits within seconds, the
-  waiting client gets `204`, no traceback.
+  waiting client gets `204`, no traceback;
+* **config push and setting edits** – `PUT /api/v1/config` (`vbc config --push`)
+  and `PATCH /api/v1/config` (`vbc config set/unset`) update settings on disk
+  while preserving server-owned sections (`input_dirs`, `server`, `storage`);
+* **filename dates and watched folders** – output timestamps derived from
+  `YYYYMMDD_HHMMSS` filenames use local time, stopped servers ignore automatic
+  watcher refreshes until an explicit `POST /refresh`, and watched folders feed
+  new files into the live queue while jobs run.
 
 `test_cli.py` drives `serve --demo` only through the one-shot commands as
-separate processes (`vbc status`, `threads`, `dirs add/disable/remove` with
-the config file checked on disk, `errors`, `logs`, `config`, `log-level`,
+separate processes (`vbc status`, `threads`, `dirs add/disable/remove/scan` with
+the config file checked on disk, `errors`, `logs`, `config` (`get`/`set`/`unset`/`--push`), `versions`, `log-level`,
 `refresh`, `stop` / `--cancel`) and checks exit codes 1 (rejected),
 2 (usage) and 3 (server unreachable).
 
@@ -42,7 +49,7 @@ the config file checked on disk, `errors`, `logs`, `config`, `log-level`,
 against `serve --demo`: the dashboard renders, `>` changes the server's
 threads, `P` shows the Prefs tab built from `/config`, Ctrl+C quits with exit
 code 0 and the server keeps running; a second scenario checks that `S`
-does nothing, `q` and Ctrl+Q quit within a second, and the server log shows
+requests and cancels graceful stop of processing (while leaving the server process up), `R` resumes from `stopped`, `q` and Ctrl+Q quit within a second, and the server log shows
 `Client connected` / `Client disconnected (quit)` for each session.
 
 Legacy `vbc run` (until it is deleted) is checked by hand as below.
@@ -70,7 +77,9 @@ it refuses to start without a mounted `/home/app`; with a volume and an
 identity mount of the media tree a full pass matches the legacy oracle;
 health, readiness and HomeStack telemetry answer; `stop` (SIGTERM) exits 0.
 It also checks that client code and Rich/Typer/Jinja2 are absent, manifest
-maintenance works without them, and a config push restarts the headless server.
+maintenance works without them, a config push restarts the headless server, and
+GPU encoding + `nvidia-smi` metrics work when host NVIDIA devices/libraries are
+bind-mounted into the container.
 
 `test_release.py` uses temporary local Git repositories to verify that a
 client-only change is rejected by the image release script, while a server

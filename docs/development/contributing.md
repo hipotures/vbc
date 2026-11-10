@@ -35,11 +35,16 @@ uv run vbc --help
 
 ```
 vbc/
-├── config/         # Configuration (Pydantic models)
+├── cli.py          # Typer CLI entry point (serve, tui, run, one-shot commands)
+├── contracts/      # HTTP API DTOs shared between server and clients
+├── service/        # Headless server (StateStore, CommandService, FastAPI, bootstrap)
+├── clients/        # API client (httpx), one-shot CLI commands, and Rich TUI (`tui/`)
+├── config/         # Configuration (Pydantic models, loader, overrides)
 ├── domain/         # Core business logic (models, events)
-├── infrastructure/ # External adapters (FFmpeg, ExifTool, etc.)
-├── pipeline/       # Processing coordinator (Orchestrator)
-└── ui/            # User interface (Rich dashboard)
+├── infrastructure/ # External adapters (FFmpeg, ExifTool, FFprobe, watchers, monitors)
+├── pipeline/       # Processing coordinator (Orchestrator, repair, sorting)
+├── maintenance/    # Server-side manifest restore and repair services
+└── utils/          # FLV and re-encode repair helpers
 ```
 
 ## Coding Standards
@@ -232,7 +237,7 @@ See [Testing Guide](testing.md) for detailed testing instructions.
 
 **Quick test:**
 ```bash
-# Run the end-to-end suite (tests/e2e, once it exists)
+# Run the end-to-end suite (tests/e2e)
 uv run pytest
 ```
 

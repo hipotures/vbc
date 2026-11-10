@@ -43,7 +43,7 @@ class DiscoveryStarted(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** UIManager
+**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
 **Purpose:** Signal start of file scanning
 
 #### DiscoveryFinished
@@ -60,8 +60,8 @@ class DiscoveryFinished(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** UIManager
-**Purpose:** Report discovery results, update UI counters, show ignored `.err` entries, and track multi-source discovery
+**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
+**Purpose:** Report discovery results, update state counters, show ignored `.err` entries, and track multi-source discovery
 
 ### Job Lifecycle Events
 
@@ -72,7 +72,7 @@ class JobStarted(JobEvent):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** UIManager
+**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
 **Purpose:** Add job to "Currently Processing" panel
 
 #### JobCompleted
@@ -82,7 +82,7 @@ class JobCompleted(JobEvent):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** UIManager
+**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
 **Purpose:** Update stats, move to "Last Completed" panel
 
 #### JobFailed
@@ -93,7 +93,7 @@ class JobFailed(JobEvent):
 ```
 
 **Publisher:** Orchestrator, FFmpegAdapter
-**Subscribers:** UIManager
+**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
 **Purpose:** Increment error counters, create .err marker
 
 #### HardwareCapabilityExceeded
@@ -103,7 +103,7 @@ class HardwareCapabilityExceeded(JobEvent):
 ```
 
 **Publisher:** FFmpegAdapter
-**Subscribers:** UIManager
+**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
 **Purpose:** Track GPU capability errors separately
 
 #### JobProgressUpdated
@@ -114,7 +114,7 @@ class JobProgressUpdated(JobEvent):
 ```
 
 **Publisher:** FFmpegAdapter
-**Subscribers:** UIManager
+**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
 **Purpose:** Update per-job progress in the active jobs panel
 
 ### Queue Events
@@ -126,18 +126,20 @@ class QueueUpdated(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** UIManager
-**Purpose:** Update "Next in Queue" panel
+**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
+**Purpose:** Update pending files queue
 
 #### RefreshRequested
 ```python
 class RefreshRequested(Event):
-    pass
+    manifest_paths: List[Path] = Field(default_factory=list)
+    automatic: bool = False
+    input_dirs: List[Path] = Field(default_factory=list)
 ```
 
-**Publisher:** KeyboardListener
-**Subscribers:** Orchestrator
-**Purpose:** Re-scan directory for new files
+**Publisher:** CommandService (`POST /api/v1/refresh`), ManifestWatcher, PollingWatcher
+**Subscribers:** Orchestrator, VbcServer
+**Purpose:** Re-scan all or specific directories, or incrementally discover ready manifests. `automatic=True` (from watchers or Dirs edits) never resumes a stopped server; only an explicit refresh (`automatic=False`) does.
 
 #### RefreshFinished
 ```python
@@ -147,8 +149,8 @@ class RefreshFinished(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** UIManager
-**Purpose:** Report results after refresh completes (used for UI counters)
+**Subscribers:** StateStore
+**Purpose:** Report results after refresh completes (used for counters)
 
 #### InputDirsChanged
 ```python
@@ -156,36 +158,46 @@ class InputDirsChanged(Event):
     active_dirs: List[str]
 ```
 
-**Publisher:** UIManager (Dirs apply)
+**Publisher:** CommandService (`PUT /api/v1/dirs`)
+**Subscribers:** Orchestrator, VbcServer, Watchers
+**Purpose:** Update active input directory set and rebuild watchers
+
+### Server Control Events (`vbc/domain/events.py`)
+
+!!! note "Absolute & Idempotent Control Events"
+    Server control events in `vbc/domain/events.py` use absolute targets and explicit booleans rather than relative deltas or toggles, making network retries and concurrent clients safe.
+
+#### SetThreadCount
+```python
+class SetThreadCount(Event):
+    target: int
+```
+
+**Publisher:** CommandService (`PUT /api/v1/threads`)
 **Subscribers:** Orchestrator
-**Purpose:** Update active input directory set for next scan cycle
+**Purpose:** Set max concurrent threads to an absolute target (clamped to `1..max(general.max_threads, general.threads)`)
 
-### Control Events
-
-!!! note "Control Events Location"
-    The control events below are defined in `vbc/domain/events.py` so pipeline and UI can depend on the same domain-level contracts. They are published by `KeyboardListener` in `vbc/ui/keyboard.py`.
-
-#### ThreadControlEvent
+#### ThreadCountChanged
 ```python
-class ThreadControlEvent(Event):
-    change: int  # +1 or -1
+class ThreadCountChanged(Event):
+    current: int
+    minimum: int
+    maximum: int
 ```
 
-**Publisher:** KeyboardListener
-**Subscribers:** Orchestrator, UIManager
-**Purpose:** Adjust max concurrent threads
-**Location:** `vbc/domain/events.py` (published by `vbc/ui/keyboard.py`)
+**Publisher:** Orchestrator
+**Subscribers:** StateStore
+**Purpose:** Report the effective (clamped) thread count and bounds
 
-#### RequestShutdown
+#### SetShutdownRequested
 ```python
-class RequestShutdown(Event):
-    pass
+class SetShutdownRequested(Event):
+    requested: bool = True
 ```
 
-**Publisher:** KeyboardListener
-**Subscribers:** Orchestrator, UIManager
-**Purpose:** Graceful shutdown (finish active jobs)
-**Location:** `vbc/domain/events.py` (published by `vbc/ui/keyboard.py`)
+**Publisher:** CommandService (`POST /api/v1/stop`, `DELETE /api/v1/stop`), VbcServer (on `SIGTERM`/`SIGINT`)
+**Subscribers:** Orchestrator, StateStore
+**Purpose:** Request (`True`) or cancel (`False`) a graceful stop (active jobs finish, no new jobs start)
 
 #### InterruptRequested
 ```python
@@ -193,147 +205,9 @@ class InterruptRequested(Event):
     pass
 ```
 
-**Publisher:** KeyboardListener
-**Subscribers:** Orchestrator, UIManager
-**Purpose:** Immediate interrupt (Ctrl+C)
-**Location:** `vbc/domain/events.py` (published by `vbc/ui/keyboard.py`)
-
-### UI Events
-
-!!! warning "Deprecated UI Events"
-    `ToggleConfig`, `ToggleLegend`, `ToggleMenu`, and `HideConfig` are deprecated and replaced by the new tabbed overlay system. They remain in the codebase for backwards compatibility but will be removed in a future version.
-
-#### ToggleOverlayTab
-```python
-class ToggleOverlayTab(Event):
-    tab: Optional[str] = None  # "settings" | "io" | "dirs" | "reference" | "shortcuts" | "tui" | "logs" | None
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** Toggle overlay with optional tab selection
-**Location:** `vbc/ui/keyboard.py`
-
-#### CycleOverlayTab
-```python
-class CycleOverlayTab(Event):
-    direction: int = 1
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** Cycle through overlay tabs with Tab
-**Location:** `vbc/ui/keyboard.py`
-
-#### CycleLogsPage
-```python
-class CycleLogsPage(Event):
-    direction: int = 1  # 1=next, -1=previous
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** Navigate paginated entries in Logs tab
-**Location:** `vbc/ui/keyboard.py`
-
-#### CycleOverlayDim
-```python
-class CycleOverlayDim(Event):
-    direction: int = 1
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** Cycle overlay dim levels from the TUI controls
-**Location:** `vbc/ui/keyboard.py`
-
-#### RotateGpuMetric
-```python
-class RotateGpuMetric(Event):
-    pass
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** Rotate the GPU metric displayed in the top bar
-**Location:** `vbc/ui/keyboard.py`
-
-#### CycleSparklinePreset
-```python
-class CycleSparklinePreset(Event):
-    direction: int = 1
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** Cycle GPU sparkline rendering presets
-**Location:** `vbc/ui/keyboard.py`
-
-#### CycleSparklinePalette
-```python
-class CycleSparklinePalette(Event):
-    direction: int = 1
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** Cycle GPU sparkline color palettes
-**Location:** `vbc/ui/keyboard.py`
-
-#### CloseOverlay
-```python
-class CloseOverlay(Event):
-    pass
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** Close the overlay (Esc key)
-**Location:** `vbc/ui/keyboard.py`
-
-#### ToggleConfig (Deprecated)
-```python
-class ToggleConfig(Event):
-    pass
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** ~~Show/hide configuration overlay~~ (replaced by `ToggleOverlayTab`)
-**Location:** `vbc/ui/keyboard.py`
-
-#### ToggleLegend (Deprecated)
-```python
-class ToggleLegend(Event):
-    pass
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** ~~Show/hide legend overlay~~ (replaced by `ToggleOverlayTab(tab="reference")`)
-**Location:** `vbc/ui/keyboard.py`
-
-#### ToggleMenu (Deprecated)
-```python
-class ToggleMenu(Event):
-    pass
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** ~~Show/hide menu overlay~~ (replaced by `ToggleOverlayTab(tab="shortcuts")`)
-**Location:** `vbc/ui/keyboard.py`
-
-#### HideConfig (Deprecated)
-```python
-class HideConfig(Event):
-    pass
-```
-
-**Publisher:** KeyboardListener
-**Subscribers:** UIManager
-**Purpose:** ~~Close configuration overlay~~ (replaced by `CloseOverlay`)
-**Location:** `vbc/ui/keyboard.py`
+**Publisher:** CommandService (`POST /api/v1/stop {"mode": "interrupt"}`), VbcServer (second `SIGINT` or stop timeout deadline)
+**Subscribers:** Orchestrator, StateStore
+**Purpose:** Immediate interrupt of active jobs
 
 #### ActionMessage
 ```python
@@ -341,11 +215,11 @@ class ActionMessage(Event):
     message: str
 ```
 
-**Publisher:** Orchestrator, KeyboardListener
-**Subscribers:** UIManager
+**Publisher:** Orchestrator, CommandService
+**Subscribers:** StateStore
 **Purpose:** User feedback messages (displayed for 60s)
 
-### Completion Events
+### Completion Events (`vbc/domain/events.py`)
 
 #### ProcessingFinished
 ```python
@@ -354,8 +228,8 @@ class ProcessingFinished(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** UIManager
-**Purpose:** All jobs completed normally
+**Subscribers:** StateStore
+**Purpose:** Pass jobs completed (emitted before automatic repair / error file move)
 
 #### ProcessingPausedOnError
 ```python
@@ -365,8 +239,8 @@ class ProcessingPausedOnError(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** UIManager
-**Purpose:** Pause processing after a verification failure and show ERROR state
+**Subscribers:** StateStore
+**Purpose:** Pause processing after a verification failure and enter `paused_on_error` state
 
 #### RepairStarted
 ```python
@@ -375,8 +249,8 @@ class RepairStarted(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** UIManager
-**Purpose:** Enter REPAIR state before repairing current-session failures
+**Subscribers:** StateStore
+**Purpose:** Enter `repairing` state before repairing current-session failures
 
 #### RepairFinished
 ```python
@@ -386,8 +260,8 @@ class RepairFinished(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** UIManager
-**Purpose:** Leave REPAIR state and record repair summary
+**Subscribers:** StateStore
+**Purpose:** Leave `repairing` state and record repair summary
 
 #### WaitingForInput
 ```python
@@ -396,68 +270,45 @@ class WaitingForInput(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** UIManager
-**Purpose:** Enter WAITING state (`R` restart / `S` exit)
+**Subscribers:** StateStore
+**Purpose:** Pass and post-processing finished; server enters `idle` state and waits for refresh or watcher events
 
-### Dirs Tab Events
+### TUI Client Events (`vbc/clients/tui/`)
 
-#### DirsCursorMove
-```python
-class DirsCursorMove(Event):
-    direction: int
-```
+In `vbc tui`, keyboard and overlay view events travel on a client-local `EventBus` (`vbc/clients/tui/bus.py`) from `KeyboardListener` (`vbc/clients/tui/keyboard.py`) to `TuiController` (`vbc/clients/tui/controller.py`). View events mutate `ClientState` locally; command events call the server API on a background worker thread.
 
-#### DirsSwapSelected
-```python
-class DirsSwapSelected(Event):
-    direction: int
-```
+#### Client Command Events (`vbc/clients/tui/events.py`)
+- `ThreadControlEvent(change: int)`: `<` / `>` keys; `TuiController` computes `current_threads + change` and calls `PUT /api/v1/threads`.
+- `StopRequested()`: `S` key; calls `POST /api/v1/stop` (graceful) or `DELETE /api/v1/stop` if already stopping.
+- `RefreshRequested()`: `R` key; calls `POST /api/v1/refresh`.
+- `QuitRequested()`: `Q`, `Ctrl+Q`, or `Ctrl+C`; detaches the TUI client immediately (`POST /api/v1/clients/goodbye`).
+- `ActionMessage(message: str)`: Sets a local feedback message in `ClientState`.
 
-#### DirsToggleSelected
-```python
-class DirsToggleSelected(Event):
-    pass
-```
+#### Overlay & Sparkline Events (`vbc/clients/tui/keyboard.py`)
+- `ToggleOverlayTab(tab: Optional[str])`: Open/toggle overlay tab (`"settings"`, `"io"`, `"dirs"`, `"reference"`, `"shortcuts"`, `"tui"`, `"logs"`).
+- `CycleOverlayTab(direction: int = 1)`: Cycle tabs (`Tab`).
+- `CloseOverlay()`: Close active overlay (`Esc`).
+- `CycleLogsPage(direction: int = 1)`: Navigate pages in the Logs tab (`[` / `]`).
+- `CycleOverlayDim(direction: int = 1)`: Cycle background dim level (`I` in TUI tab).
+- `RotateGpuMetric()`: Rotate GPU/CPU metric shown in the header (`G`).
+- `CycleSparklinePreset(direction: int = 1)`: Cycle sparkline preset (`W` in TUI tab).
+- `CycleSparklinePalette(direction: int = 1)`: Cycle sparkline color palette (`O` in TUI tab).
 
-#### DirsEnterAddMode
-```python
-class DirsEnterAddMode(Event):
-    pass
-```
-
-#### DirsMarkDelete
-```python
-class DirsMarkDelete(Event):
-    pass
-```
-
-#### DirsInputChar
-```python
-class DirsInputChar(Event):
-    char: str
-```
-
-#### DirsConfirmAdd
-```python
-class DirsConfirmAdd(Event):
-    pass
-```
-
-#### DirsCancelInput
-```python
-class DirsCancelInput(Event):
-    pass
-```
-
-#### DirsApplyChanges
-```python
-class DirsApplyChanges(Event):
-    pass
-```
+#### Dirs Tab Editor Events (`vbc/clients/tui/events.py`)
+- `DirsCursorMove(direction: int)`: Move selection cursor (`↑` / `↓`).
+- `DirsSwapSelected(direction: int)`: Reorder selected directory (`Shift+↑` / `Shift+↓`).
+- `DirsToggleSelected()`: Stage enable/disable toggle (`Space`).
+- `DirsEnterAddMode()`: Enter path input mode (`A`).
+- `DirsMarkDelete()`: Mark/unmark selected directory for deletion (`Delete` / `Backspace`).
+- `DirsInputChar(char: str)`: Append character or backspace in add-path buffer.
+- `DirsConfirmAdd()`: Validate and stage new path (`Enter`).
+- `DirsCancelInput()`: Exit add-path input mode (`Esc`).
+- `DirsApplyChanges()`: Send full staged directory list via `PUT /api/v1/dirs` with `If-Match` (`S`).
+- `DirsScanMounts()`: Request server mount scan via `POST /api/v1/dirs/scan` (`R` in Dirs tab).
 
 ## Event Flow Examples
 
-### Job Lifecycle
+### Job Lifecycle (`vbc serve`)
 
 ```
 ┌─────────────┐
@@ -473,82 +324,95 @@ class DirsApplyChanges(Event):
         │
         │ publish(JobStarted(job))
         ▼
-    ┌─────────┐      subscribe      ┌───────────┐
-    │EventBus │ ──────────────────>  │ UIManager │
-    └────┬────┘                      └─────┬─────┘
-         │                                 │
-         │                                 │ 3. add_active_job()
-         │                                 ▼
-         │                           ┌─────────┐
-         │                           │UIState  │
-         │                           └─────────┘
+    ┌─────────┐      subscribe      ┌────────────┐
+    │EventBus │ ──────────────────> │ StateStore │
+    └────┬────┘                     └─────┬──────┘
+         │                                │
+         │                                │ 3. Update active jobs & bump rev
+         │                                ▼
+         │                          ┌──────────────────┐
+         │                          │ Long-poll wakes  │
+         │                          │ /api/v1/state    │
+         │                          └──────────────────┘
          │
          │ 4. ffmpeg.compress()
          ▼
-    ┌────────────┐
+    ┌─────────────┐
     │FFmpegAdapter│
-    └──────┬─────┘
+    └──────┬──────┘
            │
-           │ 5. Success → publish(JobCompleted(job))
-           │    Failure → publish(JobFailed(job, error))
-           │    HW Cap  → publish(HardwareCapabilityExceeded(job))
+           │ 5. Progress → publish(JobProgressUpdated) (re-anchors when drift > 2 p.p.)
+           │    Success  → publish(JobCompleted(job))
+           │    Failure  → publish(JobFailed(job, error))
+           │    HW Cap   → publish(HardwareCapabilityExceeded(job))
            ▼
        ┌─────────┐
-       │EventBus │ ──> UIManager → UIState
+       │EventBus │ ──> StateStore (updates counters/anchors, bumps rev)
        └─────────┘
 ```
 
-### Keyboard Control
+### Runtime Thread Control (`vbc tui` → `vbc serve`)
 
 ```
 ┌──────┐
-│ User │
+│ User │ Press '>' in vbc tui
 └──┬───┘
-   │ Press '>'
+   │
    ▼
 ┌────────────────┐
-│KeyboardListener│ (daemon thread)
+│KeyboardListener│ (client bus)
 └───────┬────────┘
-        │
         │ publish(ThreadControlEvent(change=+1))
+        ▼
+┌────────────────┐
+│ TuiController  │
+└───────┬────────┘
+        │ PUT /api/v1/threads {"target": current + 1}
+        ▼
+┌────────────────┐
+│ CommandService │ (server)
+└───────┬────────┘
+        │ publish(SetThreadCount(target=5))
         ▼
     ┌─────────┐
     │EventBus │
     └────┬────┘
          │
-         ├──> Orchestrator._on_thread_control()
-         │    └─> self._current_max_threads += 1
-         │        notify_all() → wake waiting threads
-         │
-         └──> UIManager.on_thread_control()
-              └─> state.current_threads += 1
+         └──> Orchestrator._on_thread_control()
+              ├─> clamp to 1..max(max_threads, threads)
+              ├─> notify_all() → wake waiting worker threads
+              ├─> publish(ThreadCountChanged(current=5, minimum=1, maximum=8))
+              │     └──> StateStore updates threads & bumps rev
+              └──> publish(ActionMessage("Threads: 4 → 5"))
+                    └──> StateStore updates last_action
 ```
 
 ### Refresh Flow
 
 ```
-┌──────┐
-│ User │ Press 'R'
-└──┬───┘
-   │
-   ▼
-┌────────────────┐
-│KeyboardListener│
-└───────┬────────┘
-        │ publish(RefreshRequested())
-        │ publish(ActionMessage("REFRESH requested"))
-        ▼
-    ┌─────────┐
-    │EventBus │
-    └────┬────┘
+┌─────────────────┐
+│ Client / Watcher│ POST /api/v1/refresh or filesystem event
+└────────┬────────┘
          │
-         ├──> Orchestrator._on_refresh_request()
-         │    └─> _refresh_requested = True
-         │
-         └──> UIManager.on_action_message()
-              └─> state.set_last_action("REFRESH requested")
+         ▼
+┌─────────────────┐
+│ CommandService  │
+│  / PollingWatcher│
+└────────┬────────┘
+         │ publish(RefreshRequested())
+         │ publish(ActionMessage("REFRESH requested"))
+         ▼
+     ┌─────────┐
+     │EventBus │
+     └────┬────┘
+          │
+          ├──> Orchestrator._on_refresh_request()
+          │    └─> _refresh_requested = True (wakes wait loop)
+          │
+          └──> StateStore.on_action_message()
+               └─> last_action = "REFRESH requested"
 
-(Later, in Orchestrator main loop)
+(In Orchestrator main loop)
 ┌────────────────┐
 │ Orchestrator   │
 └───────┬────────┘
@@ -559,10 +423,11 @@ class DirsApplyChanges(Event):
     _perform_discovery()
         │
         │ publish(DiscoveryFinished(...))
+        │ publish(QueueUpdated(...))
         │ publish(ActionMessage("Refreshed: +5 new files"))
         ▼
     ┌─────────┐
-    │EventBus │ ──> UIManager ──> UIState
+    │EventBus │ ──> StateStore (bumps rev)
     └─────────┘
 ```
 
@@ -573,12 +438,12 @@ class DirsApplyChanges(Event):
 Components don't know about each other:
 
 ```python
-# Orchestrator doesn't know about UIManager
-orchestrator.run(input_dir)
+# Orchestrator doesn't know about StateStore or HTTP clients
+orchestrator.run(input_dirs)
 # Just publishes events
 
-# UIManager doesn't know about Orchestrator
-ui_manager = UIManager(bus, state)
+# StateStore doesn't know about Orchestrator
+state_store = StateStore(bus, ...)
 # Just subscribes to events
 ```
 

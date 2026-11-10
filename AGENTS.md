@@ -168,7 +168,7 @@ VBC has MkDocs documentation in `docs/`:
 - `getting-started/` - Installation, quickstart, configuration
 - `user-guide/` - CLI, runtime controls, advanced features
 - `architecture/` - Overview, events, pipeline flow, service split plan
-- `api/` - Auto-generated from code (points at `vbc_legacy` until modules move to `vbc`)
+- `api/` - Auto-generated from code (`vbc.*`, plus legacy-only helpers in `vbc_legacy.*`)
 - `development/` - Contributing and testing workflow
 
 Build docs: `./scripts/serve-docs.sh`
@@ -184,7 +184,7 @@ git) and checks only externally visible results. See "Testing strategy" in
 `docs/architecture/service-split.md`.
 
 ```bash
-uv run pytest            # runs tests/e2e (once it exists)
+uv run pytest            # runs tests/e2e
 ```
 
 Keep the suite fast (minutes). A scenario that keeps breaking for reasons

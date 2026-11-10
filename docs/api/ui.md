@@ -1,30 +1,39 @@
-# UI API
+# UI API (`vbc tui`)
 
-This page documents the user interface components (Rich-based interactive dashboard).
+This page documents the Rich-based interactive TUI client (`vbc/clients/tui/`).
 
-## UI State
+## Client State
 
-Thread-safe state container for the dashboard.
+Thread-safe state container (`ClientState`) combining the server read-model snapshot with local presentation state and anchor-based counter extrapolation.
 
-::: vbc_legacy.ui.state
+::: vbc.clients.tui.state
     options:
       show_source: true
       heading_level: 3
 
-## UI Manager
+## TUI Controller
 
-Event subscriber that updates UIState based on domain events.
+Keyboard event subscriber (`TuiController`) that dispatches API commands (`PUT /threads`, `POST /refresh`, `POST/DELETE /stop`, `PUT /dirs`, `POST /dirs/scan`) and manages overlay tabs.
 
-::: vbc_legacy.ui.manager
+::: vbc.clients.tui.controller
+    options:
+      show_source: true
+      heading_level: 3
+
+## Server Poller
+
+Background long-poll worker (`Poller`) for `/api/v1/state`, `/api/v1/gpu`, and on-demand overlay endpoints.
+
+::: vbc.clients.tui.poller
     options:
       show_source: true
       heading_level: 3
 
 ## Keyboard Listener
 
-Non-blocking keyboard input handler.
+Non-blocking keyboard input handler with 60s idle auto-lock (`Shift+U` unlock) and bracketed-paste protection.
 
-::: vbc_legacy.ui.keyboard
+::: vbc.clients.tui.keyboard
     options:
       show_source: true
       heading_level: 3
@@ -33,7 +42,7 @@ Non-blocking keyboard input handler.
 
 Rich Live dashboard with status, progress, activity, queue, active job, and overlay surfaces.
 
-::: vbc_legacy.ui.dashboard
+::: vbc.clients.tui.dashboard
     options:
       show_source: true
       heading_level: 3
@@ -42,144 +51,37 @@ Rich Live dashboard with status, progress, activity, queue, active job, and over
 
 Tabbed overlay renderers for Settings, Shortcuts, I/O, Dirs, TUI, Reference, and Logs content.
 
-::: vbc_legacy.ui.modern_overlays
+::: vbc.clients.tui.modern_overlays
     options:
       show_source: true
       heading_level: 3
 
 ## GPU Sparklines
 
-Sparkline presets, palettes, and rendering helpers for GPU metrics.
+Sparkline presets, palettes, and rendering helpers for GPU/CPU metrics.
 
-::: vbc_legacy.ui.gpu_sparkline
+::: vbc.clients.tui.gpu_sparkline
     options:
       show_source: true
       heading_level: 3
 
 ## Usage Examples
 
-### Complete UI Setup
+### Starting the TUI Client
+
+`vbc tui` calls `run_tui` (`vbc/clients/tui/app.py`), which wires `ApiClient`,
+`ClientState`, the client-local `EventBus` (`vbc/clients/tui/bus.py`), `Poller`,
+`TuiController`, `KeyboardListener` and `Dashboard`, and returns the exit code:
 
 ```python
-from pathlib import Path
-from vbc.config.loader import load_config
-from vbc.infrastructure.event_bus import EventBus
-from vbc.ui.state import UIState
-from vbc.ui.manager import UIManager
-from vbc.ui.keyboard import KeyboardListener
-from vbc.ui.dashboard import Dashboard
+from vbc.clients.tui.app import run_tui
 
-# Load config
-config = load_config(Path("conf/vbc.yaml"))
-
-# Create UI components
-bus = EventBus()
-ui_state = UIState()
-ui_state.current_threads = config.general.threads
-ui_state.strip_unicode_display = config.general.strip_unicode_display
-
-# Create UI manager (subscribes to events)
-ui_manager = UIManager(bus, ui_state)
-
-# Create keyboard listener
-keyboard = KeyboardListener(bus)
-
-# Create dashboard
-dashboard = Dashboard(ui_state)
-
-# Start keyboard listener
-keyboard.start()
-
-try:
-    # Run dashboard
-    with dashboard:
-        # Main processing loop here
-        orchestrator.run(Path("/videos"))
-finally:
-    keyboard.stop()
+# api: server URL (default: $VBC_API, then http://127.0.0.1:8770)
+exit_code = run_tui(api="http://127.0.0.1:8770", log_file=None)
 ```
 
-### UIState Operations
-
-```python
-from vbc.ui.state import UIState
-from vbc.domain.models import CompressionJob, VideoFile, JobStatus
-from pathlib import Path
-
-state = UIState()
-
-# Add active job
-job = CompressionJob(
-    source_file=VideoFile(path=Path("video.mp4"), size_bytes=1000000)
-)
-state.add_active_job(job)
-
-# Complete job
-state.add_completed_job(job, output_size=450000)
-
-# Check stats
-print(f"Completed: {state.completed_count}")
-print(f"Compression ratio: {state.compression_ratio:.2f}")
-print(f"Space saved: {state.space_saved_bytes} bytes")
-
-# Get last action (with 60s timeout)
-action = state.get_last_action()
-if action:
-    print(f"Last action: {action}")
-```
-
-### Event-Driven UI Updates
-
-```python
-from vbc.infrastructure.event_bus import EventBus
-from vbc.ui.state import UIState
-from vbc.ui.manager import UIManager
-from vbc.domain.events import JobStarted, JobCompleted
-
-# Setup
-bus = EventBus()
-state = UIState()
-manager = UIManager(bus, state)
-
-# Publish events - UI updates automatically
-job = CompressionJob(...)
-
-bus.publish(JobStarted(job=job))
-# UIManager.on_job_started() updates state.active_jobs
-
-bus.publish(JobCompleted(job=job))
-# UIManager.on_job_completed() updates counters and recent_jobs
-```
-
-### Keyboard Controls
-
-```python
-from vbc.infrastructure.event_bus import EventBus
-from vbc.ui.keyboard import KeyboardListener, ThreadControlEvent, RequestShutdown
-
-bus = EventBus()
-
-# Subscribe to keyboard events
-def on_thread_control(event: ThreadControlEvent):
-    print(f"Thread change: {event.change:+d}")
-
-def on_shutdown(event: RequestShutdown):
-    print("Shutdown requested!")
-
-bus.subscribe(ThreadControlEvent, on_thread_control)
-bus.subscribe(RequestShutdown, on_shutdown)
-
-# Start listener
-keyboard = KeyboardListener(bus)
-keyboard.start()
-
-# User presses '>' → ThreadControlEvent(change=+1)
-# User presses '<' → ThreadControlEvent(change=-1)
-# User presses 'S' → RequestShutdown()
-
-# Cleanup
-keyboard.stop()
-```
+The client never imports server modules (`vbc.service`, `vbc.infrastructure`);
+it talks to the server only through the HTTP API.
 
 ## Dashboard Surfaces
 
@@ -261,27 +163,28 @@ display = sanitize(filename)
 
 ## Keyboard Event Reference
 
-| Key | Event | Handler |
-|-----|-------|---------|
-| `<` or `,` | `ThreadControlEvent(change=-1)` | Orchestrator decreases threads |
-| `>` or `.` | `ThreadControlEvent(change=+1)` | Orchestrator increases threads |
-| `S` or `s` | `RequestShutdown()` | Orchestrator graceful shutdown |
-| `R` or `r` | `RefreshRequested()` | Orchestrator re-scans directory |
-| `P` or `p` | `ToggleOverlayTab(tab="settings")` | UIManager toggles Prefs tab |
-| `F` or `f` | `ToggleOverlayTab(tab="io")` | UIManager toggles I/O tab |
-| `K` or `M` | `ToggleOverlayTab(tab="shortcuts")` | UIManager toggles Keys tab |
-| `D` or `d` | `ToggleOverlayTab(tab="dirs")` | UIManager toggles Dirs tab |
-| `T` or `t` | `ToggleOverlayTab(tab="tui")` | UIManager toggles TUI tab |
-| `E` or `e` | `ToggleOverlayTab(tab="reference")` | UIManager toggles Ref tab |
-| `L` or `l` | `ToggleOverlayTab(tab="logs")` | UIManager toggles Logs tab |
-| `I` or `i` | `CycleOverlayDim(direction=+1)` | UIManager cycles overlay dim level |
-| `G` or `g` | `RotateGpuMetric()` | UIManager rotates the GPU metric shown in the top bar |
-| `W` or `w` | `CycleSparklinePreset(direction=+1)` | UIManager cycles sparkline presets |
-| `O` or `o` | `CycleSparklinePalette(direction=+1)` | UIManager cycles sparkline palettes |
-| `[` / `]` | `CycleLogsPage(direction=-1/+1)` | UIManager pages Logs tab |
-| `Tab` | `CycleOverlayTab(direction=+1)` | UIManager cycles tabs |
-| `Esc` | `CloseOverlay()` | UIManager closes active overlay |
-| `Ctrl+C` | `InterruptRequested()` | Orchestrator terminates active jobs |
+| Key | Event | Handler (`TuiController`) |
+|-----|-------|---------------------------|
+| `<` or `,` | `ThreadControlEvent(change=-1)` | Sends `PUT /api/v1/threads` (`current - 1`) |
+| `>` or `.` | `ThreadControlEvent(change=+1)` | Sends `PUT /api/v1/threads` (`current + 1`) |
+| `S` or `s` | `RequestShutdown()` | Sends `POST /api/v1/stop` (or `DELETE /api/v1/stop` if already stopping) |
+| `R` or `r` | `RefreshRequested()` | Sends `POST /api/v1/refresh` |
+| `P` or `p` | `ToggleOverlayTab(tab="settings")` | Toggles Prefs tab |
+| `F` or `f` | `ToggleOverlayTab(tab="io")` | Toggles I/O tab |
+| `K` or `M` | `ToggleOverlayTab(tab="shortcuts")` | Toggles Keys tab |
+| `D` or `d` | `ToggleOverlayTab(tab="dirs")` | Toggles Dirs tab |
+| `T` or `t` | `ToggleOverlayTab(tab="tui")` | Toggles TUI tab |
+| `E` or `e` | `ToggleOverlayTab(tab="reference")` | Toggles Ref tab |
+| `L` or `l` | `ToggleOverlayTab(tab="logs")` | Toggles Logs tab |
+| `I` or `i` | `CycleOverlayDim(direction=+1)` | Cycles overlay dim level |
+| `G` or `g` | `RotateGpuMetric()` | Rotates the GPU metric shown in the top bar |
+| `W` or `w` | `CycleSparklinePreset(direction=+1)` | Cycles sparkline presets |
+| `O` or `o` | `CycleSparklinePalette(direction=+1)` | Cycles sparkline palettes |
+| `[` / `]` | `CycleLogsPage(direction=-1/+1)` | Pages Logs tab |
+| `Tab` | `CycleOverlayTab(direction=+1)` | Cycles tabs |
+| `Esc` | `CloseOverlay()` | Closes active overlay |
+| `Q` / `Ctrl+Q` / `Ctrl+C` | `InterruptRequested()` | Quits `vbc tui` client |
+| `Shift+U` | *(handled in `KeyboardListener`)* | Unlocks keyboard after idle auto-lock |
 
 ## Prefs Overlay
 

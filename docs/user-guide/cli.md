@@ -2,7 +2,20 @@
 
 Complete reference for VBC command-line interface.
 
-## Basic Syntax
+## Subcommands Overview
+
+`vbc` provides peer subcommands for the server, clients, and the classic in-process runner (a bare `vbc <dirs>` is rejected with a hint to use `vbc run <dirs>`):
+
+| Subcommand | Description |
+|------------|-------------|
+| `vbc serve [--config PATH] [--host HOST] [--port PORT] [--demo] [--demo-config PATH] [--log-file PATH]` | Run the headless server (`HTTP API` on `server.host:server.port`, logs on stdout) |
+| `vbc tui [--api URL] [--log-file PATH]` | Live Rich dashboard connected to a running server |
+| `vbc status`, `vbc threads`, `vbc refresh`, `vbc stop`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config`, `vbc versions`, `vbc log-level`, `vbc sources cleanup`, `vbc manifests restore\|repair` | One-shot API client commands (`--api URL`, `--json`) |
+| `vbc run [INPUT_DIR] [OPTIONS]` | Classic in-process TUI runner (documented below) |
+
+For full details on `vbc serve`, `vbc tui`, and all one-shot client commands, see [Server and Clients](server.md).
+
+## `vbc run` Syntax
 
 ```bash
 uv run vbc run [INPUT_DIR] [OPTIONS]
@@ -162,8 +175,8 @@ Queue ordering mode.
 
 **Default:** From config (`name`)
 
-**Values:** `name`, `rand`, `dir`, `size`, `size-asc`, `size-desc`, `ext`
-**Note:** `ext` uses the order defined in `extensions`.
+**Values:** `name`, `rand`, `dir`, `size`, `size-asc`, `size-desc`, `source-mtime-desc`, `ext`
+**Note:** `ext` uses the order defined in `extensions`; `source-mtime-desc` processes the newest source recording first.
 
 ```bash
 # Sort by file size (small → large)
@@ -491,15 +504,34 @@ uv run vbc run /videos --threads 8 --quality 38 --cpu
 
 ## Environment Variables
 
-VBC does not use environment variables. All configuration via YAML or CLI.
+- **Client commands & `vbc tui`**:
+  - `VBC_API`: Default server URL when `--api` is omitted (fallback: `http://127.0.0.1:8770`).
+  - `VBC_TUI_LOCK_AFTER_S`: Seconds of keyboard inactivity before `vbc tui` auto-locks (default `60`, `0` disables).
+- **Server (`vbc serve`)**:
+  - `VBC_SERVER_HOST`, `VBC_SERVER_PORT`: Override `server.host` and `server.port`.
+  - `VBC_ALLOWED_HOSTS`: Comma-separated `Host`/`Origin` names; replaces `server.allowed_hosts`.
+  - `VBC_STORAGE_ROOTS`: Comma-separated storage roots; replaces `storage.roots` (detected media mounts are still added off loopback).
+  - `VBC_GPU`: `auto` (default in container: probes `av1_nvenc` at start and falls back to CPU SVT-AV1 if unavailable), `true`/`1`, or `cpu`/`false`/`0`.
+  - `HOMESTACK_HEARTBEAT_SECONDS`: Interval of the server's self-heartbeat (a real `GET /api/v1/state`), whose result `/health/ready` and the HomeStack status report (default `60`).
 
 ## Exit Codes
 
+### `vbc run` and `vbc serve`
+
 | Code | Meaning |
 |------|---------|
-| 0 | Success (including graceful shutdown via `S`) |
+| 0 | Success (including graceful shutdown via `S` or `SIGTERM`/`SIGINT` in `vbc serve`) |
 | 1 | Error (invalid config, directory not found, fatal exception) |
-| 130 | Interrupted (Ctrl+C) |
+| 130 | Interrupted (`Ctrl+C` in `vbc run`) |
+
+### Client Commands (`vbc status`, `threads`, `dirs`, `config`, ...)
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Rejected by the server (e.g. validation error, `409`/`412`/`422`) |
+| 2 | Usage error (invalid CLI arguments) |
+| 3 | Server unreachable |
 
 ## Output Files
 

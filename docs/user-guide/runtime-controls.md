@@ -7,13 +7,13 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | Key | Action | Description |
 |-----|--------|-------------|
 | `<` or `,` | Decrease threads | Reduce max concurrent threads by 1 (min: 1) |
-| `>` or `.` | Increase threads | Increase max concurrent threads by 1 (interactive max: 8) |
-| `S` or `s` | Graceful shutdown / Cancel | Stop accepting new jobs, finish active compressions. Press again to cancel shutdown |
-| `R` or `r` | Refresh queue | Re-scan input directory and add new files |
+| `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: `general.max_threads`, default 8) |
+| `S` or `s` | Graceful stop / Cancel | Stop accepting new jobs, finish active compressions. Press again while stopping to cancel. In `vbc tui` the server stays in `STOPPED` (`R` resumes); in `vbc run` the process exits when jobs finish |
+| `R` or `r` | Refresh queue | Re-scan input directories and add new files (in `vbc tui`, also resumes after `STOPPED` or `ERROR`) |
 | `P` or `p` | Overlay: Prefs | Toggle Prefs tab |
 | `F` or `f` | Overlay: I/O | Toggle I/O tab |
 | `D` or `d` | Overlay: Dirs | Toggle Dirs tab |
-| `E` or `e` | Overlay: Ref | Toggle Ref tab |
+| `E` or `e` | Overlay: Ref | Toggle Ref tab (status codes, result symbols, `G`/`L` config source icons) |
 | `L` or `l` | Overlay: Logs | Toggle logs tab (session errors) |
 | `K` or `M` | Overlay: Keys (menu) | Open the menu on the Keys tab |
 | `T` or `t` | Overlay: TUI | Toggle TUI tab |
@@ -21,11 +21,13 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | `[` | Logs previous page | Previous page in Logs tab |
 | `]` | Logs next page | Next page in Logs tab |
 | `I` or `i` | Dim overlay | Cycle overlay dim level |
-| `G` or `g` | Rotate GPU metric | Cycle GPU sparkline metric |
+| `G` or `g` | Rotate metric | Cycle GPU/CPU sparkline metric |
 | `W` or `w` | Sparkline preset | Cycle preset |
 | `O` or `o` | Sparkline palette | Cycle palette |
+| `Shift+U` | Unlock (`vbc tui`) | Unlock keyboard after auto-lock (auto-locks after 60 s of inactivity, configurable via `VBC_TUI_LOCK_AFTER_S`) |
 | `Esc` | Close overlay | Close active overlay tab |
-| `Ctrl+C` | Immediate interrupt | Terminate active compressions immediately |
+| `Q` / `Ctrl+Q` | Quit (`vbc tui`) | Quit the TUI client immediately; the server keeps running |
+| `Ctrl+C` | Quit (`vbc tui`) / Interrupt (`vbc run`) | In `vbc tui`: quit the client immediately (server keeps running). In `vbc run`: terminate active compressions immediately |
 
 ## Dirs Tab Controls
 
@@ -36,7 +38,8 @@ When the Dirs tab is active, extra directory-management shortcuts are available:
 | `↑` / `↓` | Move cursor | Select previous or next directory row |
 | `Shift+↑` / `Shift+↓` | Reorder selected row | Swap the selected directory with the previous or next row |
 | `Space` | Toggle selected | Enable or disable the selected directory |
-| `A` or `a` | Add directory | Enter add-directory input mode |
+| `A` or `a` | Add directory | Enter add-directory input mode (bracketed paste types into the path buffer) |
+| `R` or `r` | Scan mounts (`vbc tui`) | Ask the server to scan media mounts and add new folders as disabled entries |
 | `Delete` / `Backspace` | Mark delete | Mark the selected directory for deletion |
 | `S` or `s` | Apply changes | Save pending Dirs changes; shows a message if there are none |
 | `Esc` | Cancel input | Exit add-directory input mode without applying typed text |
@@ -85,19 +88,20 @@ Result: Threads: 4 → 5
 # New job starts immediately if queue not empty
 ```
 
-## Shutdown Control
+## Shutdown / Stop Control
 
-### Graceful Shutdown (`S`)
+### Graceful Stop / Shutdown (`S`)
 
-Stops accepting new compression jobs while allowing active jobs to finish. **Press `S` again to cancel shutdown.**
+Stops accepting new compression jobs while allowing active jobs to finish. **Press `S` again while stopping to cancel.**
 
 **Behavior:**
-1. Sets shutdown flag
+1. Sets shutdown/stop flag
 2. No new jobs start (queue stops advancing)
 3. Active compressions continue normally
-4. UI shows "SHUTDOWN requested (press S to cancel)"
-5. Exit when all active jobs complete
-6. **Press `S` again to cancel shutdown and resume normal operation**
+4. **Press `S` again while stopping to cancel and resume normal operation**
+5. When all active jobs complete:
+   - In **`vbc tui` (`vbc serve`)**: processing enters `STOPPED` while the server process stays running; press `R` (or run `vbc refresh`) to resume processing.
+   - In **`vbc run`**: the program exits cleanly.
 
 **Use case:** Need to stop processing but don't want to lose progress on active files
 
@@ -133,9 +137,12 @@ t=45s : Last 2 jobs finish
       → Program exits
 ```
 
-### Immediate Interrupt (Ctrl+C)
+### Immediate Interrupt (`Ctrl+C` in `vbc run`, `vbc stop --interrupt` on server)
 
-Terminates active FFmpeg processes immediately.
+!!! note "`vbc tui` vs `vbc run`"
+    In `vbc tui`, pressing `Q`, `Ctrl+Q`, or `Ctrl+C` quits the TUI client immediately while the server keeps running. To interrupt active jobs on a server, run `vbc stop --interrupt` (or send a second `SIGINT` to the `vbc serve` process).
+
+In `vbc run`, pressing `Ctrl+C` terminates active FFmpeg processes immediately.
 
 **Behavior:**
 1. Signal all active FFmpeg processes to terminate
@@ -264,8 +271,8 @@ Toggles full configuration display.
 Opens the `Logs` tab in overlay and shows errors captured since app start (current session only).
 
 **Behavior:**
-1. One error entry uses exactly 2 lines:
-   - Line 1: source file + best-effort metadata (size, resolution/FPS/codec when available)
+1. One error entry uses 2 lines:
+   - Line 1: source file + best-effort metadata (size, resolution/FPS/codec, duration when available) + error timestamp (`YYYY-MM-DD HH:MM:SS`)
    - Line 2: error message in muted red (single-line, cropped if too long)
 2. Default pagination is 10 entries per page (max 20 lines of log content).
 3. If there are more than 10 errors, use `[` and `]` to move between pages.

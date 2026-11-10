@@ -8,9 +8,9 @@ VBC is a production-ready Python application for batch video compression using m
 
 - 🚀 **High Performance**: Multi-threaded processing with dynamic concurrency control
 - 🎯 **Smart Compression**: Camera-specific quality settings and auto-rotation
-- 🎨 **Rich UI**: Real-time interactive dashboard with keyboard controls
-- 🔧 **Flexible**: Extensive configuration via YAML + CLI overrides
-- 🏗️ **Clean Architecture**: Event-driven design with dependency injection
+- 🎨 **Rich UI & Headless Server**: Real-time interactive TUI (`vbc tui`), HTTP JSON API (`vbc serve`), and one-shot CLI commands (`vbc status`, `vbc dirs`, `vbc config`, etc.)
+- 🔧 **Flexible**: Extensive configuration via YAML + CLI overrides + remote API updates
+- 🏗️ **Clean Architecture**: Event-driven design with strict server/client separation
 
 ## Key Features
 
@@ -37,31 +37,43 @@ VBC is a production-ready Python application for batch video compression using m
 
 ## Architecture
 
-VBC follows **Clean Architecture** with clear separation of concerns:
+VBC follows **Clean Architecture** with clear separation between the headless server and presentation clients:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                    UI Layer                      │
-│  (Dashboard, KeyboardListener, UIState)         │
-└────────────────┬────────────────────────────────┘
-                 │ Events (EventBus)
-┌────────────────┴────────────────────────────────┐
-│              Pipeline Layer                      │
-│           (Orchestrator)                         │
-└────────────────┬────────────────────────────────┘
-                 │ Domain Models
-┌────────────────┴────────────────────────────────┐
-│          Infrastructure Layer                    │
-│  (FFmpeg, ExifTool, FFprobe, FileScanner)       │
+│              Clients (vbc/clients/)             │
+│     vbc tui (Rich)   │   vbc status/dirs/…      │
+└──────────────────────┬──────────────────────────┘
+                       │ HTTP JSON API (/api/v1)
+┌──────────────────────┴──────────────────────────┐
+│            Service Layer (vbc/service/)         │
+│       StateStore, CommandService, FastAPI       │
+└──────────────────────┬──────────────────────────┘
+                       │ Events (EventBus)
+┌──────────────────────┴──────────────────────────┐
+│           Pipeline Layer (vbc/pipeline/)        │
+│                 (Orchestrator)                  │
+└──────────────────────┬──────────────────────────┘
+                       │ Domain Models
+┌──────────────────────┴──────────────────────────┐
+│      Infrastructure Layer (vbc/infrastructure/) │
+│  (FFmpeg, ExifTool, FFprobe, Watchers, Monitors)│
 └─────────────────────────────────────────────────┘
 ```
 
-All components communicate via **EventBus** for loose coupling and testability.
+All server components communicate via in-process **EventBus** for loose coupling, while clients interact exclusively through the versioned HTTP API.
 
 ## Quick Example
 
 ```bash
-# Basic usage
+# Headless server + TUI / CLI clients
+uv run vbc serve
+uv run vbc dirs add /path/to/videos
+uv run vbc threads 8
+uv run vbc tui
+uv run vbc status
+
+# Single-process batch run (legacy in-process TUI)
 uv run vbc run /path/to/videos
 
 # With custom configuration
@@ -76,14 +88,16 @@ uv run vbc run /path/to/videos --cpu --rotate-180 --debug
 
 ## Runtime Controls
 
-While VBC is running, use these keyboard shortcuts:
+While VBC is running (`vbc tui` or `vbc run`), use these keyboard shortcuts:
 
 | Key | Action |
 |-----|--------|
 | `<` or `,` | Decrease active threads |
 | `>` or `.` | Increase active threads |
-| `S` | Graceful shutdown (finish active jobs) |
-| `R` | Refresh file queue (scan for new files) |
+| `S` | Graceful stop of processing (finish active jobs; press `S` again while stopping in `vbc tui` to cancel, or `R` once stopped to resume) |
+| `R` | Refresh file queue (scan for new files; resumes stopped/paused server) |
+| `Q` / `Ctrl+Q` | Quit `vbc tui` client (leaves `vbc serve` running) |
+| `Shift+U` | Unlock keyboard after 60s idle auto-lock (`vbc tui`) |
 | `P` | Open Prefs tab |
 | `F` | Open I/O tab |
 | `D` | Open Dirs tab |
@@ -96,12 +110,13 @@ While VBC is running, use these keyboard shortcuts:
 | `W` / `O` | Cycle sparkline preset / palette |
 | `Tab` | Cycle overlay tabs |
 | `[` / `]` | Logs tab page prev/next |
-| `Ctrl+C` | Immediate interrupt (terminate active jobs) |
+| `Ctrl+C` | Quit `vbc tui` client (or immediate interrupt in `vbc run`) |
 
 ## Next Steps
 
 - [Installation](getting-started/installation.md) - Set up VBC
 - [Quick Start](getting-started/quickstart.md) - First compression job
+- [Server & Clients](user-guide/server.md) - Run `vbc serve`, `vbc tui`, and CLI commands
 - [Configuration](getting-started/configuration.md) - Customize settings
 - [Architecture](architecture/overview.md) - Understand the design
 - [API Reference](api/config.md) - Explore the codebase

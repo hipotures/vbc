@@ -201,8 +201,13 @@ video_file.metadata = _get_metadata(video_file, stream_info)
 ```python
 # Check if file was already encoded by VBC (to prevent re-encoding)
 if metadata.vbc_encoded:
-    # Increment skipped_vbc_count
-    bus.publish(JobFailed(job=job, error_message="File already encoded by VBC"))
+    # Move already-encoded file directly into output_dir (skipping re-compression)
+    shutil.move(str(video_file.path), str(output_path))
+    job.status = JobStatus.COMPLETED
+    job.output_path = output_path
+    job.output_size_bytes = video_file.size_bytes
+    self.skipped_vbc_count += 1
+    bus.publish(JobCompleted(job=job))
     return
 ```
 
@@ -405,16 +410,17 @@ archives every input that still exists using the same safeguards. Invalid JSON h
 trusted input list and cannot move sources. An interrupted request keeps its JSON and
 sources in place and reuses already verified group outputs when it resumes.
 
-### Graceful Shutdown
+### Graceful Stop / Shutdown
 
 ```python
-# User pressed 'S' key
-def _on_shutdown_request(self, event):
+# Client called POST/DELETE /api/v1/stop (or user pressed 'S')
+def _on_set_shutdown_requested(self, event: SetShutdownRequested):
     with self._thread_lock:
-        self._shutdown_requested = True
+        self._shutdown_requested = event.requested
         self._thread_lock.notify_all()
 
-    bus.publish(ActionMessage(message="SHUTDOWN requested"))
+    msg = "SHUTDOWN requested - finishing current tasks..." if event.requested else "SHUTDOWN cancelled"
+    bus.publish(ActionMessage(message=msg))
 
 # In main loop:
 while in_flight:

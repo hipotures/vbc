@@ -9,7 +9,7 @@
   - For GPU: FFmpeg compiled with `--enable-nvenc`
   - For CPU: FFmpeg with `libsvtav1` support
 - **ExifTool**: Perl-based metadata tool (required in current runtime flow)
-- **nvtop**: GPU monitoring tool for sparklines (optional; NVIDIA GPUs only)
+- **nvidia-smi / nvtop**: GPU monitoring tools for sparklines (optional; NVIDIA GPUs only — `nvidia-smi` preferred, `nvtop` fallback)
 - **Operating System**: Linux, macOS, or Windows with WSL
 
 ### Check Existing Tools
@@ -63,10 +63,12 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
-pip install rich pyyaml pyexiftool typer pydantic
+pip install -e .
+# Or install packages directly:
+# pip install rich pyyaml pyexiftool typer pydantic fastapi uvicorn httpx inotify-simple
 
 # Run VBC
-vbc run --help
+vbc --help
 ```
 
 ## Installing FFmpeg

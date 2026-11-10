@@ -6,7 +6,7 @@ This page documents the core domain models and events.
 
 Domain models are framework-agnostic business entities.
 
-::: vbc_legacy.domain.models
+::: vbc.domain.models
     options:
       show_source: true
       heading_level: 3
@@ -15,7 +15,7 @@ Domain models are framework-agnostic business entities.
 
 Domain events enable decoupled communication between components.
 
-::: vbc_legacy.domain.events
+::: vbc.domain.events
     options:
       show_source: true
       heading_level: 3
@@ -136,17 +136,24 @@ status = JobStatus.INTERRUPTED   # User interrupted (Ctrl+C)
 
 | Event | Trigger | Data | Use Case |
 |-------|---------|------|----------|
-| `DiscoveryStarted` | Orchestrator starts scanning | `directory: Path` | UI: Show "Scanning..." |
-| `DiscoveryFinished` | Scanning complete | File counts | UI: Update totals |
-| `JobStarted` | Job begins processing | `job: CompressionJob` | UI: Add to active list |
-| `JobCompleted` | Job finishes successfully | `job: CompressionJob` | UI: Update stats |
-| `JobFailed` | Job fails | `job`, `error_message` | UI: Increment errors |
-| `HardwareCapabilityExceeded` | GPU lacks capability | `job` | UI: Show HW_CAP count |
-| `JobProgressUpdated` | FFmpeg progress update | `progress_percent` | UI: Update progress bar |
-| `QueueUpdated` | Pending files changed | `pending_files: List` | UI: Show next in queue |
-| `ActionMessage` | User action feedback | `message: str` | UI: Show for 60s |
-| `ProcessingFinished` | All jobs done | - | UI: Show completion |
-| `RefreshRequested` | User pressed 'R' | - | Orchestrator: Re-scan |
-| `ThreadControlEvent` | User pressed `<`/`>` | `change: int` | Orchestrator: Adjust threads |
-| `RequestShutdown` | User pressed 'S' | - | Orchestrator: Stop accepting jobs |
-| `InterruptRequested` | User pressed Ctrl+C | - | Orchestrator: Terminate active jobs |
+| `DiscoveryStarted` | Orchestrator starts scanning | `directory: Path` | StateStore: Show "Scanning..." |
+| `DiscoveryFinished` | Scanning complete | File counts | StateStore: Update totals |
+| `JobStarted` | Job begins processing | `job: CompressionJob` | StateStore: Add to active list |
+| `JobCompleted` | Job finishes successfully | `job: CompressionJob` | StateStore: Update stats |
+| `JobFailed` | Job fails | `job`, `error_message` | StateStore: Increment errors |
+| `HardwareCapabilityExceeded` | GPU lacks capability | `job` | StateStore: Show HW_CAP count |
+| `JobProgressUpdated` | FFmpeg progress update | `progress_percent` | StateStore: Update progress anchor |
+| `QueueUpdated` | Pending files changed | `pending_files: List` | StateStore: Update pending queue |
+| `ActionMessage` | Action feedback | `message: str` | StateStore: Show for 60s |
+| `ProcessingFinished` | All jobs done | - | StateStore: Mark completion |
+| `WaitingForInput` | Pass done, `wait_on_finish` | - | StateStore: Show waiting status |
+| `ProcessingPausedOnError` | Runtime verification failure | `message`, `reason` | StateStore: Paused on error |
+| `RepairStarted` | Automatic repair pass starts | `candidate_count` | StateStore: Repair active |
+| `RepairFinished` | Automatic repair pass ends | `attempted`, `repaired` | StateStore: Repair counters |
+| `RefreshFinished` | Refresh done | `added`, `removed` | StateStore: Activity message |
+| `RefreshRequested` | `POST /refresh` / watcher | `automatic: bool` | Orchestrator: Re-scan |
+| `InputDirsChanged` | `PUT /dirs` / `POST /dirs/scan` | `active_dirs` | Orchestrator: Update directories |
+| `SetThreadCount` | `PUT /threads` | `target: int` | Orchestrator: Set thread count |
+| `ThreadCountChanged` | Thread count updated | `current`, `minimum`, `maximum` | StateStore: Update thread bounds |
+| `SetShutdownRequested` | `POST /stop` or `DELETE /stop` | `requested: bool` | Orchestrator: Graceful stop/cancel |
+| `InterruptRequested` | `POST /stop {"mode":"interrupt"}`, second SIGINT, or the stop deadline | - | Orchestrator: Terminate active jobs |

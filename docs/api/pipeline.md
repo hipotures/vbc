@@ -6,7 +6,7 @@ This page documents the Orchestrator, the core processing coordinator.
 
 The Orchestrator is the heart of VBC, coordinating all compression jobs.
 
-::: vbc_legacy.pipeline.orchestrator
+::: vbc.pipeline.orchestrator
     options:
       show_source: true
       heading_level: 3
@@ -19,7 +19,7 @@ The Orchestrator is the heart of VBC, coordinating all compression jobs.
 
 Simulation-mode pipeline used by `--demo`.
 
-::: vbc_legacy.pipeline.demo_orchestrator
+::: vbc.pipeline.demo_orchestrator
     options:
       show_source: true
       heading_level: 3
@@ -28,7 +28,7 @@ Simulation-mode pipeline used by `--demo`.
 
 Helpers for moving files that failed verification or compression.
 
-::: vbc_legacy.pipeline.error_file_mover
+::: vbc.pipeline.error_file_mover
     options:
       show_source: true
       heading_level: 3
@@ -37,7 +37,16 @@ Helpers for moving files that failed verification or compression.
 
 Queue ordering strategies used before submit-on-demand scheduling.
 
-::: vbc_legacy.pipeline.queue_sorting
+::: vbc.pipeline.queue_sorting
+    options:
+      show_source: true
+      heading_level: 3
+
+## Output Timestamps
+
+Helpers for deriving and applying output file modification times from filenames or source metadata.
+
+::: vbc.pipeline.output_timestamps
     options:
       show_source: true
       heading_level: 3
@@ -46,7 +55,7 @@ Queue ordering strategies used before submit-on-demand scheduling.
 
 Repair loop helpers for corrupted FLV inputs and failed outputs.
 
-::: vbc_legacy.pipeline.repair
+::: vbc.pipeline.repair
     options:
       show_source: true
       heading_level: 3
@@ -217,14 +226,16 @@ with self._thread_lock:
 ### Dynamic Adjustment
 
 ```python
-# User presses '>' key
-def _on_thread_control(self, event: ThreadControlEvent):
+# Client sends PUT /api/v1/threads {"target": n}
+def _on_thread_control(self, event: SetThreadCount):
     with self._thread_lock:
         old = self._current_max_threads
-        new = old + event.change
-        self._current_max_threads = max(1, min(8, new))
+        upper = max(self._max_threads, self.config.general.threads)
+        new = max(1, min(upper, event.target))
+        self._current_max_threads = new
         self._thread_lock.notify_all()  # Wake up waiting threads
 
+    bus.publish(ThreadCountChanged(current=new, minimum=1, maximum=upper))
     bus.publish(ActionMessage(message=f"Threads: {old} → {new}"))
 ```
 
@@ -336,16 +347,17 @@ def _determine_rotation(self, file: VideoFile) -> Optional[int]:
     return None
 ```
 
-## Graceful Shutdown
+## Graceful Stop / Shutdown
 
 ```python
-# User presses 'S' key
-def _on_shutdown_request(self, event: RequestShutdown):
+# Client sends POST /api/v1/stop or DELETE /api/v1/stop (or user presses 'S')
+def _on_set_shutdown_requested(self, event: SetShutdownRequested):
     with self._thread_lock:
-        self._shutdown_requested = True
+        self._shutdown_requested = event.requested
         self._thread_lock.notify_all()  # Wake up all waiting threads
 
-    bus.publish(ActionMessage(message="SHUTDOWN requested"))
+    msg = "SHUTDOWN requested" if event.requested else "SHUTDOWN cancelled"
+    bus.publish(ActionMessage(message=msg))
 
 # In main loop
 while in_flight:

@@ -43,9 +43,11 @@ suffix_errors_dirs: null
 
 general:
   # === Core Settings ===
-  threads: 8                    # Max concurrent compression threads (>0; executor max_workers=16)
+  threads: 8                    # Max concurrent compression threads (>0)
+  max_threads: 8                # Upper bound for runtime thread control (default 8)
   prefetch_factor: 1            # Submit-on-demand multiplier (>=1)
   preflight_in_worker: false    # Run metadata preparation in active worker slots
+  stability_check_s: 1.0        # Seconds to wait before verifying input file size/mtime stability
   gpu: true                     # Use GPU (NVENC) vs CPU (SVT-AV1)
   queue_sort: name              # Also supports source-mtime-desc (newest source first)
   queue_seed: null              # Optional seed for deterministic rand order
@@ -167,6 +169,16 @@ autorotate:
     "DJI_.*\\.MP4": 0          # DJI drones - no rotation
     "GOPR\\d+\\.MP4": 180      # GoPro pattern - 180° flip
     "IMG_\\d{4}\\.MOV": 90     # iPhone pattern - 90° rotation
+
+server:
+  host: "127.0.0.1"             # Bind address for `vbc serve`
+  port: 8770                    # Bind port for `vbc serve`
+  allowed_hosts: []             # Extra Host/Origin names allowed by API
+  stop_timeout_s: 600           # Seconds to wait on SIGTERM before interrupting FFmpeg
+
+storage:
+  roots: []                     # Allowed root directories for `PUT /api/v1/dirs` off loopback
+  discovered: []                # Directories discovered via `vbc dirs scan` (managed by server)
 ```
 
 ## Configuration Reference
@@ -176,9 +188,18 @@ autorotate:
 #### `threads`
 - **Type**: Integer (>0)
 - **Default**: 1
-- **Description**: Maximum number of concurrent compression threads
-- **Note**: Runtime keyboard adjustment (`<`/`>`) clamps to 1-8 threads
-- **Implementation detail**: Worker pool is created with `max_workers=16`, so practical upper parallelism is 16
+- **Description**: Initial number of concurrent compression threads
+- **Note**: Runtime keyboard adjustment (`<`/`>`) or `vbc threads N` clamps to `1..max(max_threads, threads)`
+
+#### `max_threads`
+- **Type**: Integer (>=1)
+- **Default**: 8
+- **Description**: Upper limit for runtime thread count adjustments; the effective bound (and executor pool size) is `max(max_threads, threads)`
+
+#### `stability_check_s`
+- **Type**: Float (>=0.0)
+- **Default**: `1.0`
+- **Description**: Seconds to wait between two stat checks before starting a job, verifying that an input file's size and `mtime` have stopped changing (set `0` to disable)
 
 #### Quality Defaults
 - **Source**: Encoder args (`gpu_encoder`/`cpu_encoder`) via `-cq` (GPU) or `-crf` (CPU)
@@ -684,6 +705,9 @@ never deletes or moves source videos or compressed outputs. For an orphan marker
 
 ### Verifying and cleaning the moved source archive
 
+On a running server the same operation is `vbc sources cleanup [--delete] [--dir DIR]`
+(runs asynchronously on the server where the media files are mounted).
+
 `scripts/cleanup_source_archive.py` independently compares files in a moved source archive
 with files in the compressed output tree. Manifest contents are not trusted for output
 verification; completed manifest filenames are used only to recognize requests that VBC
@@ -1073,6 +1097,40 @@ the input and applies only the sidecar value.
       "IMG_\\d{4}\\.MOV": 90   # 90° for iPhone videos
   ```
 - **Note**: First match wins (order matters)
+
+### Server & Storage (`vbc serve`)
+
+#### `server.host` / `server.port`
+- **Defaults**: `"127.0.0.1"` / `8770`
+- **Description**: Bind address and port for `vbc serve` (overridable via `--host`, `--port`, `VBC_SERVER_HOST`, `VBC_SERVER_PORT`).
+
+#### `server.allowed_hosts`
+- **Type**: List of strings
+- **Default**: `[]`
+- **Description**: Additional `Host`/`Origin` names permitted by the HTTP API (alongside loopback, the listen address, and the server hostname). `VBC_ALLOWED_HOSTS` replaces this list.
+
+#### `server.stop_timeout_s`
+- **Type**: Float (>=0)
+- **Default**: `600`
+- **Description**: Maximum time (in seconds) `vbc serve` waits for running FFmpeg jobs to finish cleanly on `SIGINT`/`SIGTERM` before interrupting them.
+
+#### `storage.roots`
+- **Type**: List of directory paths
+- **Default**: `[]`
+- **Description**: Allowed parent directories for `PUT /api/v1/dirs` and `POST /api/v1/dirs/scan`. Off loopback, effective roots are `storage.roots` plus any detected media mounts from `/proc/self/mountinfo`. `VBC_STORAGE_ROOTS` replaces this list. Off loopback with no roots at all, every path is rejected.
+
+#### `storage.discovered`
+- **Type**: List of directory paths
+- **Default**: `[]`
+- **Description**: Server-managed list of directories already offered by `POST /api/v1/dirs/scan` so deleted entries are not re-added on subsequent mount scans.
+
+## Remote Configuration Updates (`vbc serve`)
+
+When running `vbc serve`, you can inspect and update `conf/vbc.yaml` over the HTTP API without editing the file on the server host directly:
+
+- `uv run vbc config get [KEY]` — read stored configuration values
+- `uv run vbc config set KEY=VALUE...` / `uv run vbc config unset KEY...` — atomically update a setting (`PATCH /api/v1/config`) and trigger a graceful restart
+- `uv run vbc config --push FILE` — replace the server's `vbc.yaml` with a local file (`PUT /api/v1/config`), keeping server-owned keys (`input_dirs`, `disabled_input_dirs`, `output_dirs`, `errors_dirs`, `server`, `storage`, `web_server`)
 
 ## CLI Overrides
 

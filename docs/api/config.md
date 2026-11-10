@@ -4,14 +4,14 @@ This page documents the configuration models and loader.
 
 ## Models
 
-::: vbc_legacy.config.models
+::: vbc.config.models
     options:
       show_source: true
       heading_level: 3
 
 ## Loader
 
-::: vbc_legacy.config.loader
+::: vbc.config.loader
     options:
       show_source: true
       heading_level: 3
@@ -20,7 +20,7 @@ This page documents the configuration models and loader.
 
 Helpers that apply CLI option values to loaded YAML configuration.
 
-::: vbc_legacy.config.overrides
+::: vbc.config.overrides
     options:
       show_source: true
       heading_level: 3
@@ -29,7 +29,7 @@ Helpers that apply CLI option values to loaded YAML configuration.
 
 Validation and normalization helpers for CQ and bitrate-based quality modes.
 
-::: vbc_legacy.config.rate_control
+::: vbc.config.rate_control
     options:
       show_source: true
       heading_level: 3
@@ -38,7 +38,7 @@ Validation and normalization helpers for CQ and bitrate-based quality modes.
 
 Helpers for local configuration discovery and persistence.
 
-::: vbc_legacy.config.local_registry
+::: vbc.config.local_registry
     options:
       show_source: true
       heading_level: 3
@@ -47,7 +47,7 @@ Helpers for local configuration discovery and persistence.
 
 Validation and mapping helpers for multi-input directory configuration.
 
-::: vbc_legacy.config.input_dirs
+::: vbc.config.input_dirs
     options:
       show_source: true
       heading_level: 3
