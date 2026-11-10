@@ -518,7 +518,7 @@ What the HomeStack contract requires from VBC:
 | `vbc serve [--config] [--host] [--port]` | `bootstrap` + API, headless, no Rich, no keyboard. Input dirs from config (positional args optional). `--demo` uses `DemoOrchestrator`. |
 | `vbc tui [--api http://host:port]` | TUI client only (phase 1). |
 | `vbc status`, `vbc threads N`, `vbc refresh`, `vbc stop`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config` | One-shot API commands (phase 1). `--api` on every client command, also from env (`VBC_API`) or client config; default `http://127.0.0.1:<default port>`. |
-| `vbc run <dirs>` | Today's `vbc <dirs>`. During migration it runs `vbc_legacy`; after legacy is deleted it becomes the launcher (see Open decisions). |
+| `vbc run [DIRS] [--config FILE]` | Launcher (decided 2026-11-10): starts `vbc serve` as a child process on loopback (free port), attaches the TUI in the same terminal, and stops the server when the TUI quits. `DIRS` replace the config's folders for this run only (see Decisions). |
 | `vbc-web --api …` | Web client only (later). |
 
 All of these are **peer subcommands of one Typer app** (`vbc/cli.py`).
@@ -819,10 +819,13 @@ green and, once it exists, the e2e suite green.
 9. **Web client (later).** `frontends/web/` (own entry point `vbc-web`):
    static page + small JS client (long-poll loop + local ticker for
    extrapolation) + proxy, reaching parity with the legacy HTMX dashboard.
-10. **Delete legacy.** Once `vbc run <dirs>` has its replacement (see Open
-   decisions) and the web client exists: remove `vbc_legacy/` and the legacy
-   expected-results comparison in one commit. If the web client is still far off, legacy
-   may be deleted after step 8 and `--web` dropped until step 9 lands.
+10. **Delete legacy.** Once `vbc run` is the launcher (see Decisions):
+   remove `vbc_legacy/` in one commit. The recorded legacy results stay as the
+   e2e suite's fixed expected results (`tests/e2e/expected/run.json`); they can
+   no longer be re-recorded from legacy. The four stand-alone legacy helpers
+   (`check_audio_consistency`, `copy_failed_videos`, `fix_vbc_tags`,
+   `move_err_files`) move to `scripts/` unchanged. The web client is not a
+   precondition (decided 2026-11-10): `--web` is dropped until step 9 lands.
 11. **Docs.** `docs/architecture/` (this page → final design), API reference,
     user guide for `serve`/`tui`/`run`/one-shot commands (phase 1), HomeStack
     runtime contract (step 8) and `vbc-web` (later);
@@ -848,6 +851,20 @@ green and, once it exists, the e2e suite green.
 * Delivery order: **server + one-shot commands + `vbc tui` first** (phase 1, steps
   1–7), HomeStack packaging (step 8), web client later (step 9), legacy
   deleted in step 10.
+* `vbc run` (decided 2026-11-10): a launcher, not an in-process app. It runs
+  a private `vbc serve` on loopback plus the TUI in one terminal; `Q` /
+  Ctrl+Q / Ctrl+C quit both (the server gets SIGINT, a second SIGINT
+  interrupts running jobs). Folders given as `DIRS` **replace** the config's
+  list for that process only: the server never saves them and rejects
+  `PUT /dirs` and `POST /dirs/scan` with `409` (the Dirs list is read-only);
+  without `DIRS` the config's list applies and Dirs works as usual. Output
+  and error folders follow the suffix rule for such folders. The only option
+  is `--config FILE`: **no per-run settings on the command line** (no
+  `--threads`, `--gpu`, `--quality`, …). Settings come from the config file
+  (a copy of the global one for special runs) and per-folder `VBC.YAML`
+  files; threads change live with `<` / `>`. After a pass the server waits
+  (the TUI shows the result) until the user quits. `vbc serve DIRS` takes the
+  same folder override.
 * Code strategy: **legacy package + new tree** (decided): today's code moves
   to `vbc_legacy/`, the new `vbc/` takes over only what it needs, legacy is
   deleted at the end.
@@ -864,10 +881,6 @@ green and, once it exists, the e2e suite green.
 * Web client: vanilla JS (zero build) vs. keeping Jinja/HTMX fragments rendered
   by `vbc-web` from API data. Recommended: vanilla JS, because HTMX polling
   cannot extrapolate counters.
-* What `vbc run <dirs>` becomes when legacy is deleted. Recommended: a thin
-  launcher that starts `serve` on loopback (free port) and
-  attaches `tui` in the same terminal (single code path; no in-process
-  dashboard is carried over).
 * GPU metrics: v1 needs the latest sample **and** a bounded history, because
   the TUI sparkline shows history today and `vbc tui` is in phase 1:
   `GET /api/v1/gpu?since=<seq>` returns new samples (ring buffer, `410` when

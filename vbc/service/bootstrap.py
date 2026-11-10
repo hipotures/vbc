@@ -23,7 +23,7 @@ from typing import Callable, Dict, List, Mapping, Optional
 from vbc.config.input_dirs import can_write_output_dir_path, evaluate_input_dirs
 from vbc.config.loader import load_config, load_demo_config
 from vbc.config.local_registry import LocalConfigRegistry
-from vbc.config.models import AppConfig
+from vbc.config.models import AppConfig, InputDirEntry
 from vbc.config.overrides import CliConfigOverrides
 from vbc.config.rate_control import describe_rate_target
 from vbc.domain.events import InputDirsChanged, InterruptRequested, RefreshRequested, SetShutdownRequested
@@ -37,7 +37,7 @@ from vbc.infrastructure.ffmpeg import (
     output_extension_for_args,
     select_encoder_args,
 )
-from vbc.service.commands import CommandService
+from vbc.service.commands import CommandService, is_manifest_dir
 from vbc.service.log_buffer import LogBuffer
 from vbc.service.state_store import StateStore
 from vbc.service.storage import StorageRoots
@@ -136,6 +136,25 @@ class _Dirs:
     errors_dir_map: Dict[Path, Path] = field(default_factory=dict)
 
 
+def _use_dirs_from_args(config: AppConfig, input_dirs: List[Path]) -> None:
+    """Replace the configured folders (in memory) with ``input_dirs``.
+
+    Output and error folders follow the suffix rule (``<dir>_out``,
+    ``<dir>_err``): explicit ``output_dirs`` / ``errors_dirs`` pair with the
+    configured list and do not apply to other folders.
+    """
+    config.input_dirs = [
+        InputDirEntry(path=str(path.resolve()), metadata=is_manifest_dir(path.resolve()))
+        for path in input_dirs
+    ]
+    if config.output_dirs:
+        config.output_dirs = []
+        config.suffix_output_dirs = config.suffix_output_dirs or "_out"
+    if config.errors_dirs:
+        config.errors_dirs = []
+        config.suffix_errors_dirs = config.suffix_errors_dirs or "_err"
+
+
 def _resolve_dirs(config: AppConfig) -> _Dirs:
     entries = [entry.path for entry in config.input_dirs if entry.enabled]
     if not entries:
@@ -163,6 +182,7 @@ class VbcServer:
         env: Mapping[str, str] = os.environ,
         host: Optional[str] = None,
         port: Optional[int] = None,
+        input_dirs: Optional[List[Path]] = None,
     ) -> None:
         self.config_path = config_path
         self.started_at = time.time()
@@ -175,6 +195,11 @@ class VbcServer:
             config.server.host = host
         if port is not None:
             config.server.port = port
+        # Folders from the command line (`vbc run DIRS`, `vbc serve DIRS`) replace
+        # the config's list for this process only: never saved, Dirs read-only.
+        self.dirs_from_args = input_dirs is not None
+        if input_dirs is not None:
+            _use_dirs_from_args(config, input_dirs)
         # Server lifecycle: wait for the next refresh after every pass.
         config.general.wait_on_finish = True
         config.general.bell_on_finish = False
@@ -214,6 +239,7 @@ class VbcServer:
         self.commands = CommandService(
             self.bus, self.store, config, config_path,
             storage_roots=self.storage_roots,
+            dirs_editable=not self.dirs_from_args,
         )
         self.dirs = _resolve_dirs(config)
         # Folders the next pass scans. The API replaces it on InputDirsChanged so a

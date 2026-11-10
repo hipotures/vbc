@@ -1,8 +1,8 @@
 """VBC command line: one Typer app whose subcommands are all peers.
 
 Commands (docs/architecture/service-split.md): ``serve`` (headless server),
-``run`` (legacy in-process TUI, today's ``vbc <dirs>``; arguments pass through
-unchanged) and the one-shot API commands ``status``, ``threads``, ``refresh``,
+``run`` (a private server on loopback plus the TUI in one terminal) and the
+one-shot API commands ``status``, ``threads``, ``refresh``,
 ``stop``, ``dirs``, ``errors``, ``logs``, ``config``, ``log-level``, and
 ``tui`` (the Rich dashboard as an API client).
 
@@ -49,6 +49,8 @@ def _root() -> None:
 
 @app.command()
 def serve(
+    dirs: Optional[list[Path]] = typer.Argument(
+        None, help="Compress these folders instead of the config's list (this run only, never saved; Dirs list read-only)"),
     config: Path = typer.Option(Path("conf/vbc.yaml"), "--config", "-c", help="Path to YAML config"),
     host: Optional[str] = typer.Option(None, help="Listen address (default server.host, 127.0.0.1)"),
     port: Optional[int] = typer.Option(None, help="Listen port (default server.port, 8770)"),
@@ -59,7 +61,7 @@ def serve(
     """Run the headless server: HTTP API on server.host:server.port, logs on stdout."""
     from vbc.service.__main__ import serve as serve_headless
 
-    raise typer.Exit(serve_headless(config, host, port, demo, demo_config, log_file))
+    raise typer.Exit(serve_headless(config, host, port, demo, demo_config, log_file, dirs))
 
 
 API_OPTION = typer.Option(None, "--api", help="Server URL (default $VBC_API or http://127.0.0.1:8770)")
@@ -352,15 +354,22 @@ def dirs_set(ctx: typer.Context, paths: list[str] = typer.Argument(..., help="Ne
     _dirs_change(ctx, commands.replace_all(paths))
 
 
-@app.command(
-    add_help_option=False,
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-def run(ctx: typer.Context) -> None:
-    """Compress directories with the in-process TUI (legacy; see `vbc run --help`)."""
-    from vbc_legacy.main import app as legacy_app
+@app.command()
+def run(
+    dirs: Optional[list[Path]] = typer.Argument(
+        None, help="Folders to compress instead of the config's list (this run only, never saved)"),
+    config: Path = typer.Option(Path("conf/vbc.yaml"), "--config", "-c", help="Path to YAML config"),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", help="Client log file (default ~/.local/state/vbc/tui.log)"),
+) -> None:
+    """Start a private server on loopback with the dashboard in this terminal; quitting stops both.
 
-    legacy_app(args=ctx.args, prog_name="vbc run")
+    All settings come from the config file and per-folder VBC.YAML files.
+    Server log: ~/.local/state/vbc/run-server.log.
+    """
+    from vbc.clients.run import run as run_launcher
+
+    raise typer.Exit(code=run_launcher(dirs or [], config, str(log_file) if log_file else None))
 
 
 if __name__ == "__main__":

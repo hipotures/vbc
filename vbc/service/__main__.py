@@ -18,14 +18,21 @@ def serve(
     demo: bool = False,
     demo_config: Path = Path("conf/demo.yaml"),
     log_file: Path | None = None,
+    dirs: list[Path] | None = None,
 ) -> int:
+    """``dirs`` (non-empty) replace the config's folders for this process only."""
     if not config.exists():
         print(f"vbc serve: config file not found: {config}", file=sys.stderr)
         return 2
+    dirs = [path.resolve() for path in dirs] if dirs else None
+    for path in dirs or []:
+        if not path.is_dir():
+            print(f"vbc serve: not a directory: {path}", file=sys.stderr)
+            return 2
     try:
         server = VbcServer(
             config, demo=demo, demo_config_path=demo_config if demo else None,
-            log_file=log_file, host=host, port=port,
+            log_file=log_file, host=host, port=port, input_dirs=dirs,
         )
     except ServerConfigError as exc:
         print(f"vbc serve: {exc}", file=sys.stderr)
@@ -45,6 +52,7 @@ def serve(
             args.extend(["--demo", "--demo-config", str(demo_config)])
         if log_file is not None:
             args.extend(["--log-file", str(log_file)])
+        args.extend(str(path) for path in dirs or [])
         print("vbc serve: restarting with the new config", flush=True)
         os.execv(sys.executable, args)
     return code
@@ -58,6 +66,8 @@ def main() -> int:
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--demo-config", type=Path, default=Path("conf/demo.yaml"))
     parser.add_argument("--log-file", type=Path)
+    parser.add_argument("dirs", nargs="*", type=Path,
+                        help="Compress these folders instead of the config's list (this run only, not saved)")
     return serve(**vars(parser.parse_args()))
 
 

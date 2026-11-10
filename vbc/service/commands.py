@@ -189,8 +189,10 @@ class CommandService:
         config: AppConfig,
         config_path: Optional[Path],
         storage_roots: Optional[StorageRoots] = None,
+        dirs_editable: bool = True,
     ) -> None:
         self._bus = bus
+        self._dirs_editable = dirs_editable
         self._store = store
         self._config = config
         self._config_path = config_path
@@ -448,10 +450,18 @@ class CommandService:
                     errors.append(f"{label}: not readable")
         return errors
 
+    def _require_editable_dirs(self) -> None:
+        if not self._dirs_editable:
+            raise CommandError(
+                409, "the folder list comes from the command line",
+                detail="folders given to `vbc run` / `vbc serve` apply to this run only; the list is read-only and never saved",
+            )
+
     def scan_mounts(self) -> dto.DirsScanResult:
         """Offer every new media mount as a disabled folder (never enabled here:
         a wrong mount must not start compressing). A mount offered once is not
         offered again, even after it was removed from the list."""
+        self._require_editable_dirs()
         added: List[str] = []
         roots = self._storage_roots
         if roots is not None and roots.detect_mounts:
@@ -525,6 +535,7 @@ class CommandService:
 
     def put_dirs(self, entries: Sequence[dto.DirEntry], if_match: Optional[int]) -> dto.DirsState:
         """Replace the whole ordered list; ``if_match`` must equal the current dirs_rev."""
+        self._require_editable_dirs()
         with self._dirs_lock:
             saved = {Path(e.path): e for e in (self._config.input_dirs or [])}
             normalized = [self._complete(e, saved.get(Path(e.path.strip()))) for e in entries]
