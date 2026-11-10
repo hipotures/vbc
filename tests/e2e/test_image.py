@@ -17,12 +17,12 @@ import httpx
 import pytest
 import yaml
 
-import record_legacy
+import expected_tree
 from conftest import REPO, free_port
 
 IMAGE = os.environ.get("VBC_E2E_IMAGE")
 RUNTIME = shutil.which("podman") or shutil.which("docker")
-EXPECTED = json.loads((REPO / "tests" / "e2e" / "expected" / "legacy_run.json").read_text())
+EXPECTED = json.loads((REPO / "tests" / "e2e" / "expected" / "run.json").read_text())
 
 pytestmark = pytest.mark.skipif(not (IMAGE and RUNTIME), reason="set VBC_E2E_IMAGE (and have podman/docker)")
 
@@ -41,7 +41,7 @@ def test_image_contains_only_headless_runtime():
 from importlib.util import find_spec
 from pathlib import Path
 
-for name in ('vbc.clients', 'vbc.cli', 'vbc_legacy', 'rich', 'typer', 'jinja2'):
+for name in ('vbc.clients', 'vbc.cli', 'rich', 'typer', 'jinja2'):
     assert find_spec(name) is None, name
 from vbc.service.api import create_app
 from vbc.maintenance.repair import repair_candidate
@@ -66,7 +66,7 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
     config["general"]["gpu"] = False
     config["server"] = {"host": "0.0.0.0", "port": 8080}
     (volume / "config" / "vbc.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
-    before = record_legacy.snapshot(root)
+    before = expected_tree.snapshot(root)
 
     readonly = tmp_path / "readonly-media" / "clips"  # an unused mount without write access
     readonly.mkdir(parents=True)
@@ -118,7 +118,7 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
         meta_entry = next(e for e in added.json()["entries"] if e["path"] == meta)
         assert meta_entry["enabled"] and meta_entry["metadata"] and meta_entry["watch"], meta_entry
         deadline = time.monotonic() + 300
-        while record_legacy.snapshot(root) != EXPECTED["run1"]["tree"]:
+        while expected_tree.snapshot(root) != EXPECTED["run1"]["tree"]:
             assert time.monotonic() < deadline, _run("logs", name, check=False).stdout[-3000:]
             time.sleep(1)
         saved = yaml.safe_load((volume / "config" / "vbc.yaml").read_text())
@@ -126,8 +126,8 @@ def test_image_full_pass_health_and_stop(media_tree, tmp_path):
             e for e in saved["input_dirs"] if e["path"] == meta).items()
         assert meta in saved["storage"]["discovered"]
 
-        after = record_legacy.snapshot(root)
-        assert record_legacy.diff(before, after) == EXPECTED["run1"]["changes"]
+        after = expected_tree.snapshot(root)
+        assert expected_tree.diff(before, after) == EXPECTED["run1"]["changes"]
         assert after == EXPECTED["run1"]["tree"]
 
         # Manifest maintenance runs on the server without terminal libraries.

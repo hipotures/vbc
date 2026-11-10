@@ -10,7 +10,6 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - "vbc/**"
-      - "vbc_legacy/**"
   workflow_dispatch:
 
 permissions:

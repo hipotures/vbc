@@ -12,7 +12,7 @@ VBC follows **Clean Architecture** principles with clear separation of concerns,
 
 ## Layer Architecture
 
-VBC separates the **headless server** (`vbc serve`, owning all business state and file operations) from **clients** (`vbc tui` and one-shot CLI commands, owning only presentation state and communicating via HTTP JSON DTOs in `vbc/contracts/`). During the migration, `vbc run <dirs>` runs the frozen in-process dashboard from `vbc_legacy/`.
+VBC separates the **headless server** (`vbc serve`, owning all business state and file operations) from **clients** (`vbc tui` and one-shot CLI commands, owning only presentation state and communicating via HTTP JSON DTOs in `vbc/contracts/`). `vbc run [DIRS]` is a launcher that starts a private server on loopback and the TUI in one terminal.
 
 ```mermaid
 graph TB

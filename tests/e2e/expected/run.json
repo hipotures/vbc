@@ -1,5 +1,5 @@
 {
-  "description": "Legacy `vbc run --cpu` over tests/e2e/media.py; paths relative to the work root.",
+  "description": "Expected results of a CPU pass over tests/e2e/media.py (recorded from the pre-split application); paths relative to the work root.",
   "tools": {
     "ffmpeg": "ffmpeg version n9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
     "exiftool": "13.55",

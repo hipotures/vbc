@@ -110,15 +110,6 @@ Logging configuration and setup.
       show_source: true
       heading_level: 3
 
-## Legacy Web Server (`vbc run --web`)
-
-Read-only HTMX dashboard server and template rendering helpers used by legacy `vbc run --web`.
-
-::: vbc_legacy.infrastructure.web_server
-    options:
-      show_source: true
-      heading_level: 3
-
 ## Usage Examples
 
 ### EventBus

@@ -11,7 +11,6 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - "vbc/**"
-      - "vbc_legacy/**"
       - "tests/**"
 
 permissions:

@@ -22,10 +22,10 @@ Helper script that relocates source MP4 files for which the compressor created `
 
 ```bash
 # Move all errored videos and .err markers to /tmp/err
-python vbc/utils/move_err_files.py /path/to/videos
+python scripts/move_err_files.py /path/to/videos
 
 # Custom destination
-python vbc/utils/move_err_files.py /path/to/videos --dest /path/to/quarantine
+python scripts/move_err_files.py /path/to/videos --dest /path/to/quarantine
 ```
 
 ### Output
@@ -55,7 +55,7 @@ Copy source videos for failed compressions based on `.err` files.
 
 ```bash
 # Copy failed videos to new directory
-python vbc/utils/copy_failed_videos.py /path/to/SR /path/to/SR_out /path/to/SR_new
+python scripts/copy_failed_videos.py /path/to/SR /path/to/SR_out /path/to/SR_new
 ```
 
 **Arguments:**
@@ -93,10 +93,10 @@ Verify audio handling between input and output directories.
 
 ```bash
 # Default output dir: <input_dir>_out
-python vbc/utils/check_audio_consistency.py /path/to/videos
+python scripts/check_audio_consistency.py /path/to/videos
 
 # Custom output dir
-python vbc/utils/check_audio_consistency.py /path/to/videos --output-dir /path/to/videos_out
+python scripts/check_audio_consistency.py /path/to/videos --output-dir /path/to/videos_out
 ```
 
 ### Output

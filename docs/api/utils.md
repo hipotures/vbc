@@ -47,38 +47,16 @@ Controlled recompression service for supported failed manifests (`vbc manifests 
       show_source: true
       heading_level: 3
 
-## Fix VBC Tags
+## Stand-alone helper scripts
 
-Dry-run capable helper for adding missing VBC metadata tags to existing MP4 files.
+These command-line helpers live in `scripts/` (not in the `vbc` package) and
+work directly on folders, without a server. Usage and options:
+`scripts/README.md`.
 
-::: vbc_legacy.utils.fix_vbc_tags
-    options:
-      show_source: true
-      heading_level: 3
+| Script | Purpose |
+|---|---|
+| `scripts/fix_vbc_tags.py` | Dry-run capable helper that adds missing VBC metadata tags to existing MP4 files |
+| `scripts/move_err_files.py` | Move source files and matching `.err` markers into a quarantine directory |
+| `scripts/copy_failed_videos.py` | Copy source videos that have `.err` markers, keeping relative paths |
+| `scripts/check_audio_consistency.py` | Verify input/output audio codec handling |
 
-## Move Error Files
-
-Move source MP4 files and matching `.err` markers into a quarantine directory.
-
-::: vbc_legacy.utils.move_err_files
-    options:
-      show_source: true
-      heading_level: 3
-
-## Copy Failed Videos
-
-Copy source videos that correspond to `.err` markers while preserving relative paths.
-
-::: vbc_legacy.utils.copy_failed_videos
-    options:
-      show_source: true
-      heading_level: 3
-
-## Audio Consistency Check
-
-Command-line verifier for input/output audio codec handling.
-
-::: vbc_legacy.utils.check_audio_consistency
-    options:
-      show_source: true
-      heading_level: 3

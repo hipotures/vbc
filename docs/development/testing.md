@@ -19,8 +19,8 @@ the [service split](../architecture/service-split.md).
 
 Location: `tests/e2e/`. Current scenarios (`test_serve.py`):
 
-* **full pass matches legacy** – `vbc serve` over the generated media
-  reproduces `expected/legacy_run.json` on disk, the counters and the error
+* **full pass matches the expected results** – `vbc serve` over the generated media
+  reproduces `expected/run.json` on disk, the counters and the error
   log, and a refresh (second pass) changes nothing;
 * **commands and health** – `serve --demo`: thread clamping and idempotence,
   `PUT /dirs` 428/412/422, long-poll `204`, Host/Origin guard, health and
@@ -28,7 +28,7 @@ Location: `tests/e2e/`. Current scenarios (`test_serve.py`):
 * **stop keeps the server running** – graceful stop, cancel, stop to
   `stopped`, refresh resumes, interrupt; the process stays up;
 * **stop and resume on real media** – interrupt mid-pass, refresh, final disk
-  state equals the legacy oracle;
+  state equals the expected results;
 * **shutdown with an open long-poll** – SIGINT exits within seconds, the
   waiting client gets `204`, no traceback;
 * **config push and setting edits** – `PUT /api/v1/config` (`vbc config --push`)
@@ -52,7 +52,12 @@ code 0 and the server keeps running; a second scenario checks that `S`
 requests and cancels graceful stop of processing (while leaving the server process up), `R` resumes from `stopped`, `q` and Ctrl+Q quit within a second, and the server log shows
 `Client connected` / `Client disconnected (quit)` for each session.
 
-Legacy `vbc run` (until it is deleted) is checked by hand as below.
+`test_run.py` starts `vbc run DIR --config FILE` in a pseudo-terminal: the
+launcher's private server answers on loopback, its Dirs list holds only the
+folder from the command line and rejects edits and mount scans with `409`, the
+dashboard renders, `q` quits with exit code 0 and stops the server
+(interrupting running jobs), the config file is unchanged and the config's
+other folder is not processed.
 
 Rules:
 
@@ -69,12 +74,12 @@ Rules:
   keeps breaking for reasons other than real regressions is simplified or
   deleted.
 
-Planned scenarios and the legacy comparison are listed under "Testing
-strategy" in the [service split plan](../architecture/service-split.md).
+The testing approach is described under "Testing strategy" in the
+[service split plan](../architecture/service-split.md).
 
 `test_image.py` (opt-in, `VBC_E2E_IMAGE=vbc:dev`) runs the built container:
 it refuses to start without a mounted `/home/app`; with a volume and an
-identity mount of the media tree a full pass matches the legacy oracle;
+identity mount of the media tree a full pass matches the expected results;
 health, readiness and HomeStack telemetry answer; `stop` (SIGTERM) exits 0.
 It also checks that client code and Rich/Typer/Jinja2 are absent, manifest
 maintenance works without them, a config push restarts the headless server, and
@@ -85,18 +90,14 @@ bind-mounted into the container.
 client-only change is rejected by the image release script, while a server
 change permits the next version in a dry run without creating a tag.
 
-## Legacy reference recording
+## Expected results
 
-`tests/e2e/media.py` generates the fixture set; `tests/e2e/record_legacy.py`
-runs legacy `vbc run --cpu` over it twice and writes
-`tests/e2e/expected/legacy_run.json` (files produced, codecs, dimensions,
-picture rotation, error markers, log markers). The new server has to
-reproduce it. Re-record only deliberately:
-
-```bash
-uv run python tests/e2e/record_legacy.py              # rewrites the expected file
-uv run python tests/e2e/record_legacy.py --keep /tmp/vbc-legacy-work
-```
+`tests/e2e/media.py` generates the fixture set; `tests/e2e/expected/run.json`
+holds what two passes over it must produce (files, codecs, dimensions,
+picture rotation, error markers). It was recorded from the pre-split
+application and is now a fixed expectation, with helpers in
+`tests/e2e/expected_tree.py` (`write_config`, `snapshot`, `diff`). A
+deliberate change in output behaviour updates `run.json` in the same commit.
 
 ## Running
 
@@ -107,17 +108,18 @@ uv run pytest            # runs tests/e2e
 
 System requirements: `ffmpeg`, `ffprobe` and `exiftool` on `PATH`.
 
-## Manual check of legacy `vbc run`
+## Manual check of `vbc run`
 
 ```bash
 mkdir -p /tmp/vbc-smoke/in
 ffmpeg -f lavfi -i testsrc=duration=3:size=640x360:rate=25 \
        -c:v libx264 -preset ultrafast -crf 10 /tmp/vbc-smoke/in/clip_001.mp4
 head -c 300000 /dev/urandom > /tmp/vbc-smoke/in/broken_002.mp4
-cp conf/vbc.yaml.example /tmp/vbc-smoke/vbc.yaml
-uv run vbc run /tmp/vbc-smoke/in --config /tmp/vbc-smoke/vbc.yaml \
-       --cpu --threads 2 --min-size 1 --no-wait
+cp conf/vbc.yaml.example /tmp/vbc-smoke/vbc.yaml   # set general.gpu: false, min_size_bytes: 1
+uv run vbc run /tmp/vbc-smoke/in --config /tmp/vbc-smoke/vbc.yaml
 ```
+
+When the dashboard shows WAITING, quit with `q`.
 
 Expected: `/tmp/vbc-smoke/in_out/clip_001.mp4` exists, and
 `/tmp/vbc-smoke/in_err/` holds `broken_002.mp4` with its `.err` marker.

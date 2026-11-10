@@ -1,6 +1,6 @@
 # Runtime Controls
 
-VBC provides interactive keyboard controls to adjust behavior while compression is running.
+The dashboard (`vbc tui`, and `vbc run`, which starts a private server with the same dashboard) provides keyboard controls while compression is running. The keys act on the server; the only difference is quitting: `vbc tui` leaves its server running, `vbc run` stops its private server.
 
 ## Keyboard Reference
 
@@ -8,8 +8,8 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 |-----|--------|-------------|
 | `<` or `,` | Decrease threads | Reduce max concurrent threads by 1 (min: 1) |
 | `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: `general.max_threads`, default 8) |
-| `S` or `s` | Graceful stop / Cancel | Stop accepting new jobs, finish active compressions. Press again while stopping to cancel. In `vbc tui` the server stays in `STOPPED` (`R` resumes); in `vbc run` the process exits when jobs finish |
-| `R` or `r` | Refresh queue | Re-scan input directories and add new files (in `vbc tui`, also resumes after `STOPPED` or `ERROR`) |
+| `S` or `s` | Graceful stop / Cancel | Stop accepting new jobs, finish active compressions. Press again while stopping to cancel. Processing then stays `STOPPED` (`R` resumes) |
+| `R` or `r` | Refresh queue | Re-scan input directories and add new files (also resumes after `STOPPED` or `ERROR`) |
 | `P` or `p` | Overlay: Prefs | Toggle Prefs tab |
 | `F` or `f` | Overlay: I/O | Toggle I/O tab |
 | `D` or `d` | Overlay: Dirs | Toggle Dirs tab |
@@ -26,8 +26,7 @@ VBC provides interactive keyboard controls to adjust behavior while compression 
 | `O` or `o` | Sparkline palette | Cycle palette |
 | `Shift+U` | Unlock (`vbc tui`) | Unlock keyboard after auto-lock (auto-locks after 60 s of inactivity, configurable via `VBC_TUI_LOCK_AFTER_S`) |
 | `Esc` | Close overlay | Close active overlay tab |
-| `Q` / `Ctrl+Q` | Quit (`vbc tui`) | Quit the TUI client immediately; the server keeps running |
-| `Ctrl+C` | Quit (`vbc tui`) / Interrupt (`vbc run`) | In `vbc tui`: quit the client immediately (server keeps running). In `vbc run`: terminate active compressions immediately |
+| `Q` / `Ctrl+Q` / `Ctrl+C` | Quit | `vbc tui`: quit the client at once, the server keeps running. `vbc run`: quit and stop the private server (running jobs are interrupted) |
 
 ## Dirs Tab Controls
 
@@ -100,8 +99,9 @@ Stops accepting new compression jobs while allowing active jobs to finish. **Pre
 3. Active compressions continue normally
 4. **Press `S` again while stopping to cancel and resume normal operation**
 5. When all active jobs complete:
-   - In **`vbc tui` (`vbc serve`)**: processing enters `STOPPED` while the server process stays running; press `R` (or run `vbc refresh`) to resume processing.
-   - In **`vbc run`**: the program exits cleanly.
+   processing enters `STOPPED` while the server process stays running; press
+   `R` (or run `vbc refresh`) to resume, or quit the dashboard (in `vbc run`
+   this also ends the private server).
 
 **Use case:** Need to stop processing but don't want to lose progress on active files
 
@@ -134,37 +134,26 @@ t=30s : 2 jobs finish
 
 t=45s : Last 2 jobs finish
       → Active: 0 jobs
-      → Program exits
+      → Status: STOPPED (R resumes, Q quits)
 ```
 
-### Immediate Interrupt (`Ctrl+C` in `vbc run`, `vbc stop --interrupt` on server)
+### Immediate Interrupt (`vbc stop --interrupt`, quitting `vbc run`)
 
-!!! note "`vbc tui` vs `vbc run`"
-    In `vbc tui`, pressing `Q`, `Ctrl+Q`, or `Ctrl+C` quits the TUI client immediately while the server keeps running. To interrupt active jobs on a server, run `vbc stop --interrupt` (or send a second `SIGINT` to the `vbc serve` process).
-
-In `vbc run`, pressing `Ctrl+C` terminates active FFmpeg processes immediately.
+Terminates active FFmpeg processes immediately. Triggered by
+`vbc stop --interrupt` (the server keeps running), by a second `SIGINT` to
+`vbc serve`, or by quitting `vbc run` while jobs are running (its private
+server then ends). In `vbc tui`, `Q`, `Ctrl+Q` and `Ctrl+C` only quit the
+client.
 
 **Behavior:**
 1. Signal all active FFmpeg processes to terminate
-2. Wait up to 10 seconds for processes to exit
-3. Clean up `.tmp` files
-4. Exit with code 130
-5. Active jobs marked as `INTERRUPTED`
+2. Clean up `.tmp` files (no `.err` markers are written)
+3. Active jobs are marked `INTERRUPTED`; their sources stay in place and are
+   compressed again by the next pass
 
 **Use case:** Emergency stop (system overheating, urgent restart needed)
 
-**Warning:** Active compressions are lost (need to re-process)
-
-**Timeline:**
-```
-t=0s  : Press Ctrl+C
-      → UI: "Ctrl+C - interrupting active compressions..."
-      → Signal all ffmpeg processes: SIGTERM
-
-t=2s  : FFmpeg processes exit
-      → Clean up .tmp files
-      → Program exits (code 130)
-```
+**Warning:** Work on the active files is lost (they are re-processed later)
 
 ## Queue Refresh (`R`)
 
@@ -190,22 +179,23 @@ Result: "Refreshed: +3 new files"
 
 **Note:** Files already completed or in queue are not duplicated.
 
-## Wait Mode
+## Waiting After a Pass
 
-When `wait_on_finish: true` (or `--wait` CLI flag) is set, VBC does not exit automatically after all tasks complete. If current-session failures are repairable and `auto_repair_errors: true`, VBC first shows **REPAIR** status, attempts one repair pass, and compresses repaired files. It then shows **WAITING** status in the top bar and waits for user input.
+The server never exits when the queue is empty. If current-session failures
+are repairable and `auto_repair_errors: true`, it first shows **REPAIR**,
+attempts one repair pass and compresses repaired files. It then shows
+**WAITING** in the top bar.
 
 **Behavior:**
 
-- After all files are processed, the status bar changes to **WAITING** with the hint line `R = restart scan  │  S / Ctrl+C = exit`
-- If failed files from the current session exist, status changes to **REPAIR** before **WAITING**
-- Press **R** to restart the scan (full re-discovery and processing of any new files)
-- Directories with `idle_interval` are re-scanned automatically while WAITING; the timer does not keep VBC alive when `wait_on_finish` is false
+- Press **R** (or run `vbc refresh`) to rescan (full re-discovery and
+  processing of any new files).
+- Directories with `idle_interval` are re-scanned automatically while WAITING.
 - Metadata directories configured with `watch: true` use Linux inotify to request
   incremental discovery of the exact JSON paths reported after completed writes or
   atomic moves. Events are coalesced for one second, work while ACTIVE or WAITING,
   and do not interrupt running jobs or rescan existing manifests. Queue overflow
-  falls back to a full refresh. `wait_on_finish: true` is required if VBC should
-  remain alive with an empty queue.
+  falls back to a full refresh.
 - Regular video directories configured with `watch: true` and
   `watch_mode: polling` are periodically scanned for new paths matching
   `general.extensions`. `poll_interval_seconds` sets the period per directory
@@ -215,27 +205,10 @@ When `wait_on_finish: true` (or `--wait` CLI flag) is set, VBC does not exit aut
 - Metadata directories may also use `watch_mode: polling` when inotify events are
   unavailable, for example over NFS. Polling detects final `*.json` names and
   ignores temporary names before requesting a full refresh.
-- Press **S** or **Ctrl+C** to exit VBC
+- With `vbc run`, quit the dashboard (**Q**) when you are done; this also ends
+  its private server.
 
-**Use case:** Run VBC repeatedly without restarting the application — for example, processing batches as files arrive.
-
-**Example:**
-```bash
-uv run vbc run /videos --wait --bell
-```
-
-```
-# VBC finishes processing 20 files
-# Status changes to WAITING, terminal bell rings (--bell)
-# User copies more files, presses R
-# VBC re-scans, finds 5 new files, processes them
-# Status changes to WAITING again
-# User presses S → VBC exits cleanly
-```
-
-**Bell integration:**
-
-When `bell_on_finish: true` (or `--bell`), a terminal bell plays when VBC enters the wait state. This lets you know processing is done without watching the screen.
+**Use case:** Process batches as files arrive without restarting anything.
 
 ## Configuration Overlay (`P`)
 

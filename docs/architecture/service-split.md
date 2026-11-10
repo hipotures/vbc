@@ -1,6 +1,6 @@
 # Service Split Plan (server / API / clients)
 
-Status: **implemented (Phase 1 + Step 8: HomeStack container & GPU)**; Step 9 (`vbc-web`) and Step 10 (`vbc_legacy` removal) pending. Scope: VBC only. Phase 1 runs the server and the
+Status: **implemented (Phase 1, Step 8: HomeStack container & GPU, Step 10: `vbc_legacy` removed 2026-11-10)**; Step 9 (`vbc-web`) pending. Scope: VBC only. Phase 1 runs the server and the
 clients as ordinary processes that may live on the same or different
 hosts. The primary deployment target is **HomeStack** (an unprivileged Proxmox
 LXC built from an OCI image, like the owner's other services); its
@@ -89,6 +89,7 @@ strategy). The new
 `vbc/` is built from scratch next to it, **taking over from legacy only what
 is needed**, by copying whole files (`cp`) or cutting out fragments. When the
 new clients reach parity, `vbc_legacy/` is deleted in one commit, so no old code survives that was not deliberately carried over.
+(Done in step 10; the layout below describes the migration period.)
 
 ```
 vbc_legacy/      # frozen copy of today's vbc/ — `vbc run <dirs>` runs from here during migration
@@ -583,8 +584,10 @@ is visible from outside.
   (starts, renders, quits on Ctrl+C without stopping the server).
 * **Legacy as oracle.** Step 2 records what legacy `vbc run` produces on the
   same fixture set (output file names, markers, error files, final counts)
-  as an expected-results file. The new server must reproduce it. This
-  comparison disappears with legacy.
+  as an expected-results file. The new server must reproduce it. After
+  legacy was deleted the file stays as a fixed expectation
+  (`tests/e2e/expected/run.json`), updated deliberately when output
+  behaviour changes.
 * **When.** The expected-results file in step 2; the e2e suite grows from
   step 5 (first scenario: full pass) and is complete at the end of phase 1.
   Step 8 reruns the health/telemetry scenarios against the built image.

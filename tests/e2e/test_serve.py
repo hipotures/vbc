@@ -8,23 +8,23 @@ import signal
 import subprocess
 import time
 
-import record_legacy
+import expected_tree
 from conftest import REPO
 
-EXPECTED = json.loads((REPO / "tests" / "e2e" / "expected" / "legacy_run.json").read_text())
+EXPECTED = json.loads((REPO / "tests" / "e2e" / "expected" / "run.json").read_text())
 
 
-def test_full_pass_matches_legacy(media_tree, serve_factory):
-    """One pass over the fixture media produces exactly what legacy `vbc run` did."""
+def test_full_pass_matches_expected(media_tree, serve_factory):
+    """One pass over the fixture media produces exactly the expected results."""
     root = media_tree["root"]
-    before = record_legacy.snapshot(root)
+    before = expected_tree.snapshot(root)
     assert before == EXPECTED["inputs"]
 
     serve = serve_factory(["--config", str(media_tree["config"])])
     final = serve.wait_for(lambda s: s["run_status"] == "idle" and s["discovery"]["finished"])
 
-    after = record_legacy.snapshot(root)
-    assert record_legacy.diff(before, after) == EXPECTED["run1"]["changes"]
+    after = expected_tree.snapshot(root)
+    assert expected_tree.diff(before, after) == EXPECTED["run1"]["changes"]
     assert after == EXPECTED["run1"]["tree"]
 
     counters, discovery = final["counters"], final["discovery"]
@@ -52,7 +52,7 @@ def test_full_pass_matches_legacy(media_tree, serve_factory):
     rev = final["rev"]
     assert serve.http.post("/api/v1/refresh").status_code == 202
     serve.wait_for(lambda s: s["rev"] > rev and s["run_status"] == "idle" and s["discovery"]["finished"])
-    assert record_legacy.diff(after, record_legacy.snapshot(root)) == EXPECTED["run2"]["changes"]
+    assert expected_tree.diff(after, expected_tree.snapshot(root)) == EXPECTED["run2"]["changes"]
 
     assert serve.stop() == 0
 
@@ -154,9 +154,9 @@ def test_shutdown_with_open_long_poll_is_clean(demo_config, serve_factory):
 
 
 def test_stop_and_resume_on_real_media(media_tree, serve_factory):
-    """Interrupt mid-pass, then refresh: the end result on disk is still the legacy one."""
+    """Interrupt mid-pass, then refresh: the end result on disk is still the expected one."""
     root = media_tree["root"]
-    before = record_legacy.snapshot(root)
+    before = expected_tree.snapshot(root)
     serve = serve_factory(["--config", str(media_tree["config"])])
     serve.wait_for(lambda s: s["active_jobs"], timeout=120)
     assert serve.http.post("/api/v1/stop", json={"mode": "interrupt"}).status_code == 202
@@ -165,8 +165,8 @@ def test_stop_and_resume_on_real_media(media_tree, serve_factory):
 
     assert serve.http.post("/api/v1/refresh").status_code == 202
     serve.wait_for(lambda s: s["run_status"] == "idle" and s["discovery"]["finished"], timeout=300)
-    after = record_legacy.snapshot(root)
-    assert record_legacy.diff(before, after) == EXPECTED["run1"]["changes"]
+    after = expected_tree.snapshot(root)
+    assert expected_tree.diff(before, after) == EXPECTED["run1"]["changes"]
     assert after == EXPECTED["run1"]["tree"]
 
 
@@ -217,7 +217,7 @@ def test_watched_folder_feeds_the_queue_while_jobs_run(tmp_path, serve_factory):
     _noisy_clip(videos / "long.mp4", seconds=40, size="1280x720")
     _noisy_clip(tmp_path / "late.mp4", seconds=2)
     root = tmp_path / "w"
-    config = record_legacy.write_config(root, root / "meta", videos)
+    config = expected_tree.write_config(root, root / "meta", videos)
     data = yaml.safe_load(config.read_text())
     data["general"]["threads"] = 1
     data["input_dirs"] = [

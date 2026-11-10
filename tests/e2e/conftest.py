@@ -22,7 +22,7 @@ import yaml
 E2E = Path(__file__).resolve().parent
 sys.path.insert(0, str(E2E))
 
-import record_legacy  # noqa: E402
+import expected_tree  # noqa: E402
 from media import build_media_set  # noqa: E402
 
 REPO = E2E.parents[1]
@@ -105,7 +105,7 @@ class Serve:
 def media_tree(tmp_path: Path) -> dict:
     _require_tools()
     paths = build_media_set(tmp_path / "work")
-    config = record_legacy.write_config(paths["root"], paths["meta"], paths["videos"])
+    config = expected_tree.write_config(paths["root"], paths["meta"], paths["videos"])
     return {**paths, "config": config}
 
 

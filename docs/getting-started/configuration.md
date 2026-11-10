@@ -11,7 +11,8 @@ Default location: `conf/vbc.yaml`
 Demo mode uses a separate simulation file: `conf/demo.yaml`.
 
 ```bash
-uv run vbc run --demo --demo-config conf/demo.yaml
+uv run vbc serve --demo --demo-config conf/demo.yaml
+uv run vbc tui     # in another terminal
 ```
 
 This file controls simulated file counts, size distribution, processing speed, and error mix.
@@ -203,7 +204,7 @@ storage:
 
 #### Quality Defaults
 - **Source**: Encoder args (`gpu_encoder`/`cpu_encoder`) via `-cq` (GPU) or `-crf` (CPU)
-- **Override**: `--quality` CLI flag or `general.dynamic_quality` mappings
+- **Override**: root key `cq` in a folder's `VBC.YAML`, or `general.dynamic_quality` mappings
 - **Recommendation ranges** (0-63, lower = better quality):
   - 35-38: Archival quality
   - 40-45: High quality daily use
@@ -414,7 +415,7 @@ Dashboard display settings.
     names such as `*.tmp` are ignored until renamed to an eligible final name.
   - `poll_interval_seconds` controls the polling period per directory and must be
     greater than zero; it defaults to `1.0` and is ignored by `inotify`.
-  - `idle_interval` enables an automatic re-scan after that many idle seconds when `wait_on_finish: true`; omitted means manual refresh only
+  - `idle_interval` enables an automatic re-scan after that many idle seconds while the server waits; omitted means manual refresh only
 
 #### Watch modes
 
@@ -926,9 +927,9 @@ root is missing or ambiguous.
 - **Description**:
   - `cq`: use encoder quality args (`-cq` on GPU, `-crf` on CPU)
   - `rate`: use bitrate target (`bps`) with optional `minrate`/`maxrate`
-- **CLI validation rules**:
-  - `--quality` is valid only for `quality_mode=cq`
-  - `--bps` / `--minrate` / `--maxrate` require `quality_mode=rate`
+- **Validation rules**:
+  - `cq` overrides (in `VBC.YAML`) apply only with `quality_mode=cq`
+  - `bps` / `minrate` / `maxrate` require `quality_mode=rate`
 
 #### `bps`
 - **Type**: String or null
@@ -980,7 +981,6 @@ root is missing or ambiguous.
 #### `verify_fail_action`
 - **Type**: String
 - **Default**: `false`
-- **CLI**: `--verify-fail-action`
 - **Values**:
   - `false`: disable output verification
   - `log`: mark job as failed and continue
@@ -1017,29 +1017,12 @@ root is missing or ambiguous.
 - **Default**: false
 - **Description**: Legacy/special FLV repair setting. Automatic current-session repair is controlled by `auto_repair_errors`.
 
-#### `wait_on_finish`
-- **Type**: Boolean
-- **Default**: false
-- **CLI**: `--wait` / `--no-wait`
-- **Description**: After all tasks complete, wait for user input instead of auto-exiting
-- **Behavior**:
-  - `true`: Displays WAITING status; press **R** to restart scan or **S**/**Ctrl+C** to exit
-  - With per-directory `idle_interval`, VBC automatically re-scans due directories while WAITING
-  - A directory with `watch: true` triggers refreshes in both ACTIVE and WAITING
-    states. `inotify` performs incremental manifest refreshes; `polling` performs
-    full video-directory refreshes. `wait_on_finish: true` is still required to
-    keep an empty VBC process alive for future events.
-  - `false`: VBC exits automatically when processing finishes
-
-#### `bell_on_finish`
-- **Type**: Boolean
-- **Default**: false
-- **CLI**: `--bell` / `--no-bell`
-- **Description**: Play a terminal bell (BEL character) once the full cycle finishes (compression → automatic repair → compression of repaired files)
-- **Triggers**:
-  - When entering wait state (if `wait_on_finish=true`)
-  - Just before exit (if `wait_on_finish=false`)
-- The automatic repair pass itself does not emit a bell, because repaired files are queued and compressed immediately afterwards
+#### `wait_on_finish`, `bell_on_finish`
+- **Ignored by the server.** `vbc serve` (and the private server of `vbc run`)
+  always waits after a pass: the dashboard shows **WAITING**, **R** or
+  `vbc refresh` starts a new pass, and directories with `idle_interval` or
+  `watch: true` trigger refreshes on their own. There is no terminal bell. The
+  keys are still accepted in the file.
 
 ### UI/Display
 
@@ -1132,60 +1115,20 @@ When running `vbc serve`, you can inspect and update `conf/vbc.yaml` over the HT
 - `uv run vbc config set KEY=VALUE...` / `uv run vbc config unset KEY...` — atomically update a setting (`PATCH /api/v1/config`) and trigger a graceful restart
 - `uv run vbc config --push FILE` — replace the server's `vbc.yaml` with a local file (`PUT /api/v1/config`), keeping server-owned keys (`input_dirs`, `disabled_input_dirs`, `output_dirs`, `errors_dirs`, `server`, `storage`, `web_server`)
 
-## CLI Overrides
+## Command Line and Settings
 
-Only a subset of config keys can be overridden via CLI flags:
-
-- `general.threads` → `--threads`
-- encoder CQ/CRF value → `--quality` (only when `quality_mode=cq`)
-- `general.quality_mode` → `--quality-mode`
-- `general.bps`, `general.minrate`, `general.maxrate` → `--bps`, `--minrate`, `--maxrate` (only when `quality_mode=rate`)
-- `general.gpu` → `--gpu/--cpu`
-- `general.queue_sort`, `general.queue_seed` → `--queue-sort`, `--queue-seed`
-- `general.log_path` → `--log-path`
-- `general.clean_errors` → `--clean-errors`
-- `general.verify_fail_action` → `--verify-fail-action`
-- `general.skip_av1` → `--skip-av1`
-- `general.min_size_bytes` → `--min-size`
-- `general.min_compression_ratio` → `--min-ratio`
-- `general.filter_cameras` → `--camera`
-- `general.manual_rotation` → `--rotate-180`
-- `general.debug` → `--debug`
-- `general.wait_on_finish` → `--wait` / `--no-wait`
-- `general.bell_on_finish` → `--bell` / `--no-bell`
-- `general.auto_repair_errors` → config only
-- `general.repair_corrupted_flv` → config only
-
-Other settings (for example `prefetch_factor`, `dynamic_quality`, encoder arg lists, directory mappings, and `gpu_config`) must be set in YAML.
-
-```bash
-# Override threads and quality
-uv run vbc run /videos --threads 8 --quality 38
-
-# Override GPU setting
-uv run vbc run /videos --cpu  # Force CPU mode
-
-# Override camera filtering
-uv run vbc run /videos --camera "ILCE-7RM5,DJI"
-
-# Override multiple settings
-uv run vbc run /videos \
-  --config custom.yaml \
-  --threads 8 \
-  --quality 40 \
-  --gpu \
-  --skip-av1 \
-  --clean-errors \
-  --min-size 5242880 \
-  --rotate-180 \
-  --debug
-```
+There are no per-run settings on the command line. `vbc serve` and `vbc run`
+take only `--config FILE` (plus folders that replace `input_dirs` for that
+process). Settings come from the config file and from `VBC.YAML` files in the
+input tree; a running server's file is changed with `vbc config set` /
+`--push`. The former `vbc run` options and their settings are listed in the
+[CLI Reference](../user-guide/cli.md#where-the-former-vbc-run-options-went).
 
 ## Local Overrides (`VBC.YAML`)
 
 VBC scans input directories for `VBC.YAML` and applies the **nearest ancestor** file per job.
 
-**Priority:** Global config → Local `VBC.YAML` → CLI.
+**Priority:** Global config → Local `VBC.YAML` (nearest ancestor wins).
 
 **Allowed root keys:** `general`, `gpu_encoder`, `cpu_encoder`, `autorotate`, `cq`.
 

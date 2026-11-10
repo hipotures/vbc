@@ -5,8 +5,9 @@ terminal UI (`vbc tui`) or with one-shot commands (`vbc status`, `vbc threads`,
 ...). The server does all the work and owns all files. Clients only send
 commands and read status. Videos never travel over the connection.
 
-During the migration the classic in-process dashboard is still available as
-`vbc run <dirs>` (see [CLI Reference](cli.md)). The design is described in
+To compress folders on this machine from one terminal, `vbc run [DIRS]`
+starts a private server and this dashboard together and stops both when you
+quit (see [CLI Reference](cli.md#vbc-run)). The design is described in
 [Service Split Plan](../architecture/service-split.md).
 
 ## Start the server
@@ -65,8 +66,8 @@ uv run vbc tui                       # server at $VBC_API or http://127.0.0.1:87
 uv run vbc tui --api http://host:8770
 ```
 
-It is the same dashboard as `vbc run`, fed by the API. Keys are the same, with
-these differences:
+The dashboard is fed by the API (`vbc run` shows the same one). Keys that
+talk to the server:
 
 | Key | `vbc tui` |
 |---|---|

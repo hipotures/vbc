@@ -52,7 +52,7 @@ uv sync --frozen
 cp conf/vbc.yaml.example conf/vbc.yaml
 
 # Verify CLI works
-uv run vbc run --help
+uv run vbc --help
 ```
 
 ### Method 2: Manual Virtual Environment
@@ -135,11 +135,11 @@ sudo make install
 
 ```bash
 # Check all dependencies
-uv run vbc run --help
+uv run vbc --help
 
 # You should see the help message without errors.
-# Test with a small input directory
-uv run vbc run /path/to/test/videos --threads 1 --quality 45
+# Test with a small input directory (settings from conf/vbc.yaml; quit with q)
+uv run vbc run /path/to/test/videos
 ```
 
 ## GPU Support (NVIDIA)
@@ -162,10 +162,12 @@ For GPU-accelerated compression with NVENC:
    # Should show: av1_nvenc, hevc_nvenc, h264_nvenc
    ```
 
-4. **Test GPU encoding**:
+4. **Test GPU encoding** (`general.gpu: true` in `conf/vbc.yaml`, the default):
    ```bash
-   uv run vbc run /path/to/videos --gpu --threads 2
+   uv run vbc run /path/to/videos
    ```
+   The header shows whether the server encodes on GPU (NVENC) or fell back
+   to CPU, and why.
 
 !!! warning "Hardware Limitations"
     - NVENC session limits vary by GPU:

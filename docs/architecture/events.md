@@ -43,7 +43,7 @@ class DiscoveryStarted(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
+**Subscribers:** StateStore
 **Purpose:** Signal start of file scanning
 
 #### DiscoveryFinished
@@ -60,7 +60,7 @@ class DiscoveryFinished(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
+**Subscribers:** StateStore
 **Purpose:** Report discovery results, update state counters, show ignored `.err` entries, and track multi-source discovery
 
 ### Job Lifecycle Events
@@ -72,7 +72,7 @@ class JobStarted(JobEvent):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
+**Subscribers:** StateStore
 **Purpose:** Add job to "Currently Processing" panel
 
 #### JobCompleted
@@ -82,7 +82,7 @@ class JobCompleted(JobEvent):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
+**Subscribers:** StateStore
 **Purpose:** Update stats, move to "Last Completed" panel
 
 #### JobFailed
@@ -93,7 +93,7 @@ class JobFailed(JobEvent):
 ```
 
 **Publisher:** Orchestrator, FFmpegAdapter
-**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
+**Subscribers:** StateStore
 **Purpose:** Increment error counters, create .err marker
 
 #### HardwareCapabilityExceeded
@@ -103,7 +103,7 @@ class HardwareCapabilityExceeded(JobEvent):
 ```
 
 **Publisher:** FFmpegAdapter
-**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
+**Subscribers:** StateStore
 **Purpose:** Track GPU capability errors separately
 
 #### JobProgressUpdated
@@ -114,7 +114,7 @@ class JobProgressUpdated(JobEvent):
 ```
 
 **Publisher:** FFmpegAdapter
-**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
+**Subscribers:** StateStore
 **Purpose:** Update per-job progress in the active jobs panel
 
 ### Queue Events
@@ -126,7 +126,7 @@ class QueueUpdated(Event):
 ```
 
 **Publisher:** Orchestrator
-**Subscribers:** StateStore (or UIManager in legacy `vbc run`)
+**Subscribers:** StateStore
 **Purpose:** Update pending files queue
 
 #### RefreshRequested

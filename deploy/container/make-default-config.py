@@ -1,7 +1,7 @@
 """Build the container's first-start config from conf/vbc.yaml.example.
 
 Keeps every encoder/quality/autorotate default of the example (so the image
-behaves like `vbc run` with that file) and changes only what a headless
+behaves like a local `vbc serve` with that file) and changes only what a headless
 container needs. Used at image build time:
     python make-default-config.py conf/vbc.yaml.example conf/container-default.yaml
 """

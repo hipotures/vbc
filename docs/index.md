@@ -73,17 +73,11 @@ uv run vbc threads 8
 uv run vbc tui
 uv run vbc status
 
-# Single-process batch run (legacy in-process TUI)
+# One terminal: private server + dashboard (q quits both)
 uv run vbc run /path/to/videos
 
-# With custom configuration
-uv run vbc run /path/to/videos --config conf/vbc.yaml --threads 8 --quality 40
-
-# GPU acceleration with camera filtering
-uv run vbc run /path/to/videos --gpu --camera "ILCE-7RM5,DJI"
-
-# CPU mode with rotation and debug logging
-uv run vbc run /path/to/videos --cpu --rotate-180 --debug
+# With a different config file (all settings live in config / VBC.YAML)
+uv run vbc run /path/to/videos --config conf/archive.yaml
 ```
 
 ## Runtime Controls
@@ -94,10 +88,10 @@ While VBC is running (`vbc tui` or `vbc run`), use these keyboard shortcuts:
 |-----|--------|
 | `<` or `,` | Decrease active threads |
 | `>` or `.` | Increase active threads |
-| `S` | Graceful stop of processing (finish active jobs; press `S` again while stopping in `vbc tui` to cancel, or `R` once stopped to resume) |
+| `S` | Graceful stop of processing (finish active jobs; press `S` again while stopping to cancel, or `R` once stopped to resume) |
 | `R` | Refresh file queue (scan for new files; resumes stopped/paused server) |
-| `Q` / `Ctrl+Q` | Quit `vbc tui` client (leaves `vbc serve` running) |
-| `Shift+U` | Unlock keyboard after 60s idle auto-lock (`vbc tui`) |
+| `Q` / `Ctrl+Q` / `Ctrl+C` | Quit (`vbc tui` leaves its server running; `vbc run` stops its private server) |
+| `Shift+U` | Unlock keyboard after 60s idle auto-lock |
 | `P` | Open Prefs tab |
 | `F` | Open I/O tab |
 | `D` | Open Dirs tab |
@@ -110,7 +104,6 @@ While VBC is running (`vbc tui` or `vbc run`), use these keyboard shortcuts:
 | `W` / `O` | Cycle sparkline preset / palette |
 | `Tab` | Cycle overlay tabs |
 | `[` / `]` | Logs tab page prev/next |
-| `Ctrl+C` | Quit `vbc tui` client (or immediate interrupt in `vbc run`) |
 
 ## Next Steps
 

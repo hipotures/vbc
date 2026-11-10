@@ -211,7 +211,7 @@ graph TB
 - Queue refresh signaling without race conditions
 
 **Event-Driven Architecture**
-- EventBus decouples Pipeline from `StateStore` (and legacy UI)
+- EventBus decouples Pipeline from `StateStore`
 - Event types defined in `vbc/domain/events.py` plus TUI client events in `vbc/clients/tui/keyboard.py`
 - Pydantic events ensure type safety
 - Extensible: add new subscribers without modifying publishers
@@ -238,7 +238,7 @@ uv sync --frozen
 # Bootstrap local config (required on first run)
 cp conf/vbc.yaml.example conf/vbc.yaml
 
-# Run VBC on a directory
+# Compress a directory: private server + dashboard in one terminal (q quits)
 uv run vbc run /path/to/videos
 ```
 
@@ -336,7 +336,7 @@ uv sync --frozen
 cp conf/vbc.yaml.example conf/vbc.yaml
 
 # Verify installation
-uv run vbc run --help
+uv run vbc --help
 ```
 
 ### Step 4: GPU Support (Optional)
@@ -365,11 +365,11 @@ ffmpeg -codecs | grep nvenc
 ### Verification
 
 ```bash
-# Test with a small directory
-uv run vbc run /path/to/test/videos --threads 1 --quality 45
+# Test with a small directory (settings from conf/vbc.yaml)
+uv run vbc run /path/to/test/videos
 
-# Run demo mode (no video file processing I/O; logs are still written)
-uv run vbc run --demo
+# Demo mode (no video file processing I/O; logs are still written)
+uv run vbc serve --demo     # then, in another terminal: uv run vbc tui
 ```
 
 Full installation details: [docs/getting-started/installation.md](docs/getting-started/installation.md)
@@ -681,10 +681,10 @@ output_dirs:
 suffix_output_dirs: null       # Disable suffix mode
 ```
 
-**CLI Override**:
+**Folders on the command line**:
 ```bash
-# CLI input always overrides config input_dirs (no merge)
-uv run vbc run /custom/path        # Ignores config input_dirs
+# DIRS replace the config's input_dirs for this run only (no merge, never saved)
+uv run vbc run /custom/path
 ```
 
 Full configuration reference: [docs/getting-started/configuration.md](docs/getting-started/configuration.md)
@@ -696,64 +696,29 @@ Full configuration reference: [docs/getting-started/configuration.md](docs/getti
 ### Basic Commands
 
 ```bash
-# Process directory with defaults
+# Compress a folder with the settings from conf/vbc.yaml (private server + dashboard)
 uv run vbc run /path/to/videos
 
-# GPU mode with 8 threads
-uv run vbc run /path/to/videos --gpu --threads 8
-
-# CPU mode for archival quality
-uv run vbc run /path/to/videos --cpu --quality 35 --threads 4
-
-# Custom config file
+# Same with another config file (e.g. a copy tuned for archive quality)
 uv run vbc run /path/to/videos --config conf/production.yaml
 
-# Camera-specific processing
-uv run vbc run /path/to/videos --camera "ILCE-7RM5,DJI" --quality 38
+# The folders listed in the config
+uv run vbc run
 
-# Rotate all videos 180°
-uv run vbc run /path/to/videos --rotate-180
-
-# Clean error markers and retry failed files
-uv run vbc run /path/to/videos --clean-errors
-
-# Debug mode with verbose logging
-uv run vbc run /path/to/videos --debug --threads 2
+# Long-running server and clients
+uv run vbc serve
+uv run vbc tui
+uv run vbc status
 ```
 
-### CLI Reference
+`vbc run [DIRS] [--config FILE]` has no per-run settings: threads, GPU/CPU,
+quality, camera filter, rotation, error cleanup, debug and the rest live in the
+config file or in a folder's `VBC.YAML` (threads also change live with `<` /
+`>`). Folders given as `DIRS` replace the config's list for that run only.
 
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `INPUT_DIR` | Positional | - | Directory to process (or comma-separated list) |
-| `--config`, `-c` | Path | `conf/vbc.yaml` | Configuration file |
-| `--threads`, `-t` | Integer | From config (1) | Max concurrent threads |
-| `--quality-mode` | String | `cq` | Rate-control mode: `cq` or `rate` |
-| `--quality` | Integer | From encoder args (`-cq`/`-crf`) | Quality override (CQ/CRF, 0-63, lower=better); invalid with `--quality-mode rate` |
-| `--bps` | String | None | Target bitrate in `rate` mode (absolute or ratio, e.g. `200Mbps`, `0.8`) |
-| `--minrate` | String | None | Optional min bitrate clamp in `rate` mode (same numeric class as `--bps`) |
-| `--maxrate` | String | None | Optional max bitrate clamp in `rate` mode (same numeric class as `--bps`) |
-| `--gpu` / `--cpu` | Boolean | From config (`gpu: true`) | Use GPU (NVENC) or CPU (SVT-AV1) |
-| `--queue-sort` | String | `name` | Queue order (`name`, `rand`, `dir`, `size`, `size-asc`, `size-desc`, `ext`) |
-| `--queue-seed` | Integer | None | Seed for deterministic random order |
-| `--skip-av1` | Boolean | False | Skip AV1-encoded files |
-| `--camera` | String | All | Filter by camera model (comma-separated) |
-| `--min-size` | Integer | 1048576 | Min file size in bytes |
-| `--min-ratio` | Float | 0.1 | Min compression ratio (10% savings) |
-| `--rotate-180` | Boolean | False | Rotate all videos 180° |
-| `--clean-errors` | Boolean | False | Remove .err markers and retry |
-| `--log-path` | Path | `/tmp/vbc/compression.log` | Log file path |
-| `--debug` | Boolean | False | Verbose debug logging |
-| `--demo` | Boolean | False | Simulation mode (no video file processing I/O; logs still written) |
-| `--demo-config` | Path | `conf/demo.yaml` | Demo simulation settings |
+**Configuration precedence**: local `VBC.YAML` overrides > global YAML (`conf/vbc.yaml`) > defaults
 
-**Configuration Precedence**: CLI overrides > local `VBC.YAML` overrides > global YAML (`conf/vbc.yaml`) > defaults
-
-**Rate Mode Validation Rules**:
-- `--quality` cannot be used with `--quality-mode rate`
-- `--bps` / `--minrate` / `--maxrate` require `--quality-mode rate`
-
-Full CLI reference: [docs/user-guide/cli.md](docs/user-guide/cli.md)
+Full CLI reference, including where each former `vbc run` option went: [docs/user-guide/cli.md](docs/user-guide/cli.md)
 
 ### Runtime Controls
 
@@ -765,7 +730,7 @@ While VBC is running (`vbc tui` or `vbc run`), use these keyboard shortcuts:
 | `>` or `.` | Increase threads | Increase max concurrent threads by 1 (max: `max_threads`, default 8) |
 | `S` or `s` | Graceful stop | Stop accepting new jobs, finish active ones (press `S` again while stopping to cancel; `R` once stopped to resume) |
 | `R` or `r` | Refresh queue | Re-scan directory and add new files (resumes stopped/paused server) |
-| `Q` / `Ctrl+Q` | Quit TUI client | Exit `vbc tui` immediately (`vbc serve` keeps running) |
+| `Q` / `Ctrl+Q` / `Ctrl+C` | Quit | `vbc tui`: exit at once, the server keeps running; `vbc run`: exit and stop the private server (running jobs are interrupted) |
 | `Shift+U` | Unlock keyboard | Unlock `vbc tui` keyboard after 60s idle auto-lock |
 | `P` or `p` | Overlay: Prefs | Open/close Prefs tab |
 | `F` or `f` | Overlay: I/O | Open/close I/O tab |
@@ -777,7 +742,6 @@ While VBC is running (`vbc tui` or `vbc run`), use these keyboard shortcuts:
 | `[` / `]` | Logs pagination | Previous / next page in Logs tab |
 | `Tab` | Cycle overlay tabs | Move to next tab |
 | `Esc` | Close overlay | Close active overlay tab |
-| `Ctrl+C` | Quit TUI / Interrupt | Quit `vbc tui` client (or terminate active jobs immediately in `vbc run`) |
 
 **Thread Adjustment**: Changes take effect instantly. New jobs start as slots become available.
 
@@ -933,9 +897,10 @@ autorotate:
 - `180` = Upside down (`transpose=2,transpose=2`)
 - `270` = Counter-clockwise (transpose=2)
 
-**Manual Override**:
-```bash
-uv run vbc run /videos --rotate-180  # Overrides all patterns
+**Manual Override** (overrides all patterns; in the config or a folder's `VBC.YAML`):
+```yaml
+general:
+  manual_rotation: 180
 ```
 
 ### Camera Filtering
@@ -950,10 +915,7 @@ general:
     - "Canon EOS R5"
 ```
 
-Or via CLI:
-```bash
-uv run vbc run /videos --camera "ILCE-7RM5,DJI"
-```
+The same key works in a folder's `VBC.YAML`.
 
 **Matching**: Substring match (case-insensitive). Example:
 - Filter: `["ILCE-7RM5"]`
@@ -992,18 +954,12 @@ VBC automatically detects and handles GPU limitations:
 1. **Session limits exceeded**: Too many concurrent threads for GPU
 2. **10-bit encoding unavailable**: Older GPUs lack 10-bit AV1 support
 
-**Workarounds**:
-```bash
-# Reduce threads to GPU session limit
-uv run vbc run /videos --threads 5   # For RTX 30-series
-
-# Enable CPU fallback (automatic retry on CPU)
-# In conf/vbc.yaml:
+**Workarounds** (in `conf/vbc.yaml`, or a folder's `VBC.YAML` for `gpu` / `cpu_fallback`):
+```yaml
 general:
-  cpu_fallback: true
-
-# Or use pure CPU mode
-uv run vbc run /videos --cpu
+  threads: 5           # GPU session limit, e.g. RTX 30-series (live: < / > or `vbc threads 5`)
+  cpu_fallback: true   # automatic retry on CPU
+  # gpu: false         # or pure CPU mode
 ```
 
 ### Color Space Fix (FFmpeg 7.x)
@@ -1026,11 +982,12 @@ Full advanced features guide: [docs/user-guide/advanced.md](docs/user-guide/adva
 Test VBC without processing real files:
 
 ```bash
-# Run demo with defaults
-uv run vbc run --demo
+# Demo server with defaults, then the dashboard in another terminal
+uv run vbc serve --demo
+uv run vbc tui
 
 # Custom demo config
-uv run vbc run --demo --demo-config conf/demo.yaml
+uv run vbc serve --demo --demo-config conf/demo.yaml
 ```
 
 **Demo configuration** (`conf/demo.yaml`):
@@ -1064,19 +1021,12 @@ errors:
 1. Too many concurrent threads for GPU session limit
 2. 10-bit AV1 encoding not supported by GPU
 
-**Solutions**:
-```bash
-# Reduce threads to GPU limit
-uv run vbc run /videos --threads 5   # RTX 30-series
-uv run vbc run /videos --threads 8   # RTX 4090 (runtime keyboard control max: 8)
-
-# Enable CPU fallback
-# In conf/vbc.yaml:
+**Solutions** (in `conf/vbc.yaml`):
+```yaml
 general:
-  cpu_fallback: true
-
-# Switch to CPU mode entirely
-uv run vbc run /videos --cpu
+  threads: 5           # GPU limit: 5 on RTX 30-series, 8 on RTX 4090
+  cpu_fallback: true   # retry failed GPU jobs on CPU
+  # gpu: false         # switch to CPU mode entirely
 ```
 
 #### Color Space Errors
@@ -1084,10 +1034,8 @@ uv run vbc run /videos --cpu
 **Symptom**: FFmpeg fails with color space warnings
 
 **Solution**: VBC automatically applies color space fix. Enable debug logging to verify:
-```bash
-uv run vbc run /videos --debug
-# Look for: "FFMPEG_COLORFIX" or "Successfully fixed color space"
-```
+Set `general.debug: true` (or run `vbc log-level DEBUG` against a running server) and
+look for `FFMPEG_COLORFIX` or `Successfully fixed color space` in the log.
 
 #### Automatic Repair of Failed Files
 
@@ -1112,8 +1060,8 @@ general:
 **Causes**:
 1. Already compressed (output exists and is newer than input)
 2. Below `min_size_bytes` threshold
-3. Has `.err` marker (unless `--clean-errors`)
-4. Already AV1-encoded (if `--skip-av1` enabled)
+3. Has `.err` marker (unless `general.clean_errors`)
+4. Already AV1-encoded (if `general.skip_av1` is enabled)
 5. Camera model doesn't match `filter_cameras`
 
 **Solution**: Check discovery counters in UI:
@@ -1172,13 +1120,16 @@ find /path/to/videos_err -name "*.err"
 ### Project Structure
 
 ```
-vbc/                         # New tree of the service split (CLI entry point: cli.py)
-vbc_legacy/                  # Current application, frozen during the migration (`vbc run`)
+vbc/                         # CLI entry point: cli.py
+├── service/                 # Headless server (`vbc serve`): read model, commands, HTTP API
+├── clients/                 # `vbc tui`, `vbc run` launcher, one-shot commands (HTTP only)
+├── contracts/               # API DTOs shared by server and clients
 ├── config/                  # Configuration (Pydantic models + YAML loader)
 ├── domain/                  # Core business logic (models, events)
 ├── infrastructure/          # External adapters (FFmpeg, ExifTool, EventBus)
 ├── pipeline/                # Processing coordination (Orchestrator)
-└── ui/                      # User interface (Rich dashboard, keyboard)
+└── maintenance/             # Manifest restore / repair
+scripts/                     # Stand-alone helpers and release tooling
 
 docs/                        # MkDocs documentation
 ├── getting-started/         # Installation, quickstart, configuration
@@ -1192,7 +1143,7 @@ tests/e2e/                   # End-to-end suite (added during the service split)
 The codebase is split into a headless server (`vbc serve`) and clients
 (`vbc tui`, one-shot API commands); see
 [docs/architecture/service-split.md](docs/architecture/service-split.md).
-The single-process batch command remains available from `vbc_legacy/` as `vbc run <dirs>`.
+`vbc run [DIRS] [--config FILE]` starts a private server on loopback with the dashboard in one terminal.
 The headless server runs as `vbc serve --config conf/vbc.yaml`
 (HTTP API on `127.0.0.1:8770` by default, OpenAPI in `docs/api/openapi.json`), driven
 by one-shot commands: `vbc status [--watch]`, `vbc threads N`, `vbc refresh`,
@@ -1200,7 +1151,7 @@ by one-shot commands: `vbc status [--watch]`, `vbc threads N`, `vbc refresh`,
 `vbc errors`, `vbc logs [--follow]`, `vbc config [--push|get|set|unset]`, `vbc versions`,
 `vbc log-level LEVEL`, `vbc sources cleanup`, `vbc manifests [restore|repair]`
 (`--api URL` or `VBC_API`, `--json`), and by the terminal UI `vbc tui`
-(same dashboard as `vbc run`; `S` gracefully stops/cancels processing, while `Q`,
+(the dashboard `vbc run` also shows; `S` gracefully stops/cancels processing, while `Q`,
 Ctrl+Q or Ctrl+C quit the client and leave the server running).
 See [docs/user-guide/server.md](docs/user-guide/server.md).
 
@@ -1235,9 +1186,9 @@ uv sync --extra docs
 # Optional quality tools (not pinned in `pyproject.toml` by default):
 #   uv add --group dev ruff black mypy
 # Then run:
-uv run ruff check vbc/ vbc_legacy/
-uv run black vbc/ vbc_legacy/
-uv run mypy vbc/ vbc_legacy/
+uv run ruff check vbc/
+uv run black vbc/
+uv run mypy vbc/
 ```
 
 Testing guide: [docs/development/testing.md](docs/development/testing.md)

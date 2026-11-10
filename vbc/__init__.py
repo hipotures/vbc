@@ -1,6 +1,6 @@
-"""VBC (Video Batch Compression), new tree of the service split.
+"""VBC (Video Batch Compression): headless server and its clients.
 
-See docs/architecture/service-split.md. During the migration the working
-application lives in ``vbc_legacy``; this package must not import it except
-through the ``vbc run`` bridge in :mod:`vbc.cli`.
+See docs/architecture/service-split.md: the server (``vbc serve``) owns all
+state and file operations; ``vbc tui``, ``vbc run`` and the one-shot commands
+are clients that talk to it over the HTTP API only.
 """

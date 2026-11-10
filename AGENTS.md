@@ -8,17 +8,17 @@ VBC (Video Batch Compression) is a production-grade video batch compression tool
 
 Project uses `uv` for dependency management (Python 3.12+). All commands use `uv run`.
 
-**Migration in progress: service split.** The source of truth is
+**Service split.** The source of truth is
 `docs/architecture/service-split.md`. Read it before changing code. Summary:
 
-- `vbc_legacy/` is today's complete application, frozen. `vbc run <dirs>`
-  runs it. No new features there; a critical bug fix goes into both trees.
-- `vbc/` is the new tree (server `vbc serve`, clients `vbc tui` and one-shot
-  API commands). It takes over from `vbc_legacy/` only what it needs, by
-  copying whole files or cutting out fragments.
-- The two packages never import each other. The only bridge is the `run`
-  command in `vbc/cli.py`.
-- `vbc_legacy/` is deleted at the end of the migration.
+- `vbc serve` is the headless server: it owns all state and file operations.
+  Clients (`vbc tui`, `vbc run`, the one-shot API commands) talk to it over
+  the HTTP API only and never import server modules.
+- `vbc run [DIRS] [--config FILE]` is a launcher: a private `vbc serve` on
+  loopback plus the TUI in one terminal. It has no per-run settings; settings
+  come from the config file and per-folder `VBC.YAML`.
+- The pre-split application (`vbc_legacy/`) was deleted; its recorded results
+  live on as `tests/e2e/expected/run.json`. Still open: the web client (step 9).
 - If implementation shows that an architectural decision in the plan is
   wrong, stop. Fix the plan and reimplement from the tag
   `service-split-baseline` (or from the last good step) on a fresh branch.
@@ -28,15 +28,14 @@ Project uses `uv` for dependency management (Python 3.12+). All commands use `uv
 
 ### Run VBC
 ```bash
-# Main application (legacy, in-process TUI)
-uv run vbc run /path/to/videos --gpu --threads 8
-uv run vbc run /path/to/videos --cpu --quality 35
+# One terminal: private server + dashboard (settings from conf/vbc.yaml)
+uv run vbc run /path/to/videos
+uv run vbc run /path/to/videos --config /path/to/other.yaml
 
-# Rate mode example
-uv run vbc run /path/to/videos --quality-mode rate --bps 200Mbps
-
-# Test with a small dataset
-uv run vbc run /path/to/test/videos --threads 2 --quality 45
+# Server and clients separately
+uv run vbc serve
+uv run vbc tui
+uv run vbc status
 ```
 
 A bare `vbc <dirs>` is rejected with a hint; all commands are peer
@@ -69,7 +68,9 @@ uv sync --extra dev --extra docs
 VBC follows Clean Architecture with strict layer separation:
 
 ```
-UI Layer (ui/)               -> Rich dashboard, keyboard listener
+Clients (clients/)           -> vbc tui, vbc run, one-shot commands (HTTP only)
+    HTTP JSON API (service/api.py, contracts/)
+Service (service/)           -> StateStore (read model), CommandService
     Events (EventBus)
 Pipeline Layer (pipeline/)   -> Orchestrator (job lifecycle)
     Domain Models
@@ -81,23 +82,18 @@ clients) is described in `docs/architecture/service-split.md`.
 
 ### Directory Structure
 ```
-vbc/                     # new tree (being built)
-├── cli.py               # Typer app: peer subcommands (`serve`, `run`)
+vbc/
+├── cli.py               # Typer app: peer subcommands (`serve`, `tui`, `run`, one-shot commands)
 ├── contracts/           # API DTOs (the only module clients may share)
-├── service/             # state_store, commands, bootstrap, api, log_buffer
-├── clients/             # api_client (httpx), commands (one-shot CLI), format
-│   └── tui/             # `vbc tui`: copied Rich renderers + ClientState, controller, poller
-└── domain/ config/ infrastructure/ pipeline/ utils/   # core copied from legacy
-vbc_legacy/              # frozen, today's application
-├── main.py              # legacy Typer command (`vbc run`)
-├── config/              # Pydantic models + YAML loader
-├── domain/              # Business logic (models.py, events.py)
-├── infrastructure/      # External adapters (event_bus, ffmpeg, exif_tool, ffprobe, logging)
-├── pipeline/            # Orchestrator (core processing logic)
-└── ui/                  # Rich Live dashboard (state, manager, keyboard, dashboard)
+├── service/             # state_store, commands, bootstrap, api, log_buffer, storage
+├── clients/             # api_client (httpx), commands (one-shot CLI), format, run (launcher)
+│   └── tui/             # `vbc tui`: Rich renderers + ClientState, controller, poller
+├── maintenance/         # manifest restore / repair services
+└── domain/ config/ infrastructure/ pipeline/ utils/   # processing core
+scripts/                 # stand-alone helpers and release tooling
 ```
 
-### Key Components (legacy, carried into the new tree)
+### Key Components
 
 **Orchestrator** (`pipeline/orchestrator.py`):
 - Discovery, queue management, job lifecycle
@@ -135,7 +131,7 @@ The server image is `deploy/container/Containerfile` (runtime contract:
 `.homestack/services/vbc/`. Release rule: after committing and pushing a
 completed change, decide whether the **server image** changes (server/core code or
 its runtime dependencies, the Containerfile, the entrypoint, the default config).
-The image excludes `vbc/clients/`, `vbc/cli.py` and `vbc_legacy/`; changes only
+The image excludes `vbc/clients/` and `vbc/cli.py`; changes only
 to those paths never need a server image release. Only
 then run `python3 scripts/tag-image.py` (next `vbc-X.Y.Z`, CI publishes
 `ghcr.io/hipotures/vbc:X.Y.Z`). Changes to the manifest, docs, tests or CI
@@ -168,7 +164,7 @@ VBC has MkDocs documentation in `docs/`:
 - `getting-started/` - Installation, quickstart, configuration
 - `user-guide/` - CLI, runtime controls, advanced features
 - `architecture/` - Overview, events, pipeline flow, service split plan
-- `api/` - Auto-generated from code (`vbc.*`, plus legacy-only helpers in `vbc_legacy.*`)
+- `api/` - Auto-generated from code (`vbc.*`)
 - `development/` - Contributing and testing workflow
 
 Build docs: `./scripts/serve-docs.sh`

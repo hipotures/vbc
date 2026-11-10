@@ -55,26 +55,22 @@ dynamic_quality:
 
 **Schema note:** legacy scalar format is rejected, e.g. `"Sony": 40` is invalid.
 
-### CLI Override
+### Per-folder Override
 
-```bash
-# Override baseline CQ/CRF in encoder args
-uv run vbc run /videos --quality 40
-
-# Dynamic Quality still active (from config)
-uv run vbc run /videos --config conf/vbc.yaml
+```yaml
+# VBC.YAML in a folder: baseline CQ/CRF for everything below it
+cq: 40
 ```
 
-**Note:** `--quality` overrides the base CQ/CRF value but does **not** disable `dynamic_quality`.
+**Note:** `cq` overrides the base CQ/CRF value but does **not** disable `dynamic_quality`.
 To disable dynamic quality, set `general.dynamic_quality: {}` or `general.use_exif: false`.
 
 ### Debugging
 
 Enable debug logging to see CQ decisions:
 
-```bash
-uv run vbc run /videos --debug
-```
+Set `general.debug: true` in the config (or a folder's `VBC.YAML`), or raise
+the level on a running server with `vbc log-level DEBUG`.
 
 Look for:
 ```
@@ -130,9 +126,10 @@ override ignores embedded input rotation metadata.
 
 ### Manual Override
 
-```bash
-# Rotate all videos 180° (overrides config patterns)
-uv run vbc run /videos --rotate-180
+```yaml
+# Rotate all videos 180° (overrides config patterns); in the config or a folder's VBC.YAML
+general:
+  manual_rotation: 180
 ```
 
 ## Camera Filtering
@@ -150,11 +147,7 @@ general:
     - "Canon EOS R5"
 ```
 
-Or via CLI:
-
-```bash
-uv run vbc run /videos --camera "ILCE-7RM5,DJI"
-```
+The same key works in a folder's `VBC.YAML`.
 
 ### How It Works
 
@@ -187,11 +180,7 @@ general:
   min_compression_ratio: 0.1  # Require 10% savings
 ```
 
-Or via CLI:
-
-```bash
-uv run vbc run /videos --min-ratio 0.2  # 20% minimum
-```
+The same key works in a folder's `VBC.YAML`.
 
 ### How It Works
 
@@ -232,11 +221,7 @@ general:
   skip_av1: true
 ```
 
-Or via CLI:
-
-```bash
-uv run vbc run /videos --skip-av1
-```
+The same key works in a folder's `VBC.YAML`.
 
 ### How It Works
 
@@ -272,10 +257,10 @@ Behavior summary:
 
 ```bash
 # Default output dir: <input_dir>_out
-python vbc/utils/check_audio_consistency.py /path/to/videos
+python scripts/check_audio_consistency.py /path/to/videos
 
 # Custom output dir
-python vbc/utils/check_audio_consistency.py /path/to/videos --output-dir /path/to/videos_out
+python scripts/check_audio_consistency.py /path/to/videos --output-dir /path/to/videos_out
 ```
 
 ### Output
@@ -401,8 +386,7 @@ VBC automatically detects GPU limitations including:
 **Session Limits Exceeded:**
 - RTX 30-series: Max ~5 concurrent sessions
 - RTX 40-series (e.g., 4090): Max 10-12 concurrent sessions
-- VBC keyboard runtime controls (`<`/`>`) clamp to 1-8 threads
-- Startup `--threads` / `general.threads` accepts values `>0` (practical upper bound is `ThreadPoolExecutor(max_workers=16)`)
+- Runtime thread changes (`<`/`>`, `vbc threads N`) clamp to `1..max(general.max_threads, general.threads)` (default `max_threads`: 8)
 
 **10-bit Encoding:**
 - Older GPUs don't support 10-bit AV1
@@ -435,24 +419,15 @@ VBC:
 
 ### Workarounds
 
-**Option 1:** Reduce thread count to GPU session limit
-```bash
-# RTX 30-series
-uv run vbc run /videos --threads 5
+**Option 1:** Reduce thread count to the GPU session limit: `general.threads`
+(for example 5 on RTX 30-series, 8 on RTX 4090), or `<` in the dashboard /
+`vbc threads 5` while it runs.
 
-# RTX 4090
-uv run vbc run /videos --threads 8
-```
+**Option 2:** Use CPU mode (no hardware limitations): `general.gpu: false` in
+the config or in the folder's `VBC.YAML`.
 
-**Option 2:** Use CPU mode (no hardware limitations)
-```bash
-uv run vbc run /videos --cpu
-```
-
-**Option 3:** Reduce quality for 10-bit issues
-```bash
-uv run vbc run /videos --quality 38
-```
+**Option 3:** Reduce quality for 10-bit issues: `cq: 38` in the folder's
+`VBC.YAML`.
 
 **Option 4:** Upgrade GPU (RTX 40-series has full 10-bit AV1 support and higher session limits)
 
@@ -488,9 +463,8 @@ color_space=reserved
 
 ### Debug Logging
 
-```bash
-uv run vbc run /videos --debug
-```
+Set `general.debug: true` in the config (or a folder's `VBC.YAML`), or raise
+the level on a running server with `vbc log-level DEBUG`.
 
 Look for:
 ```

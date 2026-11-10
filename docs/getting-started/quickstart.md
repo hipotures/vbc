@@ -15,7 +15,7 @@ mkdir ~/Videos/raw
 
 ### Step 2: Run VBC
 
-You can run VBC either as a **headless server + clients** (recommended for continuous / remote operation) or as an **in-process batch command**:
+You can run VBC either as a **headless server + clients** (for continuous or remote operation) or with **`vbc run`**, which starts a private server and the dashboard together in one terminal:
 
 ```bash
 cd ~/DEV/vbc
@@ -29,7 +29,7 @@ uv run vbc dirs add ~/Videos/raw
 uv run vbc tui
 uv run vbc status
 
-# Option B: Single-process batch run with built-in TUI
+# Option B: one terminal (private server + dashboard; q quits both)
 uv run vbc run ~/Videos/raw
 ```
 
@@ -82,10 +82,12 @@ ls -lh /tmp/vbc/compression.log
 
 ### GPU Acceleration (NVENC)
 
-For NVIDIA GPUs (faster, lower quality ceiling):
+For NVIDIA GPUs (faster, lower quality ceiling), in `conf/vbc.yaml`:
 
-```bash
-uv run vbc run ~/Videos/raw --gpu --threads 8
+```yaml
+general:
+  gpu: true
+  threads: 8
 ```
 
 !!! tip "GPU vs CPU"
@@ -94,11 +96,17 @@ uv run vbc run ~/Videos/raw --gpu --threads 8
 
 ### High Quality Archive
 
-For maximum quality (slower):
+For maximum quality (slower), put a `VBC.YAML` into the folder (it applies
+to everything below it):
 
-```bash
-uv run vbc run ~/Videos/raw --cpu --quality 35 --threads 4
+```yaml
+# ~/Videos/raw/VBC.YAML
+general:
+  gpu: false
+cq: 35
 ```
+
+or use a separate config file: `uv run vbc run ~/Videos/raw --config conf/archive.yaml`.
 
 Lower quality value (CQ/CRF) = higher quality (range: 0-63)
 
@@ -107,9 +115,10 @@ Lower quality value (CQ/CRF) = higher quality (range: 0-63)
 If you have videos from specific cameras (for best results use exact model strings, e.g., `ILCE-7RM5`, `DJI OsmoPocket3`):
 
 ```bash
-# First, create conf/vbc.yaml with dynamic_quality settings
-# Then run with camera filtering
-uv run vbc run ~/Videos/raw --camera "ILCE-7RM5,DJI"
+# conf/vbc.yaml (or VBC.YAML in the folder): dynamic_quality rules plus
+#   general:
+#     filter_cameras: ["ILCE-7RM5", "DJI"]
+uv run vbc run ~/Videos/raw
 ```
 
 This will only process files from those cameras and apply custom CQ per camera.
@@ -118,8 +127,10 @@ This will only process files from those cameras and apply custom CQ per camera.
 
 For upside-down drone footage:
 
-```bash
-uv run vbc run ~/Videos/raw --rotate-180
+```yaml
+# VBC.YAML in the drone folder
+general:
+  manual_rotation: 180
 ```
 
 Or use auto-rotation patterns in `conf/vbc.yaml` (regex-based).
@@ -168,7 +179,7 @@ Then run:
 uv run vbc run ~/Videos/raw --config conf/vbc.yaml
 ```
 
-CLI arguments override config file settings.
+`VBC.YAML` files in the input tree override the config file for the folders below them.
 
 ## Output Structure
 

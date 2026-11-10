@@ -1,35 +1,24 @@
-"""Record what legacy ``vbc run`` produces on the generated media set.
+"""Expected results on the generated media set: config, tree snapshot, diff.
 
-Step 2 of docs/architecture/service-split.md. The result is the
-expected-results file the new server must reproduce:
-
-    uv run python tests/e2e/record_legacy.py            # writes expected/legacy_run.json
-    uv run python tests/e2e/record_legacy.py --keep DIR # also keeps the work tree
-
-Two passes run over the same tree: the first processes everything, the
-second shows what a rerun does with existing outputs and error markers.
+``expected/run.json`` holds what a pass over ``media.py`` must produce (files,
+codecs, dimensions, rotation, error markers) for two passes over the same
+tree. It was recorded from the pre-split application (step 2 of
+docs/architecture/service-split.md) and is now a fixed expectation: a change
+in output behaviour updates it deliberately, in the same commit.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
-import re
-import shutil
 import subprocess
-import sys
-import tempfile
-from collections import Counter
 from pathlib import Path
 
 import yaml
 
-from media import MIN_SIZE_BYTES, build_media_set
+from media import MIN_SIZE_BYTES
 
 REPO = Path(__file__).resolve().parents[2]
-EXPECTED = Path(__file__).resolve().parent / "expected" / "legacy_run.json"
 VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".flv", ".webm", ".mkv"}
-LOG_MARKERS = re.compile(r"\b(PROCESS_END|MANIFEST_[A-Z_]+)\b")
 
 
 def write_config(root: Path, meta: Path, videos: Path) -> Path:
@@ -151,72 +140,9 @@ def snapshot(root: Path) -> dict[str, dict]:
     return tree
 
 
-def run_legacy(config: Path, root: Path) -> dict:
-    command = [sys.executable, "-m", "vbc.cli", "run", "--config", str(config), "--cpu", "--no-wait"]
-    result = subprocess.run(
-        command, cwd=REPO, capture_output=True, text=True, timeout=900,
-        stdin=subprocess.DEVNULL,
-    )
-    log = root / "logs" / "compression.log"
-    markers = Counter(LOG_MARKERS.findall(log.read_text(errors="replace"))) if log.exists() else Counter()
-    return {"exit_code": result.returncode, "log_markers": dict(sorted(markers.items()))}
-
-
 def diff(before: dict[str, dict], after: dict[str, dict]) -> dict:
     return {
         "added": sorted(set(after) - set(before)),
         "removed": sorted(set(before) - set(after)),
         "changed": sorted(k for k in set(before) & set(after) if before[k] != after[k]),
     }
-
-
-def tool_versions() -> dict:
-    def first_line(cmd: list[str]) -> str:
-        out = subprocess.run(cmd, capture_output=True, text=True)
-        return (out.stdout or out.stderr).strip().splitlines()[0]
-    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO,
-                            capture_output=True, text=True).stdout.strip()
-    return {
-        "ffmpeg": first_line(["ffmpeg", "-version"]),
-        "exiftool": first_line(["exiftool", "-ver"]),
-        "vbc_commit": commit,
-    }
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--keep", type=Path, help="keep the work tree in this directory")
-    parser.add_argument("--output", type=Path, default=EXPECTED)
-    args = parser.parse_args()
-
-    work = Path(tempfile.mkdtemp(prefix="vbc-e2e-legacy-"))
-    try:
-        paths = build_media_set(work)
-        config = write_config(work, paths["meta"], paths["videos"])
-        inputs = snapshot(work)
-        run1 = run_legacy(config, work)
-        after1 = snapshot(work)
-        run2 = run_legacy(config, work)
-        after2 = snapshot(work)
-        result = {
-            "description": "Legacy `vbc run --cpu` over tests/e2e/media.py; paths relative to the work root.",
-            "tools": tool_versions(),
-            "inputs": inputs,
-            "run1": {**run1, "tree": after1, "changes": diff(inputs, after1)},
-            "run2": {**run2, "changes": diff(after1, after2)},
-        }
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2, sort_keys=False) + "\n")
-        print(f"wrote {args.output}")
-        return 0 if run1["exit_code"] == 0 and run2["exit_code"] == 0 else 1
-    finally:
-        if args.keep:
-            if args.keep.exists():
-                shutil.rmtree(args.keep)
-            shutil.copytree(work, args.keep)
-            print(f"work tree kept in {args.keep}")
-        shutil.rmtree(work, ignore_errors=True)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

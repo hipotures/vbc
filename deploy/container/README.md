@@ -42,7 +42,7 @@ HomeStack gives up. Keep `server.stop_timeout_s` below the manifest value.
 
 The image contains only the headless server and its compression/maintenance
 core. It installs the locked `server` dependency group (`uv sync --only-group
-server`); Rich, Typer, Jinja2, `vbc.cli`, `vbc/clients/` and `vbc_legacy/` are
+server`); Rich, Typer, Jinja2, `vbc.cli` and `vbc/clients/` are
 excluded. Local `vbc serve` uses the same server startup code; `vbc tui` and
 the one-shot client commands run outside the container.
 
@@ -163,7 +163,7 @@ Only changes to the image need a release: server/core code, server dependencies,
 the Containerfile, the entrypoint or the default config. Changes to the manifest,
 documentation or tests do not.
 
-Client-only changes (`vbc/clients/`, `vbc/cli.py`, `vbc_legacy/`) need no
+Client-only changes (`vbc/clients/`, `vbc/cli.py`) need no
 server image release. `scripts/tag-image.py` checks server image inputs
 against the last release and refuses a release when none changed. Updates
 to `pyproject.toml` or `uv.lock` require checking whether the `server` group

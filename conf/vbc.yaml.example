@@ -351,14 +351,12 @@ ui:
   panel_height_scale: 0.7
 
 # --- Web Dashboard Settings ---
+# Reserved for the planned web client (vbc-web); the server ignores them today.
 
 web_server:
-  # Start the web dashboard automatically when VBC launches.
-  # Can also be enabled at runtime with --web flag (CLI has higher priority).
   enabled: false
 
   # TCP port to listen on.
-  # Override at runtime: --web-port 9000
   port: 8765
 
   # Bind address:

@@ -4,148 +4,77 @@ Complete reference for VBC command-line interface.
 
 ## Subcommands Overview
 
-`vbc` provides peer subcommands for the server, clients, and the classic in-process runner (a bare `vbc <dirs>` is rejected with a hint to use `vbc run <dirs>`):
+`vbc` provides peer subcommands for the server and its clients (a bare `vbc <dirs>` is rejected with a hint to use `vbc run <dirs>`):
 
 | Subcommand | Description |
 |------------|-------------|
-| `vbc serve [--config PATH] [--host HOST] [--port PORT] [--demo] [--demo-config PATH] [--log-file PATH]` | Run the headless server (`HTTP API` on `server.host:server.port`, logs on stdout) |
+| `vbc serve [DIRS...] [--config PATH] [--host HOST] [--port PORT] [--demo] [--demo-config PATH] [--log-file PATH]` | Run the headless server (`HTTP API` on `server.host:server.port`, logs on stdout); `DIRS` replace the config's folders for this process only |
 | `vbc tui [--api URL] [--log-file PATH]` | Live Rich dashboard connected to a running server |
 | `vbc status`, `vbc threads`, `vbc refresh`, `vbc stop`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config`, `vbc versions`, `vbc log-level`, `vbc sources cleanup`, `vbc manifests restore\|repair` | One-shot API client commands (`--api URL`, `--json`) |
-| `vbc run [INPUT_DIR] [OPTIONS]` | Classic in-process TUI runner (documented below) |
+| `vbc run [DIRS...] [--config PATH] [--log-file PATH]` | Private server on loopback plus the dashboard in one terminal (documented below) |
 
 For full details on `vbc serve`, `vbc tui`, and all one-shot client commands, see [Server and Clients](server.md).
 
-## `vbc run` Syntax
+## `vbc run`
 
 ```bash
-uv run vbc run [INPUT_DIR] [OPTIONS]
+uv run vbc run [DIRS...] [--config PATH] [--log-file PATH]
 ```
 
-## Positional Arguments
+`vbc run` starts a private `vbc serve` on loopback (a free port), opens the
+dashboard (`vbc tui`) in the same terminal and stops that server when you quit
+the dashboard. It is the one-terminal way to compress folders on this machine;
+for a server that keeps running (HomeStack, another host) use `vbc serve` and
+attach `vbc tui` to it.
 
-### `INPUT_DIR`
+| Argument / option | Meaning |
+|---|---|
+| `DIRS` | Folders to compress. They **replace** the config's `input_dirs` for this run only: nothing is saved, and the Dirs list is read-only (the server answers `409` to edits and mount scans). Without `DIRS` the config's list applies and the Dirs tab edits it as usual. Output and error folders follow `suffix_output_dirs` / `suffix_errors_dirs` (`<dir>_out`, `<dir>_err`). |
+| `--config PATH`, `-c PATH` | Config file of the private server (default `conf/vbc.yaml`). |
+| `--log-file PATH` | Dashboard log (default `~/.local/state/vbc/tui.log`). The server log goes to `~/.local/state/vbc/run-server.log`. |
 
-Optional. Directory containing videos to compress.
-If omitted, VBC uses enabled entries (`enabled: true`) from `input_dirs` in config (CLI overrides config, no merge).
+There are **no per-run settings on the command line** (no `--threads`,
+`--gpu`, `--quality`, …). Settings come from:
+
+* the config file: for a special run, copy the global config, change it and
+  pass it with `--config` (see [Configuration](../getting-started/configuration.md#environment-specific-configs));
+* `VBC.YAML` in a folder, for everything below it (see
+  [Local Overrides](../getting-started/configuration.md#local-overrides-vbcyaml));
+* the dashboard at run time: `<` / `>` change threads, `S` stops gracefully,
+  `R` rescans.
+
+After the queue is done the server waits and the dashboard shows the result;
+`Q`, Ctrl+Q or Ctrl+C quit and stop the server. Quitting while jobs are running
+interrupts them (partial outputs are removed, sources stay untouched).
 
 ```bash
-uv run vbc run /path/to/videos
+# Compress one folder with the settings from conf/vbc.yaml
+uv run vbc run /videos/2026-trip
+
+# Same, with a prepared config for archive quality
+uv run vbc run /videos/2026-trip --config conf/archive.yaml
+
+# The folders from the config file
+uv run vbc run
 ```
 
-**Behavior:**
-- Accepts a single directory or a comma-separated list
-- Output directory: `{INPUT_DIR}_out` (per input dir)
-- Skips subdirectories ending in `_out`
-- Limits: max 50 directories, max 150 characters per entry
-- Duplicates ignored (first occurrence wins), missing/inaccessible directories skipped
+### Where the former `vbc run` options went
 
-## Options
-
-### General
-
-#### `--config PATH`, `-c PATH`
-
-Path to YAML configuration file.
-
-**Default:** `conf/vbc.yaml`
-
-```bash
-uv run vbc run /videos --config custom.yaml
-```
-
-#### `--threads INT`, `-t INT`
-
-Number of concurrent compression threads.
-
-**Default:** From config (default: 1)
-
-```bash
-uv run vbc run /videos --threads 8
-```
-
-**Note:** Runtime keyboard adjustment (`<`/`>`) clamps to 1-8. Startup value from CLI/config accepts `>0` (practical upper bound: executor `max_workers=16`).
-
-#### `--quality INT`
-
-Quality value (0-63). Lower = better quality.
-
-**Default:** From encoder args (`gpu_encoder`/`cpu_encoder`, via `-cq` or `-crf`)
-**Rule:** Cannot be used with `--quality-mode rate`.
-
-```bash
-uv run vbc run /videos --quality 38
-```
-
-**Recommendations:**
-- 35-38: Archival quality
-- 40-45: High quality
-- 48-52: Good quality
-- 55+: Low quality
-
-#### `--quality-mode TEXT`
-
-Select quality control mode: `cq` (default) or `rate`.
-
-**Default:** `cq`
-
-```bash
-# Default behavior (CQ/CRF from encoder args)
-uv run vbc run /videos --quality-mode cq --quality 38
-
-# Bitrate target mode
-uv run vbc run /videos --quality-mode rate --bps 200Mbps
-```
-
-**Validation rules:**
-- `--quality` cannot be used with `--quality-mode rate`
-- `--bps` / `--minrate` / `--maxrate` require `--quality-mode rate`
-
-#### `--bps TEXT`
-
-Target video bitrate used when `--quality-mode rate`.
-
-Accepted formats:
-- Absolute: `200000000`, `200000k`, `200M`, `200Mbps`
-- Relative: `0.8` (input bitrate × 0.8)
-
-```bash
-uv run vbc run /videos --quality-mode rate --bps 200Mbps
-uv run vbc run /videos --quality-mode rate --bps 0.8
-```
-
-#### `--minrate TEXT`
-
-Optional minimum bitrate clamp for `rate` mode.
-Must be the same numeric class as `--bps` (all absolute or all relative).
-
-```bash
-uv run vbc run /videos --quality-mode rate --bps 0.8 --minrate 0.7 --maxrate 0.9
-```
-
-#### `--maxrate TEXT`
-
-Optional maximum bitrate clamp for `rate` mode.
-Must be the same numeric class as `--bps` and `--minrate`.
-
-### Encoder
-
-#### `--gpu` / `--cpu`
-
-Enable/disable GPU acceleration.
-
-**Default:** From config (`general.gpu`, default `true`)
-
-```bash
-# Use GPU (NVENC AV1)
-uv run vbc run /videos --gpu
-
-# Use CPU (SVT-AV1)
-uv run vbc run /videos --cpu
-```
-
-**Trade-offs:**
-- `--gpu`: Fast, good for 1080p/1440p, quality ceiling ~CQ35-38
-- `--cpu`: Slow, excellent quality at any resolution
+| Former option | Setting (config file; ★ also in `VBC.YAML`) |
+|---|---|
+| `--threads N` | `general.threads` (live: `<` / `>`) |
+| `--quality N` | `-cq` / `-crf` in `gpu_encoder` / `cpu_encoder` args; ★ `cq` |
+| `--quality-mode`, `--bps`, `--minrate`, `--maxrate` | ★ `general.quality_mode`, `bps`, `minrate`, `maxrate` |
+| `--gpu` / `--cpu` | ★ `general.gpu` |
+| `--queue-sort`, `--queue-seed` | `general.queue_sort`, `general.queue_seed` |
+| `--skip-av1`, `--min-size`, `--min-ratio`, `--camera` | ★ `general.skip_av1`, `min_size_bytes`, `min_compression_ratio`, `filter_cameras` |
+| `--rotate-180` | ★ `general.manual_rotation` |
+| `--clean-errors`, `--verify-fail-action` | ★ `general.clean_errors`, `verify_fail_action` |
+| `--debug` | ★ `general.debug` (live: `vbc log-level`) |
+| `--log-path` | `general.log_path` |
+| `--wait` / `--no-wait`, `--bell` | gone: the server always waits after a pass; quit the dashboard to finish |
+| `--web`, `--web-port` | gone until the web client (step 9 of the service-split plan) |
+| `--demo`, `--demo-config` | `vbc serve --demo [--demo-config PATH]` + `vbc tui` |
 
 ### Audio
 
@@ -155,352 +84,15 @@ Audio handling is automatic:
 - Other/unknown codecs are transcoded to AAC at 192 kbps for MP4 compatibility.
 - Files without audio remain silent.
 
-Lossless codec detection (ffprobe `codec_name`) in practice:
-- FLAC → `flac`
-- ALAC → `alac`
-- TrueHD → `truehd`
-- PCM → `pcm_*` (e.g. `pcm_s16be`, `pcm_s16le`, `pcm_s24le`)
-- MLP → `mlp`
-- WavPack → `wavpack`
-- APE → `ape`
-- TTA → `tta`
-
-**Debug hint:** `--debug` logs show `AUDIO_MODE` with the detected codec and action.
-
-### Queue
-
-#### `--queue-sort TEXT`
-
-Queue ordering mode.
-
-**Default:** From config (`name`)
-
-**Values:** `name`, `rand`, `dir`, `size`, `size-asc`, `size-desc`, `source-mtime-desc`, `ext`
-**Note:** `ext` uses the order defined in `extensions`; `source-mtime-desc` processes the newest source recording first.
-
-```bash
-# Sort by file size (small → large)
-uv run vbc run /videos --queue-sort size
-
-# Process directories in CLI order, sort within each directory
-uv run vbc run /dir1,/dir2 --queue-sort dir
-```
-
-#### `--queue-seed INT`
-
-Seed for deterministic random order when using `--queue-sort rand`.
-
-```bash
-uv run vbc run /videos --queue-sort rand --queue-seed 42
-```
-
-### Filtering
-
-#### `--skip-av1`
-
-Skip files already encoded in AV1 codec.
-
-**Default:** false
-
-```bash
-uv run vbc run /videos --skip-av1
-```
-
-**Use case:** Mixed library with some AV1 files.
-
-#### `--camera TEXT`
-
-Only process files from specific camera models (comma-separated).
-
-**Default:** All cameras
-
-```bash
-# Single camera
-uv run vbc run /videos --camera "ILCE-7RM5"
-
-# Multiple cameras
-uv run vbc run /videos --camera "ILCE-7RM5,DJI,DC-GH7"
-```
-
-**Matching:** Substring, case-insensitive. Exact model strings are most reliable.
-
-#### `--min-size INT`
-
-Minimum input file size in bytes.
-
-**Default:** 1048576 (1 MiB)
-
-```bash
-# 5 MiB minimum
-uv run vbc run /videos --min-size 5242880
-
-# No minimum (process all files)
-uv run vbc run /videos --min-size 0
-```
-
-#### `--min-ratio FLOAT`
-
-Minimum compression ratio required (0.0-1.0).
-
-**Default:** 0.1 (10% savings)
-
-```bash
-# Require 20% savings
-uv run vbc run /videos --min-ratio 0.2
-
-# Accept any compression
-uv run vbc run /videos --min-ratio 0.0
-```
-
-**Behavior:** If savings < threshold, original file copied to output (not compressed version).
-
-### Rotation
-
-#### `--rotate-180`
-
-Rotate all videos 180 degrees.
-
-**Default:** false
-
-```bash
-uv run vbc run /videos --rotate-180
-```
-
-**Note:** Overrides auto-rotation patterns from config.
-
-### Error Handling
-
-#### `--clean-errors`
-
-Remove existing `.err` markers on startup and retry those files.
-
-**Default:** false (skip files with .err)
-
-```bash
-uv run vbc run /videos --clean-errors
-```
-
-**Use case:** Fixed issue causing errors, want to retry.
-
-#### `--verify-fail-action TEXT`
-
-Output verification mode: `false`, `log`, `pause`, or `exit`.
-
-**Default:** from config (`general.verify_fail_action`, default `false`)
-
-```bash
-uv run vbc run /videos --verify-fail-action pause
-```
-
-**Modes:**
-- `false`: disable output verification
-- `log`: mark failure and continue
-- `pause`: mark failure and pause queue in `ERROR` state (wait for `R`/`S`)
-- `exit`: mark failure and stop process with error
-
-**Verification checks** (when mode is not `false`):
-- `ffprobe` reads output without errors
-- VBC EXIF tags are present (`VBCOriginalName`, `VBCOriginalSize`, `VBCQuality`, `VBCOriginalBitrate`, `VBCEncoder`, `VBCFinishedAt`)
-
-### Logging
-
-#### `--debug` / `--no-debug`
-
-Enable/disable verbose debug logging.
-
-**Default:** `--no-debug`
-
-```bash
-uv run vbc run /videos --debug
-```
-
-**Debug logs:**
-- FFmpeg timing (FFMPEG_START, FFMPEG_END)
-- ExifTool calls (EXIF_COPY_START, EXIF_COPY_DONE)
-- Compression stages (PROCESS_START, PROCESS_END)
-- Metadata cache misses
-
-#### `--wait` / `--no-wait`
-
-Wait for user input after all tasks finish instead of auto-exiting.
-
-**Default:** `--no-wait`
-
-```bash
-uv run vbc run /videos --wait
-```
-
-When wait mode is active, VBC shows **WAITING** status and accepts:
-
-- **R** — restart scan and process new files
-- **S** or **Ctrl+C** — exit
-
-#### `--bell` / `--no-bell`
-
-Play a terminal bell (BEL character) as a completion notification.
-
-**Default:** `--no-bell`
-
-```bash
-uv run vbc run /videos --bell --wait
-```
-
-Bell triggers:
-
-- When entering wait state (`--wait` mode), after the full cycle (compression → automatic repair → compression of repaired files)
-- Just before exit (without `--wait`)
-
-The automatic repair pass itself does not emit a bell, because repaired files are queued and compressed immediately afterwards.
-
-#### `--log-path PATH`
-
-Path to log file (overrides config).
-
-```bash
-uv run vbc run /videos --log-path /tmp/vbc/compression.log
-```
-
-**Related diagnostics:**
-- If `log_path` is `null`, logs are written to `<output_dir>/compression.log`.
-- Uncaught fatal exceptions are appended to `error.log` in the current working directory.
-- Per-file failures create `.err` markers (moved to errors dir after processing).
-
-### Web Dashboard
-
-#### `--web`
-
-Enable read-only HTMX web dashboard.
-
-**Default:** from config (`web_server.enabled`, default `false`)
-
-```bash
-uv run vbc run /videos --web
-```
-
-#### `--web-port INT`
-
-Override web dashboard port.
-
-**Default:** from config (`web_server.port`, default `8765`)
-
-```bash
-uv run vbc run /videos --web --web-port 8765
-```
-
-### Demo
-
-#### `--demo`
-
-Run simulated processing (no video file processing I/O). The UI and event flow behave like a real run, and logs are still written.
-
-**Note:** `INPUT_DIR` is optional; in demo mode it is ignored.
-
-```bash
-uv run vbc run --demo
-```
-
-#### `--demo-config PATH`
-
-Path to demo simulation settings.
-
-**Default:** `conf/demo.yaml`
-
-```bash
-uv run vbc run --demo --demo-config conf/demo.yaml
-```
-
-## Examples
-
-### Basic Compression
-
-```bash
-# Default settings (threads=1, quality from encoder args, GPU)
-uv run vbc run /videos
-```
-
-### High Quality Archive
-
-```bash
-# CPU mode, low CQ, 4 threads
-uv run vbc run /videos --cpu --quality 35 --threads 4
-```
-
-### Fast GPU Compression
-
-```bash
-# GPU mode, 8 threads, standard quality
-uv run vbc run /videos --gpu --threads 8 --quality 45
-```
-
-### Camera-Specific Processing
-
-```bash
-# Only ILCE-7RM5 cameras, high quality
-uv run vbc run /videos \
-  --camera "ILCE-7RM5" \
-  --quality 38 \
-  --threads 6
-```
-
-### Retry Failed Jobs
-
-```bash
-# Remove error markers and retry
-uv run vbc run /videos --clean-errors
-```
-
-### Debug Run
-
-```bash
-# Debug logging, fewer threads for clarity
-uv run vbc run /videos --threads 2 --debug
-```
-
-### Complete Custom Run
-
-```bash
-uv run vbc run /videos \
-  --config conf/production.yaml \
-  --threads 12 \
-  --quality 40 \
-  --gpu \
-  --camera "ILCE-7RM5,DC-GH7" \
-  --skip-av1 \
-  --min-size 10485760 \
-  --min-ratio 0.15 \
-  --clean-errors \
-  --debug
-```
+**Debug hint:** with `general.debug: true` the log shows `AUDIO_MODE` with the detected codec and action.
 
 ## Configuration Priority
 
-CLI arguments **override** config file settings.
-
-**Example:**
-
-`conf/vbc.yaml`:
-```yaml
-general:
-  threads: 4
-  gpu: true
-
-gpu_encoder:
-  common_args:
-    - "-cq 45"
-
-cpu_encoder:
-  common_args:
-    - "-crf 32"
-```
-
-```bash
-uv run vbc run /videos --threads 8 --quality 38 --cpu
-```
-
-**Result:**
-- `threads`: 8 (CLI override)
-- `quality`: 38 (overrides `-cq`/`-crf` in encoder args)
-- `gpu`: false (CLI override: `--cpu`)
+1. The config file (`--config`, default `conf/vbc.yaml`).
+2. `VBC.YAML` in the input tree (nearest ancestor of each file wins), for the
+   keys it allows.
+3. For `vbc serve` only: deployment environment variables (below) override
+   the bind address, allowed hosts, storage roots and GPU use.
 
 ## Environment Variables
 
@@ -520,9 +112,8 @@ uv run vbc run /videos --threads 8 --quality 38 --cpu
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success (including graceful shutdown via `S` or `SIGTERM`/`SIGINT` in `vbc serve`) |
-| 1 | Error (invalid config, directory not found, fatal exception) |
-| 130 | Interrupted (`Ctrl+C` in `vbc run`) |
+| 0 | Normal end (`vbc run`: the dashboard was quit; `vbc serve`: ended by `SIGTERM`/`SIGINT`) |
+| 2 | Invalid config, a folder that does not exist, or (`vbc run`) the private server did not start; see `~/.local/state/vbc/run-server.log` |
 
 ### Client Commands (`vbc status`, `threads`, `dirs`, `config`, ...)
 
@@ -556,7 +147,7 @@ Output: /videos_out/subfolder/video.mp4
 /tmp/vbc/compression.log
 ```
 
-Detailed log of all operations (INFO and ERROR levels). Override with `--log-path` or `general.log_path`.
+Detailed log of all operations (INFO and ERROR levels). Override with `general.log_path`.
 
 ### Error Markers
 
@@ -573,20 +164,6 @@ These markers are written under the output directory during processing and moved
 ```
 $ cat /videos_err/video.err
 Hardware is lacking required capabilities
-```
-
-## Shell Completion
-
-**Bash:**
-```bash
-# Add to ~/.bashrc
-eval "$(uv run vbc run --show-completion bash)"
-```
-
-**Zsh:**
-```bash
-# Add to ~/.zshrc
-eval "$(uv run vbc run --show-completion zsh)"
 ```
 
 ## Next Steps
