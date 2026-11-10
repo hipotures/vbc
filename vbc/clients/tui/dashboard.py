@@ -991,21 +991,13 @@ class Dashboard:
                 elapsed = (datetime.now() - self.state.processing_start_time).total_seconds()
                 elapsed_str = self.format_time(elapsed)
 
-            # Header (liczby plików + source folders jeśli > 1)
-            session_done = max(0, self.state.completed_count - self.state.session_completed_base)
-            completed_since_discovery = max(
-                0, self.state.completed_count - self.state.completed_count_at_last_discovery
-            )
-            total_done = self.state.already_compressed_count + completed_since_discovery
-            if total_done < self.state.completed_count:
-                total_done = self.state.completed_count
-            total_files = self.state.total_files_found
-            if total_files > 0:
-                total_done = min(total_done, total_files)
+            # Header: counts since the server started, like the byte totals and
+            # "deleted". Discovery counts are not used: with source deletion the
+            # folders no longer hold the sources already done.
+            left = self.state.queue_count + len(self.state.active_jobs)
+            header = f"Done: {self.state.completed_count} • Left: {left}"
             if self.state.source_folders_count > 1:
-                header = f"Done: {session_done}/{total_done}/{total_files} • Sources: {self.state.source_folders_count}"
-            else:
-                header = f"Done: {session_done}/{total_done}/{total_files}"
+                header += f" • Sources: {self.state.source_folders_count}"
 
             # Progress bar (skalowany do 0-10000 aby uniknąć problemów z dużymi liczbami)
             if total_size_bytes > 0:

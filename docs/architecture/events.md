@@ -152,6 +152,16 @@ class RefreshFinished(Event):
 **Subscribers:** StateStore
 **Purpose:** Report results after refresh completes (used for counters)
 
+#### SourcesDeleted
+```python
+class SourcesDeleted(Event):
+    count: int
+```
+
+**Publisher:** Orchestrator
+**Subscribers:** StateStore
+**Purpose:** Count sources deleted outside a job, when discovery finds a manifest's output already verified and applies its source policy. Deletions by a job travel in `JobCompleted` (`job.sources_deleted`).
+
 #### InputDirsChanged
 ```python
 class InputDirsChanged(Event):

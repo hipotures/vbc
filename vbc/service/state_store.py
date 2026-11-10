@@ -40,6 +40,7 @@ from vbc.domain.events import (
     RepairFinished,
     RepairStarted,
     SetShutdownRequested,
+    SourcesDeleted,
     ThreadCountChanged,
     WaitingForInput,
 )
@@ -190,6 +191,7 @@ class StateStore:
             DiscoveryStarted: self._on_discovery_started,
             DiscoveryFinished: self._on_discovery_finished,
             RefreshFinished: self._on_refresh_finished,
+            SourcesDeleted: self._on_sources_deleted,
             ThreadCountChanged: self._on_thread_count_changed,
             SetShutdownRequested: self._on_shutdown_requested,
             InterruptRequested: self._on_interrupt_requested,
@@ -292,6 +294,13 @@ class StateStore:
 
         def fn(s: _State, now: float) -> bool:
             s.counters.session_completed_base = s.counters.completed
+            return True
+
+        self._mutate(fn)
+
+    def _on_sources_deleted(self, event: SourcesDeleted) -> None:
+        def fn(s: _State, now: float) -> bool:
+            s.counters.sources_deleted += event.count
             return True
 
         self._mutate(fn)

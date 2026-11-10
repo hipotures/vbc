@@ -75,6 +75,7 @@ from vbc.domain.events import (
     RefreshFinished,
     SetShutdownRequested,
     SetThreadCount,
+    SourcesDeleted,
     ThreadCountChanged,
     InterruptRequested,
 )
@@ -2399,7 +2400,9 @@ class Orchestrator:
                 ):
                     output_ok, _ = self._verify_output_file(output_path)
                     if output_ok:
-                        self._apply_manifest_source_policy(request)
+                        deleted, _ = self._apply_manifest_source_policy(request)
+                        if deleted:
+                            self.event_bus.publish(SourcesDeleted(count=deleted))
                         self._route_manifest_success(request)
                         stats["already_compressed"] += 1
                         continue

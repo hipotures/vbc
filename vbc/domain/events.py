@@ -112,6 +112,11 @@ class InputDirsChanged(Event):
     """Emitted when the active input_dirs list changes (e.g. after PUT /dirs)."""
     active_dirs: List[str]
 
+class SourcesDeleted(Event):
+    """Source files deleted outside a job (output found already verified)."""
+    count: int
+
+
 class RefreshFinished(Event):
     """Event emitted after refresh completes (used for UI counters)."""
     added: int = 0
