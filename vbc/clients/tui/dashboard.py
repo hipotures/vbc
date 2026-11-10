@@ -586,15 +586,18 @@ class Dashboard:
             ratio = (diff / in_s) * 100 if in_s > 0 else 0
             dur = self.format_time(job.duration_seconds)
 
-            # Show config source prefix (G/L/C)
-            source_prefix = job.config_source.value if job.config_source else "G"
+            # Config source as an icon: 🌐 global config, 📍 folder VBC.YAML
+            # (letters when the display strips non-ASCII symbols).
+            source = job.config_source.value if job.config_source else "G"
+            if not self.state.strip_unicode_display:
+                source = {"G": "🌐", "L": "📍"}.get(source, source)
             if job.quality_display:
                 quality_text = self._format_quality_display_for_ui(job.quality_display)
-                q_val = f"{source_prefix} • {quality_text} • "
+                q_val = f"{source} {quality_text} • "
             elif job.quality_value is not None:
-                q_val = f"{source_prefix} • cq{job.quality_value} • "
+                q_val = f"{source} cq{job.quality_value} • "
             else:
-                q_val = f"{source_prefix} • "
+                q_val = f"{source} "
 
             s_in = self.format_size(in_s)
             s_out = self.format_size(out_s)
