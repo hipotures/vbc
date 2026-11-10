@@ -115,6 +115,7 @@ class _State:
     interrupt_requested: bool = False
     stopped: bool = False
     exiting: bool = False
+    exit_deadline: Optional[float] = None  # epoch s: running jobs are interrupted then
     error_paused: bool = False
     pause_reason: Optional[str] = None
     status_message: Optional[str] = None
@@ -643,10 +644,13 @@ class StateStore:
 
         self._mutate(fn)
 
-    def set_exiting(self) -> None:
-        """The server process is exiting (signal)."""
+    def set_exiting(self, deadline_s: Optional[float] = None) -> None:
+        """The server process is exiting (signal). ``deadline_s``: seconds until
+        running jobs are interrupted (None: they may finish, no deadline)."""
         def fn(st: _State, now: float) -> bool:
             st.exiting = True
+            if deadline_s is not None:
+                st.exit_deadline = now + deadline_s
             return True
 
         self._mutate(fn)
@@ -793,6 +797,7 @@ class StateStore:
                 total_output_bytes=s.total_output_bytes,
                 throughput=throughput,
                 eta_at=eta_at,
+                exit_deadline_at=to_ms(s.exit_deadline) if s.exiting else None,
                 processing_started_at=to_ms(s.processing_started_at),
                 threads=self._threads,
                 stop_requested=s.stop_requested,

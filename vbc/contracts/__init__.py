@@ -163,6 +163,9 @@ class StateSnapshot(Envelope):
     total_output_bytes: int = 0
     throughput: Optional[Throughput] = None
     eta_at: Optional[int] = None
+    # While the server exits (shutting_down): when running jobs get interrupted
+    # (server.stop_timeout_s after the signal); null when they may finish.
+    exit_deadline_at: Optional[int] = None
     processing_started_at: Optional[int] = None
     threads: Threads
     stop_requested: bool = False

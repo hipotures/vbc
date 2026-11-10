@@ -247,6 +247,14 @@ def extract_preset(args: List[str]) -> Optional[str]:
     value = _extract_flag_value(args, "-preset")
     return value if value else None
 
+# On a stop/interrupt, a job at or past this share of its input (or whose
+# ffmpeg already exited) may finish for up to FINISH_GRACE_S instead of being
+# discarded. Keep the grace well below the gap between server.stop_timeout_s
+# and the orchestrator's kill timeout (HomeStack: 60 s).
+FINISH_GRACE_PERCENT = 99.0
+FINISH_GRACE_S = 45.0
+
+
 class FFmpegAdapter:
     """Subprocess adapter for FFmpeg video compression.
 
@@ -904,11 +912,26 @@ class FFmpegAdapter:
         reader_thread = threading.Thread(target=_reader, daemon=True)
         reader_thread.start()
 
+        last_percent = 0.0
+        finish_by: Optional[float] = None
         try:
             while True:
-                # Check for shutdown signal from orchestrator
+                # Check for shutdown signal from orchestrator. A job that is
+                # finishing (ffmpeg already exited, or it reached the end of
+                # its input and writes the last frames) is not thrown away:
+                # it gets FINISH_GRACE_S to end on its own.
+                stop = False
                 if shutdown_event and shutdown_event.is_set():
-                    self.logger.info(f"FFMPEG_INTERRUPTED: {filename} (shutdown signal)")
+                    if finish_by is None and (process.poll() is not None
+                                              or last_percent >= FINISH_GRACE_PERCENT):
+                        finish_by = time.monotonic() + FINISH_GRACE_S
+                        self.logger.info(
+                            f"FFMPEG_FINISHING: {filename} stop requested at {last_percent:.1f}%; "
+                            f"letting it finish (up to {FINISH_GRACE_S:.0f}s)"
+                        )
+                    stop = finish_by is None or (process.poll() is None and time.monotonic() > finish_by)
+                if stop:
+                    self.logger.info(f"FFMPEG_INTERRUPTED: {filename} (shutdown signal at {last_percent:.1f}%)")
                     process.terminate()
                     try:
                         process.wait(timeout=3)
@@ -968,6 +991,7 @@ class FFmpegAdapter:
                     )
                     if total_duration > 0:
                         progress_percent = min(100.0, (current_seconds / total_duration) * 100.0)
+                        last_percent = max(last_percent, progress_percent)
                         self.event_bus.publish(JobProgressUpdated(job=job, progress_percent=progress_percent))
 
                 frame_match = frame_regex.search(line)

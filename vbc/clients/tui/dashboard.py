@@ -738,6 +738,9 @@ class Dashboard:
                 indicator = "[red]●[/]"
             elif self.state.server_exiting:
                 status = "[yellow]SERVER EXITING[/]"
+                if self.state.exit_deadline is not None:
+                    left = max(0, int((self.state.exit_deadline - datetime.now()).total_seconds()))
+                    status += f" • Timeout: [yellow]{left}s[/]"
                 indicator = "[yellow]◐[/]"
             elif self.state.stopped:
                 status = "[yellow]STOPPED[/]"

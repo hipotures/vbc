@@ -96,6 +96,7 @@ class ClientState:
         self.stopped = False
         self.stopping = False
         self.server_exiting = False
+        self.exit_deadline = None  # local datetime: running jobs are interrupted then
 
         # Job timing tracking
         self.job_start_times: Dict[str, datetime] = {}  # filename -> start time
@@ -254,6 +255,7 @@ class ClientState:
             self.stopping = status == "stopping"
             self.stopped = status == "stopped"
             self.server_exiting = status == "shutting_down"
+            self.exit_deadline = local_datetime(snap.exit_deadline_at, offset_ms)
             # Renderers read `shutdown_requested` for the thread target (0 while stopping).
             self.shutdown_requested = self.stopping or self.server_exiting
             self.interrupt_requested = snap.interrupt_requested

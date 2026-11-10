@@ -466,13 +466,15 @@ class VbcServer:
         """
         first = not self._exit_requested.is_set()
         self._exit_requested.set()
-        if first:
+        timeout = self.config.server.stop_timeout_s if deadline_s is None else deadline_s
+        if mode == "graceful" and self._stop_timer is None:
+            self.store.set_exiting(None if wait_for_jobs or timeout is None else timeout)
+        elif first:
             self.store.set_exiting()
         if mode == "interrupt":
             self.bus.publish(InterruptRequested())
             return
         self.bus.publish(SetShutdownRequested(requested=True))
-        timeout = self.config.server.stop_timeout_s if deadline_s is None else deadline_s
         if self._stop_timer is None and timeout is not None and not wait_for_jobs:
             self._stop_timer = threading.Timer(timeout, self._deadline_reached)
             self._stop_timer.daemon = True

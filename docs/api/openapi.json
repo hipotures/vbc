@@ -2291,6 +2291,17 @@
             ],
             "title": "Eta At"
           },
+          "exit_deadline_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Deadline At"
+          },
           "gpu_last_seq": {
             "default": 0,
             "title": "Gpu Last Seq",
