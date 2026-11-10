@@ -105,17 +105,8 @@ class _Overlay:
             pos = seg_end
         return result
 
-    # Colour emoji ignore the dim/grey wash (the terminal draws them in their
-    # own colours); under a wash they become plain text of the same width.
-    _WASH_EMOJI = {"🌐": "G ", "📍": "L "}
-
-    @classmethod
-    def _wash_background(cls, segment: Segment, keep: float) -> Segment:
-        if not segment.control and any(e in segment.text for e in cls._WASH_EMOJI):
-            text = segment.text
-            for emoji, plain in cls._WASH_EMOJI.items():
-                text = text.replace(emoji, plain)
-            segment = Segment(text, segment.style, segment.control)
+    @staticmethod
+    def _wash_background(segment: Segment, keep: float) -> Segment:
         style = segment.style
         if segment.control or style is None or style.bgcolor is None or style.bgcolor.is_default:
             return segment
@@ -595,17 +586,15 @@ class Dashboard:
             ratio = (diff / in_s) * 100 if in_s > 0 else 0
             dur = self.format_time(job.duration_seconds)
 
-            # Config source as an icon: 🌐 global config, 📍 folder VBC.YAML.
-            # (strip_unicode_display is about file names only.)
-            source = (getattr(job.config_source, "value", None) or "GLOBAL")[0]  # G / L / C
-            source = {"G": "🌐", "L": "📍"}.get(source, source)
+            # Config source: G global config, L folder VBC.YAML, C CLI.
+            source = (getattr(job.config_source, "value", None) or "GLOBAL")[0]
             if job.quality_display:
                 quality_text = self._format_quality_display_for_ui(job.quality_display)
-                q_val = f"{source} {quality_text} • "
+                q_val = f"{source} • {quality_text} • "
             elif job.quality_value is not None:
-                q_val = f"{source} cq{job.quality_value} • "
+                q_val = f"{source} • cq{job.quality_value} • "
             else:
-                q_val = f"{source} "
+                q_val = f"{source} • "
 
             s_in = self.format_size(in_s)
             s_out = self.format_size(out_s)
