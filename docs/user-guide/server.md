@@ -24,7 +24,9 @@ uv run vbc serve --config conf/vbc.yaml --demo   # simulated processing, no file
 * `vbc stop` stops processing only (running jobs finish; `--interrupt` stops
   them now). The server stays up in status `stopped`, and `vbc refresh`
   resumes. Nothing in the API or the clients ends the server process.
-* Logs go to stdout. Add `--log-file PATH` to also write them to a file.
+* Logs go to stdout. `--log-file PATH` (or `general.log_path`) also writes a file that
+  always records DEBUG, rotated at 20 MiB, 10 files kept. The container writes
+  `/home/app/logs/vbc.log`.
 * The process ends only on a signal. The first SIGTERM/SIGINT lets running
   jobs finish (at most `server.stop_timeout_s`, default 600 s), and a second
   SIGINT interrupts them.

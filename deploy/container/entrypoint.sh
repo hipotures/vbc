@@ -18,6 +18,8 @@ if [ "${VBC_ALLOW_EPHEMERAL:-0}" != "1" ]; then
 fi
 
 mkdir -p "$home/config" "$home/state"
+# Rotated log file with full DEBUG on the volume (10 x 20 MiB at most).
+log_file="$home/logs/vbc.log"
 
 # Storage roots on the persistent volume (e.g. /home/app/media) are created
 # here; roots elsewhere are mounts and must already exist (readiness checks them).
@@ -78,9 +80,15 @@ uid="${VBC_UID:-$(identity_id /proc/self/uid_map)}"
 uid="${uid:-0}"
 gid="${VBC_GID:-$(identity_id /proc/self/gid_map)}"
 gid="${gid:-$uid}"
+# The logs directory is created for the user the server runs as (an existing
+# one is left as it is; the server logs to stdout only if it cannot write there).
+if [ ! -d "$home/logs" ]; then
+    mkdir "$home/logs"
+    [ "$uid" = "0" ] || chown "$uid:$gid" "$home/logs"
+fi
 if [ "$uid" != "0" ]; then
     echo "vbc: running as uid $uid gid $gid"
     exec setpriv --reuid="$uid" --regid="$gid" --clear-groups --inh-caps=-all \
-        python -m vbc.service --config "$config" "$@"
+        python -m vbc.service --config "$config" --log-file "$log_file" "$@"
 fi
-exec python -m vbc.service --config "$config" "$@"
+exec python -m vbc.service --config "$config" --log-file "$log_file" "$@"

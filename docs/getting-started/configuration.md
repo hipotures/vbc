@@ -247,9 +247,10 @@ storage:
 #### `log_path`
 - **Type**: String or null
 - **Default**: `/tmp/vbc/compression.log`
-- **Description**: Path to log file (overrides the output directory default)
-- **Note**: If set to `null`, logs are written to `<output_dir>/compression.log`.
-- **Rotation**: At startup, a non-empty existing log is archived with a local timestamp, for example `compression_2026-07-18_00-22-15.log`. The new session keeps using `compression.log`.
+- **Description**: Server log file. `vbc serve --log-file PATH` takes precedence; `null` means no file (stdout and `vbc logs` only).
+- **Level**: The file always records DEBUG, whatever `debug` or `vbc log-level` say (those set stdout and `vbc logs`).
+- **Rotation**: At 20 MiB the file is renamed to `.1` (`.1` to `.2`, ...); at most 10 files (~200 MiB) are kept.
+- **Container**: The entrypoint passes `--log-file /home/app/logs/vbc.log`. This is server-owned: `vbc config push/set` does not change it.
 
 #### `cpu_fallback`
 - **Type**: Boolean

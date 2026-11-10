@@ -364,9 +364,13 @@ class CommandService:
         )
 
     def set_log_level(self, level: str) -> None:
-        logging.getLogger().setLevel(level)
-        for handler in logging.getLogger().handlers:
-            handler.setLevel(level)
+        """stdout and /logs; the log file keeps recording DEBUG."""
+        root = logging.getLogger()
+        has_file = any(h.get_name() == "vbc-log-file" for h in root.handlers)
+        root.setLevel(logging.DEBUG if has_file else level)
+        for handler in root.handlers:
+            if handler.get_name() != "vbc-log-file":
+                handler.setLevel(level)
 
     # ── dirs ────────────────────────────────────────────────────────────────
 

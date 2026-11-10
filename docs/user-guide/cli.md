@@ -8,7 +8,7 @@ Complete reference for VBC command-line interface.
 
 | Subcommand | Description |
 |------------|-------------|
-| `vbc serve [DIRS...] [--config PATH] [--host HOST] [--port PORT] [--demo] [--demo-config PATH] [--log-file PATH]` | Run the headless server (`HTTP API` on `server.host:server.port`, logs on stdout); `DIRS` replace the config's folders for this process only |
+| `vbc serve [DIRS...] [--config PATH] [--host HOST] [--port PORT] [--demo] [--demo-config PATH] [--log-file PATH]` | Run the headless server (`HTTP API` on `server.host:server.port`, logs on stdout; `--log-file` or `general.log_path` adds a rotated DEBUG log file); `DIRS` replace the config's folders for this process only |
 | `vbc tui [--api URL] [--log-file PATH]` | Live Rich dashboard connected to a running server |
 | `vbc status`, `vbc threads`, `vbc refresh`, `vbc stop`, `vbc dirs`, `vbc errors`, `vbc logs`, `vbc config`, `vbc versions`, `vbc log-level`, `vbc sources cleanup`, `vbc manifests restore\|repair` | One-shot API client commands (`--api URL`, `--json`) |
 | `vbc run [DIRS...] [--config PATH] [--log-file PATH]` | Private server on loopback plus the dashboard in one terminal (documented below) |

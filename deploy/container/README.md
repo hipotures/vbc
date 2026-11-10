@@ -31,8 +31,8 @@ Unpacked size: about 670 MB (about 180 MB of it the bundled NVIDIA libraries).
 | Entrypoint | `vbc-entrypoint` → `python -m vbc.service --config /home/app/config/vbc.yaml` |
 | User | container root (an unprivileged LXC maps it to an unprivileged host user) |
 | Port | `8080/tcp` (HomeStack convention; local `vbc serve` defaults to 8770) HTTP: API, `/health/live`, `/health/ready`, `/.well-known/homestack/status` |
-| Persistent volume | `/home/app` (`config/vbc.yaml` incl. the Dirs list, `state/`) |
-| Logs | stdout/stderr |
+| Persistent volume | `/home/app` (`config/vbc.yaml` incl. the Dirs list, `state/`, `logs/`) |
+| Logs | stdout/stderr (INFO, or DEBUG with `general.debug`); `logs/vbc.log` always DEBUG, rotated at 20 MiB, 10 files (~200 MiB) |
 | Stop | SIGTERM → running jobs finish (≤ `server.stop_timeout_s`, 600 s), then exit 0 |
 
 The HomeStack manifest sets `runtime.stop_timeout_seconds: 660`: 10 minutes
@@ -50,7 +50,7 @@ the one-shot client commands run outside the container.
 * `VBC_UID`/`VBC_GID` (default 0): run the server as that user, e.g. the media
   owner's 1000, so it has exactly that user's permissions (no ACLs). The
   container's uid must map to the same host uid (`lxc.idmap`, root on the
-  host). The volume's config and state directories must already be writable
+  host). The volume's config, state and logs directories must already be writable
   by that user; the entrypoint does not change ownership or permissions. Without
   `VBC_UID`, a uid the container maps to the same host uid (`u 1000 1000 1`)
   is used automatically.
@@ -136,7 +136,7 @@ Memory:              idle server ~75 MiB RSS; peak anonymous 2683 MiB for two pa
                      1080p SVT-AV1 jobs; no OOM at a 3 GiB limit -> declared 4G
 Swap declared:       0M
 Rootfs declared:     2G (image ~670 MB unpacked; no durable writes)
-Home declared/used:  1G / a few KiB (config + state)
+Home declared/used:  1G / config + state a few KiB, logs/ at most ~200 MiB (rotated)
 Health/telemetry:    /health/live, /health/ready 200 with heartbeat checks;
                      telemetry schema 3 with process_rss_bytes (tests/e2e/test_image.py)
 Restart/fresh root:  refuses without a mounted /home/app; first start creates the config,

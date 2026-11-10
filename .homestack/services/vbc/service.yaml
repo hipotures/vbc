@@ -34,6 +34,7 @@ persistence:
   directories:
     - config
     - state
+    - logs
 # Remote access through Pangolin, behind its login (the API has no auth of
 # its own; it controls processing only and never serves media).
 exposure:

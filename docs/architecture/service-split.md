@@ -317,9 +317,10 @@ Application log (`/logs`):
   `job_id`. Same `since` paging as `/errors`.
 * `PUT /api/v1/runtime/log-level {"level": "DEBUG"}` replaces restarting with
   `--debug` (pattern from mypowers).
-* `vbc serve` logs to stdout/stderr (the container convention); the log
-  file becomes optional (`--log-file`), kept for local runs. Switching
-  `mode="w"` to append/rotation for that file is an independent change.
+* `vbc serve` logs to stdout/stderr (the container convention). The log
+  file is optional (`--log-file`, else `general.log_path`); it always records
+  DEBUG and rotates (20 MiB, 10 files). The container entrypoint writes
+  `/home/app/logs/vbc.log` on the volume for later analysis.
 * Live tail uses the same long-poll mechanism (`wait=` parameter); no separate
   streaming protocol.
 

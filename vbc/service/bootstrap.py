@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import logging.handlers
 import os
 import subprocess
 import sys
@@ -45,6 +46,10 @@ from vbc.service.storage import StorageRoots
 logger = logging.getLogger("vbc.server")
 
 LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+# The log file always gets DEBUG, rotated so it stays bounded (10 files x 20 MiB).
+LOG_FILE_HANDLER = "vbc-log-file"
+LOG_FILE_MAX_BYTES = 20 * 1024 * 1024
+LOG_FILE_BACKUPS = 9
 
 
 class ServerConfigError(Exception):
@@ -104,28 +109,43 @@ def probe_nvenc(timeout_s: float = 30.0) -> tuple[bool, str]:
 
 
 def configure_logging(debug: bool, log_file: Optional[Path]) -> LogBuffer:
-    """stdout (container convention) + ring buffer for /logs + optional file."""
+    """stdout (container convention) + ring buffer for /logs + optional file.
+
+    stdout and the ring buffer follow ``debug`` (and `vbc log-level`); the file,
+    when there is one, always records DEBUG for later analysis.
+    """
     root = logging.getLogger()
     for handler in list(root.handlers):
         root.removeHandler(handler)
     level = logging.DEBUG if debug else logging.INFO
-    root.setLevel(level)
+    root.setLevel(logging.DEBUG if log_file is not None else level)
     formatter = logging.Formatter(LOG_FORMAT)
     stream = logging.StreamHandler(sys.stdout)
     stream.setFormatter(formatter)
     stream.setLevel(level)
     root.addHandler(stream)
+    file_error: Optional[OSError] = None
     if log_file is not None:
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_file, mode="a")
+        try:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            file_handler = logging.handlers.RotatingFileHandler(
+                log_file, maxBytes=LOG_FILE_MAX_BYTES, backupCount=LOG_FILE_BACKUPS,
+            )
+        except OSError as exc:
+            file_error, log_file = exc, None
+            root.setLevel(level)
+    if log_file is not None:
+        file_handler.set_name(LOG_FILE_HANDLER)
         file_handler.setFormatter(formatter)
-        file_handler.setLevel(level)
+        file_handler.setLevel(logging.DEBUG)
         root.addHandler(file_handler)
     buffer = LogBuffer()
-    buffer.setLevel(logging.DEBUG)
+    buffer.setLevel(level)
     root.addHandler(buffer)
     for noisy in ("uvicorn.access", "httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    if file_error is not None:
+        logger.error(f"Log file disabled, logging to stdout only: {file_error}")
     return buffer
 
 
@@ -217,7 +237,12 @@ class VbcServer:
                 exclude=[config_path.resolve()],
             )
 
+        # --log-file wins; else general.log_path; else stdout and /logs only.
+        if log_file is None and config.general.log_path:
+            log_file = Path(config.general.log_path).expanduser()
         self.log_buffer = configure_logging(config.general.debug, log_file)
+        has_file = any(h.get_name() == LOG_FILE_HANDLER for h in logging.getLogger().handlers)
+        self.log_file = log_file if has_file else None
         for problem in config_problems:
             logger.error(f"Config {config_path}: {problem}")
         # general.gpu means "GPU if it works here": probe once, else encode on CPU,
@@ -406,10 +431,13 @@ class VbcServer:
         self._on_exit.append(callback)
 
     def start(self) -> None:
-        try:
-            self.commands.scan_mounts()  # new media mounts appear in Dirs, disabled
-        except Exception:  # noqa: BLE001
-            logger.exception("Mount scan failed")
+        # New media mounts appear in Dirs, disabled; not when the folder list
+        # comes from the command line (then it is read-only).
+        if not self.dirs_from_args:
+            try:
+                self.commands.scan_mounts()
+            except Exception:  # noqa: BLE001
+                logger.exception("Mount scan failed")
         if self._exif is not None:
             self._exif.et.run()
             logger.info("ExifTool started")
