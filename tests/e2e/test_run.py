@@ -7,12 +7,14 @@ import os
 import pty
 import re
 import struct
+import subprocess
 import sys
 import termios
 import time
 from pathlib import Path
 
 import httpx
+import yaml
 
 from conftest import REPO
 from test_tui import _read, _text
@@ -97,3 +99,90 @@ def test_run_private_server_with_folders_from_args(media_tree, tmp_path):
     assert config.read_bytes() == config_before, "vbc run must not change the config file"
     assert (media_tree["meta"] / "req_001.json").exists(), \
         "a folder from the config was processed although DIRS replaced the list"
+
+
+def _start_run(args: list[str], state_home: Path) -> tuple[int, int]:
+    pid, master = pty.fork()
+    if pid == 0:
+        fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", 45, 140, 0, 0))
+        os.chdir(REPO)
+        os.execve(sys.executable, [sys.executable, "-m", "vbc.cli", "run", *args],
+                  {**os.environ, "TERM": "xterm-256color", "XDG_STATE_HOME": str(state_home)})
+    return pid, master
+
+
+def _wait_api(http: httpx.Client, master: int, buf: bytearray, timeout: float = 120) -> dict:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            return http.get("/api/v1/state").json()
+        except httpx.HTTPError:
+            assert time.monotonic() < deadline, "private server did not answer"
+            _read(master, buf, 0.3)
+
+
+def test_run_config_push_restart_keeps_folders_from_args(media_tree, tmp_path):
+    """A config push makes the private server restart; it comes back with the
+    folder from the command line, the pushed settings, and the file's own list."""
+    config: Path = media_tree["config"]
+    videos = media_tree["videos"]
+    state_home = tmp_path / "state"
+    log = state_home / "vbc" / "run-server.log"
+    file_dirs = yaml.safe_load(config.read_text())["input_dirs"]
+
+    pid, master = _start_run([str(videos), "--config", str(config)], state_home)
+    buf = bytearray()
+    try:
+        url = _server_url(log)
+        http = httpx.Client(base_url=url, timeout=30)
+        _wait_api(http, master, buf)
+        assert http.get("/api/v1/config/values").json()["values"]["general"]["threads"] == 2
+
+        pushed = yaml.safe_load(config.read_text())
+        pushed["general"]["threads"] = 1
+        pushed["input_dirs"] = [{"path": str(tmp_path / "client-only"), "enabled": True}]
+        client_file = tmp_path / "pushed.yaml"
+        client_file.write_text(yaml.safe_dump(pushed, sort_keys=False))
+        result = subprocess.run(
+            [sys.executable, "-m", "vbc.cli", "config", "--api", url, "--push", str(client_file)],
+            cwd=REPO, capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+        # Running jobs finish, then the server re-executes itself on the same port.
+        deadline = time.monotonic() + 300
+        while log.read_text(errors="replace").count("VBC server started") < 2:
+            assert time.monotonic() < deadline, f"no restart:\n{log.read_text(errors='replace')[-3000:]}"
+            _read(master, buf, 0.5)
+        _wait_api(http, master, buf)
+
+        dirs = http.get("/api/v1/dirs").json()
+        assert [e["path"] for e in dirs["entries"]] == [str(videos.resolve())]
+        assert http.put("/api/v1/dirs", json={"entries": []},
+                        headers={"If-Match": str(dirs["dirs_rev"])}).status_code == 409
+        assert http.get("/api/v1/config/values").json()["values"]["general"]["threads"] == 1
+        assert yaml.safe_load(config.read_text())["input_dirs"] == file_dirs, \
+            "the push or the restart changed the config file's folder list"
+
+        os.write(master, b"q")
+        deadline = time.monotonic() + 150
+        while True:
+            done, status = os.waitpid(pid, os.WNOHANG)
+            if done:
+                break
+            assert time.monotonic() < deadline, "vbc run did not exit after q"
+            _read(master, buf, 0.2)
+        assert os.waitstatus_to_exitcode(status) == 0
+        try:
+            http.get("/api/v1/state", timeout=2)
+            raise AssertionError("the restarted private server is still running after vbc run exited")
+        except httpx.HTTPError:
+            pass
+    finally:
+        try:
+            os.kill(pid, 9)
+        except ProcessLookupError:
+            pass
+        os.close(master)
+
+    assert (media_tree["meta"] / "req_001.json").exists(), "the config's other folder was processed"
