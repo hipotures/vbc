@@ -9,13 +9,14 @@ the server validates it, saves it with ``save_dirs_config`` and publishes
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
 import threading
 import time
 from pathlib import Path
-from typing import List, Literal, Optional, Sequence
+from typing import Any, Dict, List, Literal, Optional, Sequence
 
 from vbc import contracts as dto
 from vbc.config.input_dirs import MAX_INPUT_DIR_LEN, MAX_INPUT_DIRS
@@ -105,6 +106,81 @@ def _changed_keys(old: object, new: object, prefix: str = "") -> List[str]:
     return [] if old == new else [prefix.rstrip(".")]
 
 
+def _validate_config(document: dict) -> AppConfig:
+    from pydantic import ValidationError
+
+    try:
+        return AppConfig(**document)
+    except (ValidationError, TypeError, ValueError) as exc:
+        errors = [f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()] \
+            if isinstance(exc, ValidationError) else [str(exc)]
+        raise CommandError(422, "invalid config", errors=errors) from exc
+
+
+def _model_of(annotation: Any) -> Optional[type]:
+    """The BaseModel class behind a field annotation (``X`` or ``Optional[X]``)."""
+    from typing import Union, get_args, get_origin
+    from pydantic import BaseModel
+
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    if get_origin(annotation) is Union:
+        models = [a for a in get_args(annotation) if isinstance(a, type) and issubclass(a, BaseModel)]
+        if len(models) == 1:
+            return models[0]
+    return None
+
+
+def _check_config_key(key: str) -> List[str]:
+    """Errors for a dotted key: it must name a config field, not go below a
+    list or free-form mapping, and not be server-owned."""
+    parts = key.split(".")
+    if not key or any(not p for p in parts):
+        return [f"{key!r}: empty key part"]
+    if parts[0] in CommandService.SERVER_OWNED or parts[:2] == ["general", "log_path"]:
+        return [f"{key}: owned by the server (Dirs list, bind address, storage, log path)"]
+    model: Optional[type] = AppConfig
+    for depth, part in enumerate(parts):
+        if model is None:
+            return [f"{key}: {'.'.join(parts[:depth])} is one value (a list or mapping); set it whole"]
+        field = model.model_fields.get(part)
+        if field is None:
+            return [f"{key}: no such setting"]
+        model = _model_of(field.annotation)
+    return []
+
+
+def _config_keys(model: type, prefix: str = "") -> List[str]:
+    """Dotted keys of every leaf setting (a list or free-form mapping is a leaf)."""
+    keys: List[str] = []
+    for name, field in model.model_fields.items():
+        sub = _model_of(field.annotation)
+        keys += _config_keys(sub, f"{prefix}{name}.") if sub else [f"{prefix}{name}"]
+    return keys
+
+
+def _get_path(document: Any, parts: List[str]) -> Any:
+    for part in parts:
+        if not isinstance(document, dict) or part not in document:
+            return None
+        document = document[part]
+    return document
+
+
+def _set_path(document: dict, parts: List[str], value: Any, unset: bool) -> None:
+    for part in parts[:-1]:
+        child = document.get(part)
+        if not isinstance(child, dict):
+            if unset:
+                return
+            child = document[part] = {}
+        document = child
+    if unset:
+        document.pop(parts[-1], None)
+    else:
+        document[parts[-1]] = value
+
+
 class CommandService:
     def __init__(
         self,
@@ -187,23 +263,102 @@ class CommandService:
                 general["log_path"] = (current.get("general") or {}).get("log_path")
                 merged["general"] = general
                 kept.append("general.log_path")
-            try:
-                AppConfig(**merged)
-            except (ValidationError, TypeError, ValueError) as exc:
-                errors = [f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()] \
-                    if isinstance(exc, ValidationError) else [str(exc)]
-                raise CommandError(422, "invalid config", errors=errors) from exc
+            _validate_config(merged)
             changed = _changed_keys(current, merged)
-            backup = self._config_path.with_name(self._config_path.name + ".prev")
-            backup.write_text(self._config_path.read_text())
-            tmp = self._config_path.with_name(self._config_path.name + ".tmp")
-            tmp.write_text(yaml.safe_dump(merged, sort_keys=False, allow_unicode=True))
-            os.replace(tmp, self._config_path)
+            backup = self._save_config(merged)
         logger.info(f"Config pushed by a client: {len(changed)} change(s); applies at the next start")
         snapshot = self._store.snapshot()
         return dto.ConfigPushResult(
             rev=snapshot.rev, server_time=snapshot.server_time, path=str(self._config_path),
             backup=str(backup), changed=changed, kept_from_server=kept,
+        )
+
+    def _save_config(self, document: dict) -> Path:
+        """Write ``document`` over the config (temp file + rename); the old file
+        is kept as ``<name>.prev``. Caller holds ``_dirs_lock``."""
+        import yaml
+
+        assert self._config_path is not None
+        backup = self._config_path.with_name(self._config_path.name + ".prev")
+        backup.write_text(self._config_path.read_text())
+        tmp = self._config_path.with_name(self._config_path.name + ".tmp")
+        tmp.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True))
+        os.replace(tmp, self._config_path)
+        return backup
+
+    def _read_config_file(self) -> dict:
+        import yaml
+
+        if self._config_path is None:
+            raise CommandError(409, "this server has no config file")
+        try:
+            document = yaml.safe_load(self._config_path.read_text()) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            raise CommandError(500, "could not read the config file", detail=str(exc)) from exc
+        if not isinstance(document, dict):
+            raise CommandError(500, "the config file is not a YAML mapping")
+        return document
+
+    @classmethod
+    def _editable_values(cls, document: dict) -> Dict[str, Any]:
+        """The file's settings with defaults filled in, without server-owned ones."""
+        values = _validate_config(document).model_dump(mode="json")
+        for key in cls.SERVER_OWNED:
+            values.pop(key, None)
+        values.get("general", {}).pop("log_path", None)
+        return values
+
+    def config_values(self) -> dto.ConfigValues:
+        """Settings as stored in the server's config file (defaults filled in)."""
+        with self._dirs_lock:
+            values = self._editable_values(self._read_config_file())
+        snapshot = self._store.snapshot()
+        return dto.ConfigValues(rev=snapshot.rev, server_time=snapshot.server_time,
+                                path=str(self._config_path), values=values,
+                                keys=[k for k in _config_keys(AppConfig) if not _check_config_key(k)])
+
+    def patch_config(self, changes: Sequence[dto.ConfigChange]) -> dto.ConfigPushResult:
+        """Change single settings in the config file, all or none.
+
+        Each change names a dotted key (``general.threads``), the value the
+        client last saw (``old``) and the new one. A key whose current value is
+        no longer ``old`` was changed by someone else: nothing is written and
+        409 lists those keys with the server's value. A list or a free-form
+        mapping (``autorotate.patterns``) is one value. ``unset`` removes the
+        key from the file (back to the default).
+        """
+        if not changes:
+            raise CommandError(422, "no changes")
+        keys = [c.key for c in changes]
+        duplicates = sorted({k for k in keys if keys.count(k) > 1})
+        if duplicates:
+            raise CommandError(422, "a key is changed twice", errors=duplicates)
+        with self._dirs_lock:
+            current = self._read_config_file()
+            values = self._editable_values(current)
+            path_errors = [err for c in changes for err in _check_config_key(c.key)]
+            if path_errors:
+                raise CommandError(422, "unknown or server-owned keys", errors=path_errors)
+            conflicts = []
+            for change in changes:
+                server_value = _get_path(values, change.key.split("."))
+                if server_value != change.old:
+                    conflicts.append(f"{change.key}: the server has {json.dumps(server_value)}, "
+                                     f"not {json.dumps(change.old)}")
+            if conflicts:
+                raise CommandError(409, "changed meanwhile by another client", errors=conflicts)
+            merged = copy.deepcopy(current)
+            for change in changes:
+                _set_path(merged, change.key.split("."), None if change.unset else change.new, change.unset)
+            _validate_config(merged)
+            changed = _changed_keys(current, merged)
+            backup = self._save_config(merged) if changed else None
+        logger.info(f"Config changed by a client: {', '.join(changed) or 'no change'}; applies at the next start")
+        snapshot = self._store.snapshot()
+        return dto.ConfigPushResult(
+            rev=snapshot.rev, server_time=snapshot.server_time, path=str(self._config_path),
+            backup=str(backup) if backup else None, changed=changed,
+            restart_required=bool(changed),
         )
 
     def set_log_level(self, level: str) -> None:

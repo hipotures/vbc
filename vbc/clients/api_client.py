@@ -142,6 +142,14 @@ class ApiClient:
     def versions(self) -> dto.VersionsView:
         return self._parse(dto.VersionsView, self._request("GET", "/api/v1/versions"))
 
+    def config_values(self) -> dto.ConfigValues:
+        return self._parse(dto.ConfigValues, self._request("GET", "/api/v1/config/values"))
+
+    def patch_config(self, changes: list, restart: bool = True) -> dto.ConfigPushResult:
+        body = dto.ConfigPatchRequest(changes=changes, restart=restart)
+        return self._parse(dto.ConfigPushResult,
+                           self._request("PATCH", "/api/v1/config", json=body.model_dump(mode="json")))
+
     def config(self) -> dto.ConfigView:
         return self._parse(dto.ConfigView, self._request("GET", "/api/v1/config"))
 

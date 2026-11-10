@@ -444,6 +444,84 @@ def versions(api: Optional[str], as_json: bool) -> None:
     run(api, action)
 
 
+def _lookup(values: dict, key: str):
+    node = values
+    for part in key.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
+
+
+def _show(value) -> str:
+    return json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) or value is None else str(value)
+
+
+def config_get(api: Optional[str], keys: list[str], as_json: bool) -> None:
+    """Print settings from the server's config file (all when no key is given)."""
+    def action(client: ApiClient) -> None:
+        view = client.config_values()
+        wanted = keys or view.keys
+        unknown = [k for k in keys if k not in view.keys
+                   and not any(s.startswith(k + ".") for s in view.keys)]
+        if unknown:
+            typer.echo(f"vbc: unknown setting(s): {', '.join(unknown)} (`vbc config get` lists them)", err=True)
+            raise typer.Exit(code=EXIT_REJECTED)
+        # A section name (e.g. `general`) expands to its settings.
+        expanded = [s for k in wanted for s in ([k] if k in view.keys else
+                                                [s for s in view.keys if s.startswith(k + ".")])]
+        if as_json:
+            typer.echo(json.dumps({k: _lookup(view.values, k) for k in expanded}, indent=2, ensure_ascii=False))
+            return
+        for key in expanded:
+            typer.echo(f"{key}: {_show(_lookup(view.values, key))}")
+
+    run(api, action)
+
+
+def config_set(api: Optional[str], assignments: list[str], unset: list[str], restart: bool, as_json: bool) -> None:
+    """Change single settings. Each change carries the value read just before,
+    so the server refuses it if another client changed that setting meanwhile."""
+    import yaml
+
+    new_values = {}
+    for item in assignments:
+        key, sep, raw = item.partition("=")
+        if not sep or not key.strip():
+            typer.echo(f"vbc: expected KEY=VALUE, got {item!r}", err=True)
+            raise typer.Exit(code=EXIT_REJECTED)
+        try:
+            new_values[key.strip()] = yaml.safe_load(raw) if raw.strip() else ""
+        except yaml.YAMLError as exc:
+            typer.echo(f"vbc: {key}: value is not valid YAML: {exc}", err=True)
+            raise typer.Exit(code=EXIT_REJECTED) from exc
+
+    def action(client: ApiClient) -> None:
+        values = client.config_values().values
+        changes = [dto.ConfigChange(key=k, old=_lookup(values, k), new=v) for k, v in new_values.items()]
+        changes += [dto.ConfigChange(key=k, old=_lookup(values, k), unset=True) for k in unset]
+        result = client.patch_config(changes, restart=restart)
+        if as_json:
+            emit_json(result)
+            return
+        if not result.changed:
+            typer.echo("No change: the config already has these values.")
+            return
+        requested = [(k, _show(v)) for k, v in new_values.items()] + [(k, "(default)") for k in unset]
+        for key, shown in requested:
+            # changed holds the outermost differing key: the setting, a part of it
+            # (a mapping entry) or the section when the file did not have it yet.
+            if any(c == key or c.startswith(key + ".") or key.startswith(c + ".") for c in result.changed):
+                typer.echo(f"{key}: {_show(_lookup(values, key))} -> {shown}")
+        typer.echo(f"Saved {result.path} (previous: {result.backup})")
+        if result.restarting:
+            typer.echo("The server restarts with it now: running jobs finish first, nothing new starts.")
+        else:
+            typer.echo("Saved only (--no-restart): takes effect at the next server start.")
+
+    run(api, action)
+
+
 def config(api: Optional[str], as_json: bool, push: Optional[Path] = None, restart: bool = True) -> None:
     def action(client: ApiClient) -> None:
         if push is not None:

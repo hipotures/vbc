@@ -336,6 +336,7 @@ Read:
 | `GET /api/v1/errors?since&limit` | Session error log entries (see Logs). |
 | `GET /api/v1/logs?since&limit&level&wait` | Application log ring buffer (see Logs). |
 | `GET /api/v1/config` | Effective config (today's Settings tab lines, structured). |
+| `GET /api/v1/config/values`, `PATCH /api/v1/config` | Settings as stored in the config file, and single-setting changes. Each change is `{key, old, new}` (or `unset`); the server compares `old` with its current value per key and refuses the whole request (409) if any differs, so concurrent clients cannot overwrite each other's change to the same setting. Lists and free-form mappings are one value. Server-owned sections are excluded. Applies after a restart (requested by default). Shared by `vbc config get/set/unset` and the future web client. |
 | `GET /api/v1/versions` | Versions the server runs with (VBC, OS, Python, ffmpeg/ffprobe and libav* libraries, exiftool, nvtop, NVIDIA driver and bundled libraries, Debian and Python packages), read once per process. |
 | `GET /api/v1/io` | Input dir stats, output/error dirs, queue sort/seed, log path. |
 | `GET /api/v1/dirs` | Ordered `[{path, enabled}]` + `dirs_rev`. |

@@ -172,21 +172,69 @@ def versions(api: Optional[str] = API_OPTION, as_json: bool = JSON_OPTION) -> No
     commands.versions(api, as_json)
 
 
-@app.command("config")
+config_app = typer.Typer(invoke_without_command=True,
+                         help="Show the effective server configuration, change single settings, or push a whole file.")
+app.add_typer(config_app, name="config")
+
+RESTART_OPTION = typer.Option(True, "--restart/--no-restart",
+                              help="Restart the server now to apply it (running jobs finish first).")
+
+
+@config_app.callback()
 def show_config(
+    ctx: typer.Context,
     api: Optional[str] = API_OPTION,
     as_json: bool = JSON_OPTION,
     push: Optional[Path] = typer.Option(
         None, "--push", exists=True, dir_okay=False,
         help="Send this vbc.yaml to the server (its folders, port and storage are kept); the server restarts with it.",
     ),
-    restart: bool = typer.Option(True, "--restart/--no-restart",
-                                 help="With --push: restart the server now (running jobs finish first)."),
+    restart: bool = RESTART_OPTION,
 ) -> None:
-    """Show the effective server configuration, or push a config file to it."""
+    """Without a subcommand: show the effective configuration, or push a file with --push."""
+    if ctx.invoked_subcommand is not None:
+        return
     from vbc.clients import commands
 
     commands.config(api, as_json, push, restart)
+
+
+@config_app.command("get")
+def config_get(
+    keys: list[str] = typer.Argument(None, help="Dotted keys or sections, e.g. general.threads (none: all)"),
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Settings as stored in the server's config file (defaults filled in)."""
+    from vbc.clients import commands
+
+    commands.config_get(api, keys or [], as_json)
+
+
+@config_app.command("set")
+def config_set(
+    assignments: list[str] = typer.Argument(..., help="KEY=VALUE, VALUE in YAML: 40, true, '[mp4, mov]', '{\"GOPR.*\": 180}'"),
+    restart: bool = RESTART_OPTION,
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Change single settings. Refused if another client changed the same setting since it was read."""
+    from vbc.clients import commands
+
+    commands.config_set(api, assignments, [], restart, as_json)
+
+
+@config_app.command("unset")
+def config_unset(
+    keys: list[str] = typer.Argument(..., help="Dotted keys to remove from the file (back to the default)"),
+    restart: bool = RESTART_OPTION,
+    api: Optional[str] = API_OPTION,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Remove settings from the config file so their defaults apply."""
+    from vbc.clients import commands
+
+    commands.config_set(api, [], keys, restart, as_json)
 
 
 sources_app = typer.Typer(help="Source files on the server.", no_args_is_help=True)

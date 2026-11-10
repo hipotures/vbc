@@ -97,8 +97,20 @@ and `--json`.
 | `vbc errors [--since ID]` | this session's failed files |
 | `vbc logs [--follow] [--level LEVEL] [--since SEQ]` | server application log |
 | `vbc config` | effective configuration |
+| `vbc config get [KEY...]` | settings as stored in the server's config file (defaults filled in); a section name lists its settings, no key lists all |
+| `vbc config set KEY=VALUE... [--no-restart]` | change single settings; VALUE is YAML (`40`, `true`, `'[mp4, mov]'`, `"{'GOPR.*': 180}"`); the server restarts to apply them (running jobs finish first) |
+| `vbc config unset KEY... [--no-restart]` | remove settings from the file so their defaults apply |
+| `vbc config --push FILE [--no-restart]` | replace the whole config file (the server keeps its folders, bind address, storage) |
 | `vbc versions` | versions the server runs with: VBC, ffmpeg and its libraries, exiftool, nvtop, NVIDIA driver, image packages (`GET /api/v1/versions`) |
 | `vbc log-level LEVEL` | change the server log level at runtime |
+
+Changing single settings (`PATCH /api/v1/config`) is safe with several clients:
+each change carries the value the client read (`GET /api/v1/config/values`),
+and the server refuses all of them (409, with its current values) when any of
+those settings was changed by someone else in the meantime. A list or a
+mapping such as `autorotate.patterns` is one value and is set whole. The
+server-owned sections (`input_dirs`, `server`, `storage`, `general.log_path`, ...)
+are not editable this way; the Dirs list has its own commands.
 
 Exit status: `0` ok, `1` rejected by the server (the reason is printed),
 `2` usage error, `3` server unreachable.

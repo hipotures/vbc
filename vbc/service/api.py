@@ -159,6 +159,9 @@ class ClientRegistry:
         self.timeout_s = timeout_s
         self._lock = threading.Lock()
         self._sessions: dict[str, dict] = {}
+        # Sessions that said goodbye: a poll still in flight when the client
+        # quit must not register it again (session ids are per client run).
+        self._quit: dict[str, float] = {}
 
     @staticmethod
     def _describe(info: dict) -> str:
@@ -169,6 +172,8 @@ class ClientRegistry:
             return
         now = time.monotonic()
         with self._lock:
+            if session in self._quit:
+                return
             info = self._sessions.get(session)
             if info is None:
                 info = {"kind": kind, "id": session, "host": host or "?", "addr": addr, "since": now}
@@ -179,6 +184,8 @@ class ClientRegistry:
     def goodbye(self, session: Optional[str]) -> None:
         with self._lock:
             info = self._sessions.pop(session or "", None)
+            if session:
+                self._quit[session] = time.monotonic()
         if info is not None:
             logger.info(f"Client disconnected (quit): {self._describe(info)}, "
                         f"after {int(time.monotonic() - info['since'])} s")
@@ -187,6 +194,9 @@ class ClientRegistry:
         now = time.monotonic()
         with self._lock:
             gone = [i for i in self._sessions.values() if now - i["last"] > self.timeout_s]
+            for session, at in list(self._quit.items()):
+                if now - at > 10 * self.timeout_s:
+                    del self._quit[session]
             for info in gone:
                 del self._sessions[info["id"]]
         for info in gone:
@@ -416,6 +426,22 @@ def create_app(server: VbcServer, *, heartbeat_url: Optional[str] = None) -> Fas
         """Save a client's vbc.yaml (server-owned sections kept); applies at the next start."""
         result = await asyncio.to_thread(commands.push_config, body.yaml)
         if body.restart:
+            threading.Thread(target=server.request_restart, daemon=True).start()
+            result.restart_required, result.restarting = False, True
+        return result
+
+    @app.get("/api/v1/config/values", response_model=dto.ConfigValues,
+             responses={409: {"model": dto.Problem}})
+    async def get_config_values():
+        """Settings as stored in the config file (defaults filled in), for get/set."""
+        return await asyncio.to_thread(commands.config_values)
+
+    @app.patch("/api/v1/config", response_model=dto.ConfigPushResult,
+               responses={409: {"model": dto.Problem}, 422: {"model": dto.Problem}})
+    async def patch_config(body: dto.ConfigPatchRequest):
+        """Change single settings (each with the old value the client saw); applies at the next start."""
+        result = await asyncio.to_thread(commands.patch_config, body.changes)
+        if body.restart and result.changed:
             threading.Thread(target=server.request_restart, daemon=True).start()
             result.restart_required, result.restarting = False, True
         return result

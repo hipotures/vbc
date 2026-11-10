@@ -139,6 +139,56 @@
         "title": "ActiveJob",
         "type": "object"
       },
+      "ConfigChange": {
+        "additionalProperties": false,
+        "description": "One setting: ``old`` is the value the client last saw (from ConfigValues);\nthe server refuses the change (409) if its value is no longer ``old``.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "new": {
+            "title": "New"
+          },
+          "old": {
+            "title": "Old"
+          },
+          "unset": {
+            "default": false,
+            "title": "Unset",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "old"
+        ],
+        "title": "ConfigChange",
+        "type": "object"
+      },
+      "ConfigPatchRequest": {
+        "additionalProperties": false,
+        "description": "Change single settings, all or none (`vbc config set/unset`).",
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "restart": {
+            "default": true,
+            "title": "Restart",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "changes"
+        ],
+        "title": "ConfigPatchRequest",
+        "type": "object"
+      },
       "ConfigPushRequest": {
         "additionalProperties": false,
         "description": "A whole vbc.yaml from a client (`vbc config --push FILE`).",
@@ -222,6 +272,49 @@
           "path"
         ],
         "title": "ConfigPushResult",
+        "type": "object"
+      },
+      "ConfigValues": {
+        "additionalProperties": false,
+        "description": "Settings as stored in the server's config file, defaults filled in,\nwithout the server-owned sections. Keys for PATCH are dotted paths into\n``values`` (``general.threads``); a list or free-form mapping is one value.",
+        "properties": {
+          "keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keys",
+            "type": "array"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "integer"
+          },
+          "values": {
+            "additionalProperties": true,
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "rev",
+          "server_time",
+          "path",
+          "values"
+        ],
+        "title": "ConfigValues",
         "type": "object"
       },
       "ConfigView": {
@@ -2653,6 +2746,53 @@
         },
         "summary": "Get Config"
       },
+      "patch": {
+        "description": "Change single settings (each with the old value the client saw); applies at the next start.",
+        "operationId": "patch_config_api_v1_config_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigPushResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Patch Config"
+      },
       "put": {
         "description": "Save a client's vbc.yaml (server-owned sections kept); applies at the next start.",
         "operationId": "put_config_api_v1_config_put",
@@ -2699,6 +2839,35 @@
           }
         },
         "summary": "Put Config"
+      }
+    },
+    "/api/v1/config/values": {
+      "get": {
+        "description": "Settings as stored in the config file (defaults filled in), for get/set.",
+        "operationId": "get_config_values_api_v1_config_values_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigValues"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "summary": "Get Config Values"
       }
     },
     "/api/v1/dirs": {

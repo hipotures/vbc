@@ -299,6 +299,33 @@ class ConfigPushRequest(_Dto):
     restart: bool = True  # restart the server now (running jobs finish first)
 
 
+class ConfigValues(Envelope):
+    """Settings as stored in the server's config file, defaults filled in,
+    without the server-owned sections. Keys for PATCH are dotted paths into
+    ``values`` (``general.threads``); a list or free-form mapping is one value."""
+
+    path: str
+    values: Dict[str, Any]
+    keys: List[str] = Field(default_factory=list)  # every settable dotted key, in file order
+
+
+class ConfigChange(_Dto):
+    """One setting: ``old`` is the value the client last saw (from ConfigValues);
+    the server refuses the change (409) if its value is no longer ``old``."""
+
+    key: str
+    old: Any
+    new: Any = None
+    unset: bool = False  # remove the key from the file (back to the default)
+
+
+class ConfigPatchRequest(_Dto):
+    """Change single settings, all or none (`vbc config set/unset`)."""
+
+    changes: List[ConfigChange]
+    restart: bool = True  # restart the server now (running jobs finish first)
+
+
 class ConfigPushResult(Envelope):
     """The pushed config was saved; it takes effect at the next server start."""
 
