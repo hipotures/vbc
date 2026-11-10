@@ -34,6 +34,31 @@ def tight(text: Text | str, edge: tuple[str, str]) -> Text:
     return Text.assemble(edge[0], body, edge[1], no_wrap=True, end="")
 
 
+class Sized:
+    """Builds its renderable for the width it gets (edges assembled to fit)."""
+
+    def __init__(self, build) -> None:
+        self.build = build
+
+    def __rich_console__(self, console, options):
+        built = self.build(options.max_width)
+        # Rich drops the region height for a nested renderable: pass it on.
+        if isinstance(built, RichPanel) and built.height is None and options.height:
+            built.height = options.height
+        yield built
+
+
+def centred_with_right(name: str, right: Text, width: int) -> Text:
+    """Top edge for ``title_raw``: ``──┐ NAME ┌──┐right┌─`` (name centred)."""
+    inner = max(0, width - 4)  # corners and one line each side
+    label = joined(name, TOP)
+    if inner < label.cell_len + right.cell_len + 3:
+        return joined(name, TOP)
+    left = (inner - label.cell_len) // 2
+    mid = max(1, inner - left - label.cell_len - right.cell_len - 1)
+    return Text.assemble("─" * left, label, "─" * mid, right, "─", no_wrap=True, end="")
+
+
 class Panel(RichPanel):
     def __init__(self, *args, title_raw: bool = False, subtitle_raw: bool = False, **kwargs) -> None:
         super().__init__(*args, **kwargs)

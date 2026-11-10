@@ -45,7 +45,7 @@ def test_tui_renders_sends_commands_and_detaches(demo_config, serve_factory):
     try:
         _read(master, buf, 5)
         screen = _text(bytes(buf))
-        assert "ACTIVE" in screen and "QUEUE" in screen and "Threads:" in screen
+        assert "ACTIVE" in screen and "QUEUE" in screen and "threads:" in screen and "Uptime:" in screen
         assert "DISCONNECTED" not in screen and "Traceback" not in screen
 
         os.write(master, b">")

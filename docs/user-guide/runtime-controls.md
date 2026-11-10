@@ -352,16 +352,14 @@ SVT-AV1 uses multiple threads per encode, so total system threads = `vbc_threads
 
 ## UI Feedback
 
-All keyboard actions show feedback in the **Progress panel**:
+The thread count is on the top border of **ACTIVE JOBS**, on the right, as
+`threads: running/target`. The target is what `<` / `>` set (0 while
+stopping); running can be lower (empty queue) or briefly higher (after a
+decrease, until jobs finish).
 
 ```
-┌────────────────────────────────────────────────┐
-│ Progress: 42/100 (42%) | Active threads: 8    │
-│ Last action: Threads: 7 → 8                   │
-└────────────────────────────────────────────────┘
+╭──────────┐ ACTIVE JOBS ┌──────────┐ threads: 2/3 ┌─╮
 ```
-
-Feedback expires after 60 seconds.
 
 ## Troubleshooting
 

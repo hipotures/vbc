@@ -80,6 +80,13 @@ talk to the server:
 | `Shift+U` | unlock keyboard after auto-lock (auto-locks after 60 s without keys, configurable via `VBC_TUI_LOCK_AFTER_S`; `0` disables) |
 | `D` (Dirs tab) | edit the server's folder list; `R` scans server media mounts and offers new folders as disabled entries; `S` saves the whole list, and errors from the server are shown inline |
 
+Panels: the header shows the run status and the server uptime, then ETA,
+throughput and space saved. **ACTIVE JOBS** carries `threads: running/target`
+on its top border and `deleted: N` (sources deleted since
+the server started) on its bottom border. **ACTIVITY FEED** shows on its bottom
+border the files completed since the server started and their output size;
+**QUEUE** shows the files waiting and their size.
+
 Paths in the Dirs and IO tabs are paths on the server. Pasted text (bracketed
 paste) never triggers hotkeys; in the Dirs add-path input it types into the
 path buffer. When the server encodes on GPU, the metrics panel displays GPU

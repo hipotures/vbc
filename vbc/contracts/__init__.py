@@ -184,8 +184,9 @@ class StateSnapshot(Envelope):
     # encoder_note says why the GPU is not used.
     encoder: Optional[Literal["gpu", "cpu"]] = None
     encoder_note: Optional[str] = None
-    server_version: Optional[str] = None
-    source_deletion: bool = True  # False: no policy in force deletes sources ("deleted: off")  # VBC version of the server (image release)
+    server_version: Optional[str] = None  # VBC version of the server (image release)
+    server_started_at: Optional[int] = None  # server process start (uptime)
+    source_deletion: bool = True  # False: no policy in force deletes sources ("deleted: off")
 
 
 # ── paginated reads ─────────────────────────────────────────────────────────

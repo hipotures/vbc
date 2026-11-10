@@ -163,6 +163,7 @@ class StateStore:
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._clock = clock
+        self._started_at = clock()
         self._config = config
         self._lock = threading.Lock()
         self._changed = threading.Condition(self._lock)
@@ -826,6 +827,7 @@ class StateStore:
                 encoder=self._encoder,
                 encoder_note=self._encoder_note,
                 server_version=vbc_version(),
+                server_started_at=to_ms(self._started_at),
                 source_deletion=self._source_deletion(),
             )
 

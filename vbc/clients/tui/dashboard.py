@@ -9,7 +9,7 @@ from typing import Optional, List, Tuple, Any
 from rich.live import Live
 from rich.cells import cell_len
 from rich.console import Console, Group, RenderableType
-from vbc.clients.tui.panels import BOTTOM, TOP, Panel, joined, tight
+from vbc.clients.tui.panels import BOTTOM, TOP, Panel, Sized, centred_with_right, joined, tight
 from rich.table import Table
 from rich.layout import Layout
 from rich.progress_bar import ProgressBar
@@ -47,7 +47,6 @@ FOOTER_LINES = 1   # Health counters
 MIN_2COL_W = 110   # Breakpoint for 2-column layout
 
 # Panel content min/max heights (lines within frame)
-PROGRESS_MAX = 1   # one line: bar, sizes, percent, elapsed
 ACTIVE_MIN = 1
 ACTIVITY_MIN = 1
 QUEUE_MIN = 1
@@ -761,8 +760,6 @@ class Dashboard:
                 status = "[bright_cyan]ACTIVE[/]"
             
             # 1. Prepare KPI variables
-            active_threads = len(self.state.active_jobs)
-            paused = "" # Logic for paused could be added here
             
             eta_str = "--:--"
             throughput_str = "0.0 MB/s"
@@ -778,24 +775,15 @@ class Dashboard:
             saved = self.format_size(self.state.space_saved_bytes)
             ratio = self.state.compression_ratio
 
-            # Thread display: show single number or transition
-            # During shutdown or waiting, target is 0; otherwise use configured threads
-            target_threads = 0 if (
-                self.state.shutdown_requested
-                or self.state.waiting_for_input
-                or self.state.error_paused
-                or self.state.repair_active
-            ) else self.state.current_threads
-
-            if not self.state.connected:
-                threads_display = "–"  # last known values are stale
-            elif active_threads == target_threads:
-                threads_display = str(active_threads)
+            # Uptime of the server ("–" while disconnected: the start time may be stale)
+            if self.state.connected and self.state.server_started_at:
+                uptime = self.format_time(
+                    max(0.0, (datetime.now() - self.state.server_started_at).total_seconds()))
             else:
-                threads_display = f"{active_threads} → {target_threads}"
+                uptime = "–"
 
             # 2. Build Left Content (Fixed 3 lines)
-            l1 = f"{indicator} {status} • Threads: {threads_display}{paused}"
+            l1 = f"{indicator} {status} • Uptime: {uptime}"
             l2 = f"ETA: {eta_str} • {throughput_str} • {saved} saved ({(1-ratio)*100:.1f}%)"
             # No key hints (they are in the Keys tab, M); only a repair notice.
             l3 = "[dim]Repairing failed files from this session[/]" if self.state.repair_active else ""
@@ -959,59 +947,13 @@ class Dashboard:
         return Panel(content, border_style="cyan", title=title, title_align="left", title_raw=True,
                      subtitle=subtitle, subtitle_align="left", subtitle_raw=True)
 
-    def _generate_progress(self, h_lines: int) -> Panel:
-        """Progress bar + counters (size-based progress)."""
-        with self.state._lock:
-            # Oblicz całkowity rozmiar i przetworzony rozmiar
-            total_size_bytes = 0
-            processed_size_bytes = 0
-
-            # Pending files (total from the server; the client holds only the first page)
-            total_size_bytes += self.state.queue_bytes
-
-            # Active jobs
-            for job in self.state.active_jobs:
-                total_size_bytes += job.source_file.size_bytes
-
-            # Completed files
-            processed_size_bytes = self.state.total_input_bytes
-            total_size_bytes += processed_size_bytes
-
-            # Progress % (oparty na rozmiarach, nie liczbie plików)
-            pct = 0.0
-            if total_size_bytes > 0:
-                pct = (processed_size_bytes / total_size_bytes) * 100
-
-            # Elapsed time
-            elapsed_str = "--:--"
-            if self.state.processing_start_time:
-                elapsed = (datetime.now() - self.state.processing_start_time).total_seconds()
-                elapsed_str = self.format_time(elapsed)
-
-            sources = (Text(f"sources: {self.state.source_folders_count}")
-                       if self.state.source_folders_count > 1 else None)
-
-            # Progress bar (skalowany do 0-10000 aby uniknąć problemów z dużymi liczbami)
-            if total_size_bytes > 0:
-                scaled_total = 10000
-                scaled_processed = int((processed_size_bytes / total_size_bytes) * 10000)
-            else:
-                scaled_total = 100
-                scaled_processed = 0
-
-            bar = ProgressBar(total=scaled_total, completed=scaled_processed, width=None)
-
-            # Format rozmiarów
-            processed_str = self.format_size(processed_size_bytes)
-            total_str = self.format_size(total_size_bytes)
-            sizes_str = f"{processed_str}/{total_str}"
-
-            # Bar + rozmiary + bullet + procent + bullet + czas
-            bar_grid = Table.grid(padding=(0, 1))
-            bar_grid.add_row(bar, sizes_str, "•", f"{pct:.1f}%", "•", elapsed_str)
-
-        return Panel(bar_grid, title="PROGRESS", border_style="cyan",
-                     subtitle=sources, subtitle_align="right")
+    def _threads_display(self) -> str:
+        """``running/target``: the target is what `<` / `>` set (0 while stopping)."""
+        if not self.state.connected:
+            return "–"  # last known values are stale
+        active = len(self.state.active_jobs)
+        target = 0 if self.state.shutdown_requested else self.state.current_threads
+        return f"{active}/{target}"
 
     def _generate_active_jobs_panel(self, h_lines: int) -> Panel:
         with self.state._lock:
@@ -1029,8 +971,12 @@ class Dashboard:
             # Sources deleted after success since the server started ("off": no policy deletes).
             deleted = (f"deleted: {self.state.sources_deleted_count}"
                        if getattr(self.state, "source_deletion", True) else "deleted: off")
-            return Panel(table, title="ACTIVE JOBS", border_style="cyan",
-                         subtitle=Text(deleted), subtitle_align="right")
+            threads = joined(f"threads: {self._threads_display()}", TOP)
+            return Sized(lambda width: Panel(
+                table, border_style="cyan",
+                title=centred_with_right("ACTIVE JOBS", threads, width),
+                title_align="left", title_raw=True,
+                subtitle=Text(deleted), subtitle_align="right"))
 
     def _generate_activity_panel(self, h_lines: int) -> Panel:
         with self.state._lock:
@@ -1301,7 +1247,6 @@ class Dashboard:
         # 3. Allocation
 
         # Defaults
-        h_progress = 0
         h_active = 0
         h_activity = 0
         h_queue = 0
@@ -1316,20 +1261,13 @@ class Dashboard:
         if is_2col:
             # 2 Columns
             layout["middle"].split_row(
-                Layout(name="left"),     # Progress + Active Jobs
+                Layout(name="left"),     # Active Jobs
                 Layout(name="right")     # Activity Feed + Queue
             )
             
-            # Left column: Progress (fixed) + Active (fixed for 8 jobs)
-            h_progress_frame = PROGRESS_MAX + 2
-            h_active_frame = (self.max_active_jobs * 3) + 2  # 8 × 3 + 2 = 26
-            h_left_total = h_progress_frame + h_active_frame
-
-            # CRITICAL: Clamp to available h_work
-            if h_left_total > h_work:
-                h_left_total = h_work
-                h_active_frame = max(ACTIVE_MIN + 2, h_work - h_progress_frame)
-                h_progress_frame = h_work - h_active_frame
+            # Left column: Active (fixed for max_active_jobs), clamped to h_work
+            h_active_frame = min((self.max_active_jobs * 3) + 2, h_work)  # 8 × 3 + 2 = 26
+            h_left_total = h_active_frame
 
             # Right column: Activity (fixed) + Queue (adjusts to match left column height)
             max_activity_items = self.state.recent_jobs.maxlen
@@ -1345,7 +1283,6 @@ class Dashboard:
             
             # Update Layouts
             layout["left"].split_column(
-                Layout(name="progress", size=h_progress_frame),
                 Layout(name="active", size=h_active_frame)
             )
             
@@ -1355,27 +1292,24 @@ class Dashboard:
             layout["right"].split_column(*right_splits)
             
             # Content Heights (remove 2 for borders)
-            h_progress = max(0, h_progress_frame - 2)
             h_active = max(0, h_active_frame - 2)
             h_activity = max(0, h_activity_frame - 2)
             h_queue = max(0, h_queue_frame - 2)
 
         else:
             # 1 Column (Stack)
-            # Progress > Active > Activity > Queue
+            # Active > Activity > Queue
             h_rem = h_work
-
-            h_progress_frame = min(PROGRESS_MAX + 2, h_rem)
-            h_rem -= h_progress_frame
 
             # Dynamic sizing: ACTIVE and ACTIVITY take only what they need, QUEUE gets the rest
             with self.state._lock:
                 actual_jobs = len(self.state.active_jobs)
                 actual_activity = len(self.state.recent_jobs)
 
-            # ACTIVE JOBS: 2 lines per job in narrow mode (max 8 jobs), +2 for borders if not empty
+            # ACTIVE JOBS: 2 lines per job in narrow mode (max 8 jobs), +2 for borders;
+            # shown even when empty (its border carries threads and deleted).
             active_content = min(actual_jobs, self.max_active_jobs)
-            h_active_frame = (active_content * 2 + 2) if active_content > 0 else 0
+            h_active_frame = min(max(active_content * 2, ACTIVE_MIN) + 2, h_rem)
 
             # ACTIVITY FEED: 1 line per item (max 5), +2 for borders if not empty
             activity_content = min(actual_activity, 5)
@@ -1386,9 +1320,7 @@ class Dashboard:
             if h_queue_frame < 3:  # Not enough for even empty queue
                 h_queue_frame = 0
 
-            splits = [Layout(name="progress", size=h_progress_frame)]
-            if h_active_frame > 0:
-                splits.append(Layout(name="active", size=h_active_frame))
+            splits = [Layout(name="active", size=h_active_frame)]
             if h_activity_frame > 0:
                 splits.append(Layout(name="activity", size=h_activity_frame))
             if h_queue_frame > 0:
@@ -1396,7 +1328,6 @@ class Dashboard:
 
             layout["middle"].split_column(*splits)
 
-            h_progress = max(0, h_progress_frame - 2)
             h_active = max(0, h_active_frame - 2)
             h_activity = max(0, h_activity_frame - 2)
             h_queue = max(0, h_queue_frame - 2)
@@ -1406,15 +1337,12 @@ class Dashboard:
 
         # Assign directly based on tree structure we just built
         if is_2col:
-             layout["left"]["progress"].update(self._generate_progress(h_progress))
              layout["left"]["active"].update(self._generate_active_jobs_panel(h_active))
              layout["right"]["activity"].update(self._generate_activity_panel(h_activity))
              if h_queue_frame > 0:
                  layout["right"]["queue"].update(self._generate_queue_panel(h_queue))
         else:
-             layout["middle"]["progress"].update(self._generate_progress(h_progress))
-             if h_active_frame > 0:
-                 layout["middle"]["active"].update(self._generate_active_jobs_panel(h_active))
+             layout["middle"]["active"].update(self._generate_active_jobs_panel(h_active))
              if h_activity_frame > 0:
                  layout["middle"]["activity"].update(self._generate_activity_panel(h_activity))
              if h_queue_frame > 0:

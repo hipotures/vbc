@@ -139,7 +139,7 @@ class ClientState:
         self.io_queue_seed: Optional[int] = None
         self.log_path: Optional[str] = None
         self.debug_enabled: bool = False
-        self.processing_start_time: Optional[datetime] = None
+        self.server_started_at: Optional[datetime] = None
 
         self.last_action: str = ""
         self.last_action_time: Optional[datetime] = None
@@ -248,7 +248,7 @@ class ClientState:
             self.total_output_bytes = snap.total_output_bytes
             self.throughput_bps = snap.throughput.bytes_per_s if snap.throughput else None
             self.eta_at = local_datetime(snap.eta_at, offset_ms)
-            self.processing_start_time = local_datetime(snap.processing_started_at, offset_ms)
+            self.server_started_at = local_datetime(snap.server_started_at, offset_ms)
             self.current_threads = snap.threads.current
             status = snap.run_status
             self.run_status = status
