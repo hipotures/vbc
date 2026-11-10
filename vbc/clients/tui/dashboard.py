@@ -47,8 +47,7 @@ FOOTER_LINES = 1   # Health counters
 MIN_2COL_W = 110   # Breakpoint for 2-column layout
 
 # Panel content min/max heights (lines within frame)
-PROGRESS_MIN = 2   # Done/Total + bar
-PROGRESS_MAX = 3   # 3 lines total: Header, Bar, Gap/Action
+PROGRESS_MAX = 1   # one line: bar, sizes, percent, elapsed
 ACTIVE_MIN = 1
 ACTIVITY_MIN = 1
 QUEUE_MIN = 1
@@ -963,8 +962,6 @@ class Dashboard:
     def _generate_progress(self, h_lines: int) -> Panel:
         """Progress bar + counters (size-based progress)."""
         with self.state._lock:
-            # Liczby plików (header: session/total/all)
-
             # Oblicz całkowity rozmiar i przetworzony rozmiar
             total_size_bytes = 0
             processed_size_bytes = 0
@@ -991,13 +988,8 @@ class Dashboard:
                 elapsed = (datetime.now() - self.state.processing_start_time).total_seconds()
                 elapsed_str = self.format_time(elapsed)
 
-            # Header: counts since the server started, like the byte totals and
-            # "deleted". Discovery counts are not used: with source deletion the
-            # folders no longer hold the sources already done.
-            left = self.state.queue_count + len(self.state.active_jobs)
-            header = f"Done: {self.state.completed_count} • Left: {left}"
-            if self.state.source_folders_count > 1:
-                header += f" • Sources: {self.state.source_folders_count}"
+            sources = (Text(f"sources: {self.state.source_folders_count}")
+                       if self.state.source_folders_count > 1 else None)
 
             # Progress bar (skalowany do 0-10000 aby uniknąć problemów z dużymi liczbami)
             if total_size_bytes > 0:
@@ -1018,10 +1010,8 @@ class Dashboard:
             bar_grid = Table.grid(padding=(0, 1))
             bar_grid.add_row(bar, sizes_str, "•", f"{pct:.1f}%", "•", elapsed_str)
 
-            rows = [header, bar_grid, ""]
-            content = Group(*rows)
-
-        return Panel(content, title="PROGRESS", border_style="cyan")
+        return Panel(bar_grid, title="PROGRESS", border_style="cyan",
+                     subtitle=sources, subtitle_align="right")
 
     def _generate_active_jobs_panel(self, h_lines: int) -> Panel:
         with self.state._lock:
@@ -1052,7 +1042,13 @@ class Dashboard:
             else:
                 levels = [("B", 1)]  # 1-column: only 1-line format
             table, _ = self._render_list(jobs, h_lines, levels, self._render_activity_item)
-            return Panel(table, title="ACTIVITY FEED", border_style="cyan")
+            # Bottom border: completed since the server started and their output size
+            # (same form as the queue total).
+            done = (Text(f"{self.state.completed_count} files · "
+                         f"{self.format_size(self.state.total_output_bytes)}")
+                    if self.state.completed_count else None)
+            return Panel(table, title="ACTIVITY FEED", border_style="cyan",
+                         subtitle=done, subtitle_align="right")
 
     def _generate_queue_panel(self, h_lines: int) -> Panel:
         with self.state._lock:
@@ -1325,9 +1321,9 @@ class Dashboard:
             )
             
             # Left column: Progress (fixed) + Active (fixed for 8 jobs)
-            h_progress_frame = PROGRESS_MAX + 2  # 3 + 2 = 5
+            h_progress_frame = PROGRESS_MAX + 2
             h_active_frame = (self.max_active_jobs * 3) + 2  # 8 × 3 + 2 = 26
-            h_left_total = h_progress_frame + h_active_frame  # 5 + 26 = 31
+            h_left_total = h_progress_frame + h_active_frame
 
             # CRITICAL: Clamp to available h_work
             if h_left_total > h_work:
