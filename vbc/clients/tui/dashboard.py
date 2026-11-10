@@ -586,11 +586,10 @@ class Dashboard:
             ratio = (diff / in_s) * 100 if in_s > 0 else 0
             dur = self.format_time(job.duration_seconds)
 
-            # Config source as an icon: 🌐 global config, 📍 folder VBC.YAML
-            # (letters when the display strips non-ASCII symbols).
+            # Config source as an icon: 🌐 global config, 📍 folder VBC.YAML.
+            # (strip_unicode_display is about file names only.)
             source = (getattr(job.config_source, "value", None) or "GLOBAL")[0]  # G / L / C
-            if not self.state.strip_unicode_display:
-                source = {"G": "🌐", "L": "📍"}.get(source, source)
+            source = {"G": "🌐", "L": "📍"}.get(source, source)
             if job.quality_display:
                 quality_text = self._format_quality_display_for_ui(job.quality_display)
                 q_val = f"{source} {quality_text} • "
