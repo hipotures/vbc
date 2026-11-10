@@ -572,8 +572,8 @@ class ReferenceOverlay:
         symbols_table.add_row(
             f"[{COLORS['accent_green']}]⇉[/] Multiple outputs",
             f"[{COLORS['warning_yellow']}]![/] Done, source not deleted",
-            "",
-            "",
+            "🌐 Global config",
+            "📍 Folder VBC.YAML",
         )
         
         status_content = Group(
