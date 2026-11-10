@@ -588,7 +588,7 @@ class Dashboard:
 
             # Config source as an icon: 🌐 global config, 📍 folder VBC.YAML
             # (letters when the display strips non-ASCII symbols).
-            source = job.config_source.value if job.config_source else "G"
+            source = (getattr(job.config_source, "value", None) or "GLOBAL")[0]  # G / L / C
             if not self.state.strip_unicode_display:
                 source = {"G": "🌐", "L": "📍"}.get(source, source)
             if job.quality_display:

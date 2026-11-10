@@ -44,10 +44,12 @@ class ConfigSourceView(str, Enum):
 
     @classmethod
     def parse(cls, value: Optional[str]) -> "ConfigSourceView":
-        try:
-            return cls(value or "GLOBAL")
-        except ValueError:
-            return cls.GLOBAL
+        """The API sends the server's letters (G/L/C); full names are accepted too."""
+        text = (value or "").strip().upper()
+        for member in cls:
+            if text in (member.value, member.value[0]):
+                return member
+        return cls.GLOBAL
 
 
 @dataclass
